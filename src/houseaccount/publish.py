@@ -1,15 +1,61 @@
-"""Serving artifacts: doors.geojson + SQLite + run_manifest.json (T009).
+"""Serving artifacts: doors.geojson + SQLite + run_manifest.json (T009, R2.2/R2.3).
 
-STUB — names only, so `tests/test_publish.py` can import. Every behaviour below
-raises; the contract each one has to satisfy is pinned in that test module.
+Three files come out of one call, and each answers a different question:
+
+* `data/doors.geojson` is what the map renders and what the rep clicks. Every
+  door in the territory appears exactly once — including the ones that could not
+  be scored, because R9.4 makes them clickable and counts them in the
+  "537 of 540" readout. A door missing from the file is a door nobody can click.
+* `data/houseaccount.sqlite` is what the MCP server reads (`get_door_score`,
+  `explain_score`). Two tables, `doors` and `evidence`, joined on `PAMS_PIN`,
+  with an explicit `seq` because the order the engine produced the trail in is
+  part of the explanation and SQL rows have no order of their own.
+* `data/run_manifest.json` is what makes the run reproducible (R13): the
+  once-per-run inputs the score was computed against, when each source was
+  retrieved, what the run cost, and which code produced it.
+
+**The seam.** `publish(scored, *, report, manifest, data_dir)` takes the
+`(DoorFacts, ScoreResult | None)` pairs the pipeline already holds, in
+publication order. Nothing is re-derived here — not the score, not the median,
+not the retrieval dates — which is what keeps the three artifacts consistent
+with each other and with the numbers the resolve report published.
+
+**What "unscored" means.** A `None` score is published as an exclusion, and the
+rule that produces one is `parcel_record_incomplete`: the county record carries
+*none* of the three parcel facts the score is built from — no deed date, no year
+built, no assessed value. Any one of them still scores (degraded, `low`
+confidence, with a `data_gap` line — the engine's R6.1 path, deliberately not
+this rule). Only a record with nothing in it at all would yield a number that is
+pure fabrication, so that record gets no number and says why.
+
+**Null geometry is published, not skipped.** `territory.write_territory_geojson`
+drops geometry-less parcels because an unrenderable feature only breaks a map.
+Here the opposite holds: the coverage readout and the exclusion panel are
+per-door, so the feature ships with `"geometry": null` and the door stays
+countable and clickable.
+
+**The identity guard.** The published property set is an exact allowlist written
+out once, in `_feature`. Nothing can reach a browser by being copied wholesale
+off a record, which is how `src/` satisfies R11.1 without ever naming an
+identity field.
+
+**Idempotent bytes.** Sorted keys, fixed separators, one trailing newline: two
+runs over the same doors write byte-identical `doors.geojson`, so a nightly
+`make pipeline` shows an empty diff rather than churn (R13).
 """
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
+
+from houseaccount.resolve import DoorFacts, ResolveReport
+from houseaccount.scoring.engine import ScoreResult
+from houseaccount.scoring.evidence import EvidenceItem
 
 #: The three artifacts a run publishes. `SQLITE_NAME` is already pinned by the
 #: `clean` target in the Makefile.
@@ -19,6 +65,30 @@ RUN_MANIFEST_NAME = "run_manifest.json"
 
 #: Published on a door the county record cannot support a score for (R9.4).
 EXCLUSION_REASON = "parcel record incomplete in county data"
+
+#: Two tables, created on first publish. `seq` is explicit because `explain_score`
+#: replays the trail in the order the engine built it, and rows in a table have
+#: no inherent order to fall back on.
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS doors (
+    pams_pin         TEXT PRIMARY KEY,
+    score            INTEGER,
+    confidence       TEXT,
+    situs            TEXT NOT NULL,
+    exclusion_reason TEXT
+);
+CREATE TABLE IF NOT EXISTS evidence (
+    pams_pin  TEXT    NOT NULL,
+    seq       INTEGER NOT NULL,
+    type      TEXT    NOT NULL,
+    points    INTEGER NOT NULL,
+    sentence  TEXT    NOT NULL,
+    source    TEXT    NOT NULL,
+    retrieved TEXT    NOT NULL,
+    imagery   TEXT,
+    PRIMARY KEY (pams_pin, seq)
+);
+"""
 
 
 @dataclass(frozen=True)
@@ -47,17 +117,233 @@ class PublishResult:
     doors_unscored: int
 
 
-def parcel_record_incomplete(door: Any) -> bool:
-    """True when the county record carries no fact the score can be built from."""
-    raise NotImplementedError
+def parcel_record_incomplete(door: DoorFacts) -> bool:
+    """True when the county record carries no fact the score can be built from.
+
+    Deliberately an *all three missing* test rather than an any-missing one: a
+    record with only a deed date, or only a year built, or only an assessment
+    still scores through R6.1's degraded path, flagged `low` confidence with a
+    `data_gap` line. Excluding those would hide doors a rep can legitimately
+    knock on. Geometry is absent from the test entirely — it is how a door is
+    drawn, not what it is scored from.
+    """
+    return not (door.deed_date is not None or door.yr_constr > 0 or door.net_value > 0)
 
 
 def publish(
-    scored: Sequence[tuple[Any, Any]],
+    scored: Sequence[tuple[DoorFacts, ScoreResult | None]],
     *,
-    report: Any,
+    report: ResolveReport,
     manifest: RunManifest,
     data_dir: Path,
 ) -> PublishResult:
-    """Write the three artifacts for one run and report what was written."""
-    raise NotImplementedError
+    """Write the three artifacts for one run and report what was written.
+
+    `data_dir` is created if it does not exist: a fresh clone must be able to
+    publish without a preparatory `mkdir` step (R2.2).
+    """
+    pairs = list(scored)
+    data_dir = Path(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    doors_total = len(pairs)
+    doors_scored = sum(1 for _, result in pairs if result is not None)
+
+    geojson_path = _write_geojson(data_dir / DOORS_GEOJSON_NAME, pairs)
+    sqlite_path = _write_sqlite(data_dir / SQLITE_NAME, pairs)
+    manifest_path = _write_manifest(
+        data_dir / RUN_MANIFEST_NAME,
+        manifest=manifest,
+        report=report,
+        doors_total=doors_total,
+        doors_scored=doors_scored,
+    )
+
+    return PublishResult(
+        geojson_path=geojson_path,
+        sqlite_path=sqlite_path,
+        manifest_path=manifest_path,
+        doors_total=doors_total,
+        doors_scored=doors_scored,
+        doors_unscored=doors_total - doors_scored,
+    )
+
+
+# --- doors.geojson -----------------------------------------------------------
+
+
+def _write_geojson(
+    path: Path, pairs: Sequence[tuple[DoorFacts, ScoreResult | None]]
+) -> Path:
+    """One feature per door, in publication order, as deterministic bytes."""
+    payload = {
+        "type": "FeatureCollection",
+        "features": [_feature(door, result) for door, result in pairs],
+    }
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _feature(door: DoorFacts, result: ScoreResult | None) -> dict[str, Any]:
+    """One door as GeoJSON. This property set is the R11.1 allowlist.
+
+    Written as a literal rather than projected off the record, so a widened
+    upstream schema has nowhere to leak into. A door with no polygon ships
+    `"geometry": null` instead of being dropped — R9.4 still has to count it.
+    """
+    return {
+        "type": "Feature",
+        "geometry": dict(door.geometry) if door.geometry else None,
+        "properties": {
+            "PAMS_PIN": door.pams_pin,
+            "score": result.score if result is not None else None,
+            "confidence": result.confidence if result is not None else None,
+            "evidence": [_evidence(item) for item in result.evidence] if result else [],
+            "situs": door.situs,
+            "exclusion_reason": None if result is not None else EXCLUSION_REASON,
+        },
+    }
+
+
+def _evidence(item: EvidenceItem) -> dict[str, Any]:
+    """One R7.1 evidence line, with its re-openable frame when it has one."""
+    return {
+        "type": item.type,
+        "points": item.points,
+        "sentence": item.sentence,
+        "source": item.source,
+        "retrieved": item.retrieved.isoformat(),
+        "imagery": dict(item.imagery) if item.imagery else None,
+    }
+
+
+# --- houseaccount.sqlite ------------------------------------------------------
+
+
+def _write_sqlite(path: Path, pairs: Sequence[tuple[DoorFacts, ScoreResult | None]]) -> Path:
+    """Rewrite both tables from `pairs`. A re-publish replaces, never appends.
+
+    The rows are deleted rather than the file unlinked, so a reader holding the
+    path keeps reading the same database across a re-run.
+    """
+    connection = sqlite3.connect(path)
+    try:
+        with connection:
+            connection.executescript(_SCHEMA)
+            connection.execute("DELETE FROM evidence")
+            connection.execute("DELETE FROM doors")
+            connection.executemany(
+                "INSERT INTO doors (pams_pin, score, confidence, situs, exclusion_reason)"
+                " VALUES (?, ?, ?, ?, ?)",
+                [_door_row(door, result) for door, result in pairs],
+            )
+            connection.executemany(
+                "INSERT INTO evidence"
+                " (pams_pin, seq, type, points, sentence, source, retrieved, imagery)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                list(_evidence_rows(pairs)),
+            )
+    finally:
+        connection.close()
+    return path
+
+
+def _door_row(door: DoorFacts, result: ScoreResult | None) -> tuple[Any, ...]:
+    return (
+        door.pams_pin,
+        result.score if result is not None else None,
+        result.confidence if result is not None else None,
+        door.situs,
+        None if result is not None else EXCLUSION_REASON,
+    )
+
+
+def _evidence_rows(
+    pairs: Sequence[tuple[DoorFacts, ScoreResult | None]]
+) -> Iterator[tuple[Any, ...]]:
+    """Every evidence line of every scored door, numbered within its door."""
+    for door, result in pairs:
+        if result is None:
+            continue
+        for seq, item in enumerate(result.evidence):
+            yield (
+                door.pams_pin,
+                seq,
+                item.type,
+                item.points,
+                item.sentence,
+                item.source,
+                item.retrieved.isoformat(),
+                json.dumps(dict(item.imagery), sort_keys=True) if item.imagery else None,
+            )
+
+
+# --- run_manifest.json --------------------------------------------------------
+
+
+def _write_manifest(
+    path: Path,
+    *,
+    manifest: RunManifest,
+    report: ResolveReport,
+    doors_total: int,
+    doors_scored: int,
+) -> Path:
+    """The run's inputs, its coverage, its cost and what it lost along the way.
+
+    `coverage` here is the R9.4 readout — the share of doors that got a score,
+    which is what "537 of 540" states. The resolve report's own coverage (doors
+    carrying any joined signal) is a different number and lives, unrenamed, in
+    the `resolve` block below.
+    """
+    payload = {
+        "run_at": manifest.run_at.isoformat(),
+        "as_of": manifest.as_of.isoformat(),
+        "code_version": manifest.code_version,
+        "territory_median_value": manifest.territory_median_value,
+        "acs_dual_income_threshold": manifest.acs_dual_income_threshold,
+        "retrieved": {name: day.isoformat() for name, day in manifest.retrieved.items()},
+        "cost_usd": manifest.cost_usd,
+        "cost_per_door": _ratio(manifest.cost_usd, doors_scored),
+        "doors_total": doors_total,
+        "doors_scored": doors_scored,
+        "doors_unscored": doors_total - doors_scored,
+        "coverage": _ratio(doors_scored, doors_total),
+        "degradations": list(manifest.degradations),
+        "resolve": _resolve_block(report),
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def _resolve_block(report: ResolveReport) -> dict[str, Any]:
+    """The graded resolve numbers (R3.2), as scalars.
+
+    The per-record `unmatched` list stays out: it is a working artifact for
+    whoever is fixing the join, not part of what makes a *run* reproducible,
+    and a manifest that grows with the feed stops being readable.
+    """
+    return {
+        "doors_total": report.doors_total,
+        "doors_with_signal": report.doors_with_signal,
+        "coverage": report.coverage,
+        "permits_total": report.permits_total,
+        "permits_in_territory": report.permits_in_territory,
+        "permits_matched": report.permits_matched,
+        "permits_unmatched": len(report.unmatched),
+        "permit_match_rate": report.permit_match_rate,
+        "block_lot_match_rate": report.block_lot_match_rate,
+        "address_match_rate": report.address_match_rate,
+        "doors_with_block_group": report.doors_with_block_group,
+        "acs_available": report.acs_available,
+        "acs_reason": report.acs_reason,
+        "rental_declination_reason": report.rental_declination_reason,
+    }
+
+
+def _ratio(numerator: float, denominator: int) -> float:
+    """A ratio that reports 0.0 rather than dividing by an empty territory."""
+    return numerator / denominator if denominator else 0.0

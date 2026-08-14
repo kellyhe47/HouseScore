@@ -1,0 +1,25 @@
+{
+  "name": "hires_out_permit_history",
+  "why": "Core hires-out ICP path with no mover signal: 3 permits within 2 years (capped at 40) + churn across 3 distinct contractors (+20) + capacity + need must sum to exactly 100 unclamped.",
+  "given": {
+    "as_of": "2026-08-01",
+    "config": { "territory_median_value": 500000, "acs_dual_income_threshold": 0.35 },
+    "parcel": { "PAMS_PIN": "0248_TEST_04", "DEED_DATE": "2019-04-12", "SALE_PRICE": 780000, "SALES_CODE": "", "YR_CONSTR": 1978, "NET_VALUE": 690000, "CALC_ACRE": 0.5 },
+    "permits_2yr": [
+      { "date": "2024-12-01", "type": "roofing", "contractor": "ABC Roofing LLC" },
+      { "date": "2025-06-15", "type": "hvac", "contractor": "Bergen HVAC Inc" },
+      { "date": "2025-09-20", "type": "electrical", "contractor": "Sparks Electric" }
+    ],
+    "acs_block_group": { "dual_income_pct": 0.41, "median_hh_income": 145000 },
+    "rental_registration_match": false,
+    "vision": { "pool": true }
+  },
+  "expect": {
+    "score": 100,
+    "arithmetic": "mover 0 + hires-out 60 (3 permits x 20 capped at 40, + churn 20 for 3 distinct contractors no repeats) + capacity 20 (690k >= median: 15; dual_income 0.41 >= 0.35: +5) + need 20 (48 yrs: 8; pool: 8; 0.5 acre: 4) = 100 raw, no clamp",
+    "evidence_must_include": [
+      { "type": "permit_history", "reason": "3 contractor permits in 2 years = demonstrated hires-out behaviour" },
+      { "type": "provider_churn", "reason": "3 distinct contractors, no repeat = no incumbent provider to displace" }
+    ]
+  }
+}

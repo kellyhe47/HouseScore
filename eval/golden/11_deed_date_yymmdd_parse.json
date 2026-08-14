@@ -1,0 +1,22 @@
+{
+  "name": "deed_date_yymmdd_parse",
+  "why": "Audited reality: raw DEED_DATE is a YYMMDD 2-digit-year string ('080122' = 2008-01-22). The Mover group (100 pts, highest weight) rides entirely on this parse; a silent century bug ('26' -> 1926) would zero every mover while ISO-based fixtures still pass. Pins the normalizer contract including the century pivot.",
+  "given": {
+    "as_of": "2026-08-01",
+    "century_pivot_rule": "YY <= current 2-digit year + 1 -> 2000s, else 1900s (current year 2026 -> pivot 27)",
+    "cases": [
+      { "raw": "260712", "expect_iso": "2026-07-12" },
+      { "raw": "080122", "expect_iso": "2008-01-22" },
+      { "raw": "990315", "expect_iso": "1999-03-15" },
+      { "raw": "270101", "expect_iso": "2027-01-01" },
+      { "raw": "280101", "expect_iso": "1928-01-01" },
+      { "raw": "", "expect_iso": null },
+      { "raw": "9903", "expect_iso": null }
+    ]
+  },
+  "expect": {
+    "all_cases_pass": true,
+    "end_to_end": "scoring a parcel with raw DEED_DATE '260712' at as_of 2026-08-01 must yield mover 100 (20 days), identical to fixture 10's ISO input",
+    "unparseable_behavior": "null/malformed -> Mover skipped + confidence low (per R6.1), never a crash or a 1900s misparse"
+  }
+}

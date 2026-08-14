@@ -1,0 +1,23 @@
+{
+  "name": "vision_eval_contract",
+  "why": "The rubric's non-negotiable: the vision eval harness must compute precision/recall on the top signal from labeled samples and a hallucination rate, as runnable code. This fixture pins the harness's arithmetic on a frozen confusion set.",
+  "given": {
+    "labeled_samples": {
+      "signal": "pool_present",
+      "universe": 40,
+      "predictions": { "true_positive": 9, "false_positive": 2, "false_negative": 1, "true_negative": 28 }
+    },
+    "hallucination_probe": {
+      "universe": 20,
+      "description": "images verified to contain no pool, provider truck, or yard sign",
+      "claimed_detections": 1
+    }
+  },
+  "expect": {
+    "precision": 0.818,
+    "recall": 0.9,
+    "within_tolerance": { "field": "precision|recall", "abs": 0.001 },
+    "hallucination_rate": 0.05,
+    "counts_check": "TP+FP+FN+TN must equal universe (40); hallucination denominator is its own 20-image universe, not the 40"
+  }
+}

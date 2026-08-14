@@ -1,0 +1,18 @@
+{
+  "name": "mover_boundary_91_days",
+  "why": "Hard boundary: deed 91 days before as_of earns ZERO mover points (bands end at 90 days). Score collapses to the non-mover signals only.",
+  "given": {
+    "as_of": "2026-08-01",
+    "config": { "territory_median_value": 500000, "acs_dual_income_threshold": 0.35 },
+    "parcel": { "PAMS_PIN": "0248_TEST_02", "DEED_DATE": "2026-05-02", "SALE_PRICE": 910000, "SALES_CODE": "", "YR_CONSTR": 1988, "NET_VALUE": 560000, "CALC_ACRE": 0.4 },
+    "permits_2yr": [],
+    "acs_block_group": { "dual_income_pct": 0.31, "median_hh_income": 98000 },
+    "rental_registration_match": false,
+    "vision": {}
+  },
+  "expect": {
+    "score": 23,
+    "arithmetic": "mover 0 (91 days > 90-day window) + capacity 15 (560k >= median) + need 8 (1988 = 38 yrs) = 23",
+    "evidence_must_exclude": [ { "type": "deed_recency", "reason": "outside the 90-day mover window" } ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "absentee_modifier",
+  "why": "Absentee modifier is a mild -15 (rental households still buy home services), detected ONLY via ToS-clean proxies (rental-registration match), never identity reconstruction.",
+  "given": {
+    "as_of": "2026-08-01",
+    "config": { "territory_median_value": 500000, "acs_dual_income_threshold": 0.35 },
+    "parcel": { "PAMS_PIN": "0248_TEST_08", "DEED_DATE": "2024-11-05", "SALE_PRICE": 720000, "SALES_CODE": "", "YR_CONSTR": 1985, "NET_VALUE": 505000, "CALC_ACRE": 0.3 },
+    "permits_2yr": [ { "date": "2025-01-10", "type": "plumbing", "contractor": "Valley Plumbing" } ],
+    "acs_block_group": { "dual_income_pct": 0.31, "median_hh_income": 98000 },
+    "rental_registration_match": true,
+    "vision": {}
+  },
+  "expect": {
+    "score": 28,
+    "arithmetic": "mover 0 (deed > 90 days) + hires-out 20 (1 permit in 2 yrs) + capacity 15 (505k >= median) + need 8 (41 yrs) = 43 raw; absentee -15 = 28",
+    "comparative": { "baseline": "identical input with rental_registration_match=false", "baseline_score": 43, "assertion": "score == baseline_score - 15" },
+    "evidence_must_include": [ { "type": "absentee_likely", "reason": "parcel matches municipal rental registration; occupant is likely a tenant, mild demotion only" } ],
+    "must_not_contain": [ "owner name", "any identity-derived field" ]
+  }
+}

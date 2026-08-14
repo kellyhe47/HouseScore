@@ -90,8 +90,19 @@ def run_vision(
         ledger=ledger if ledger is not None else CostLedger(),
         batch_size=batch_size,
         tokens_per_minute=VISION_TOKENS_PER_MINUTE if live else None,
+        concurrency=VISION_CONCURRENCY if live else 1,
     )
-    provider = CachedVisionProvider(inner, cache=cache) if cache is not None else inner
+    # One chunk is one full wave of concurrent requests, so a live run banks its
+    # answers roughly once a minute instead of once at the very end.
+    provider = (
+        CachedVisionProvider(
+            inner,
+            cache=cache,
+            chunk_tiles=batch_size * VISION_CONCURRENCY if live else 0,
+        )
+        if cache is not None
+        else inner
+    )
 
     detections = tuple(provider.detect(tiles))
     return VisionRun(
@@ -112,6 +123,20 @@ def run_vision(
 #: never how much it costs. A territory is ~1M tokens, so a full run paces out
 #: to roughly five minutes.
 VISION_TOKENS_PER_MINUTE = 180_000
+
+#: How many vision requests may be in flight at once on a live run.
+#:
+#: The stage is latency-bound, not allowance-bound: a request takes tens of
+#: seconds to answer but costs only a few thousand tokens, so serially a
+#: territory spends hours mostly waiting while using a fraction of the budget.
+#:
+#: Measured on a real territory: serial managed ~1 request a minute, and eight
+#: in flight ~3 — the model answers in one to two minutes under load, far
+#: slower than a single tile suggests. At that size the run was still using
+#: about 12k of a 200k allowance, so the limit was never the budget. Twenty-four
+#: keeps the spend rate around a quarter of `VISION_TOKENS_PER_MINUTE`, which
+#: `_pace` holds regardless, and leaves the rest of the headroom for retries.
+VISION_CONCURRENCY = 24
 
 #: Seconds one vision request may take before it is abandoned and retried.
 #:

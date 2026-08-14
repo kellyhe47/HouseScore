@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Mapping, Protocol, Sequence, runtime_checkable
 
@@ -61,7 +63,13 @@ MAX_OUTPUT_TOKENS = 2048
 #: Bumped whenever the prompt or schema changes in a way that would make a
 #: cached answer wrong. Part of the cache address, so old entries are simply
 #: missed rather than silently reused against a new contract.
-PROMPT_VERSION = "2026-08-r33-v2-openai"
+PROMPT_VERSION = "2026-08-r33-v3-openai-lowdetail"
+
+#: How much of each tile the model is billed to look at. Part of the cache key
+#: through `PROMPT_VERSION`: fidelity changes the answer, so low-detail results
+#: must not be served for a high-detail run or the eval would be measuring a
+#: mixture of two fidelities and reporting it as one number.
+IMAGE_DETAIL = "low"
 
 _CACHE_NAMESPACE = "vision:detections"
 
@@ -157,6 +165,8 @@ class OpenAIVisionProvider:
         model: str = VISION_MODEL,
         tokens_per_minute: float | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        concurrency: int = 1,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._client = client
         self._ledger = ledger
@@ -164,15 +174,41 @@ class OpenAIVisionProvider:
         self._model = model
         self._tokens_per_minute = tokens_per_minute
         self._sleep = sleep
+        self._concurrency = max(1, int(concurrency))
+        self._monotonic = monotonic
+        # One request's answer is a few hundred bytes; the cost of a lock around
+        # the shared bookkeeping is nothing next to a minute of model latency.
+        self._books = threading.Lock()
+        self._pace_lock = threading.Lock()
+        self._allowance_free_at = 0.0
         self.parse_failures: list[ParseFailure] = []
 
     def detect(self, tiles: Sequence[Tile]) -> list[Detection]:
-        """Detections for `tiles`, in batch order. Never raises on bad output."""
+        """Detections for `tiles`, in batch order. Never raises on bad output.
+
+        Requests go out concurrently when asked to, because this stage is bound
+        by how long the model takes to answer, not by the allowance: a whole
+        territory is a few hundred requests of a few thousand tokens, so even
+        eight in flight sits far under a standard per-minute budget while
+        turning hours of serial waiting into minutes. `_pace` holds the ceiling
+        for all of them at once, so widening this does not widen spend.
+
+        Order is the batch order either way — the map's evidence panel reads
+        these positionally, so a faster run must not be a differently-ordered
+        one.
+        """
         batch_list = list(tiles)
-        found: list[Detection] = []
-        for start in range(0, len(batch_list), self._batch_size):
-            found.extend(self._detect_batch(batch_list[start : start + self._batch_size]))
-        return found
+        batches = [
+            batch_list[start : start + self._batch_size]
+            for start in range(0, len(batch_list), self._batch_size)
+        ]
+        if self._concurrency <= 1 or len(batches) <= 1:
+            return [found for batch in batches for found in self._detect_batch(batch)]
+
+        with ThreadPoolExecutor(max_workers=min(self._concurrency, len(batches))) as pool:
+            # `map` yields in submission order, not completion order.
+            grouped = list(pool.map(self._detect_batch, batches))
+        return [found for group in grouped for found in group]
 
     # --- staying inside the account's per-minute allowance ------------------
 
@@ -189,10 +225,24 @@ class OpenAIVisionProvider:
         Charging each request its real `usage` rather than an assumed constant
         means the delay tracks what the account was actually billed for, so a
         prompt or batch-size change cannot silently drift back over the line.
+
+        Concurrency is why this reserves a slot on a shared timeline rather than
+        just sleeping: eight workers each sleeping their own share would let
+        eight times the tokens through per minute, which is the opposite of a
+        ceiling. Each request instead claims the next free moment and waits for
+        it, so the allowance is spent at one rate no matter how many threads are
+        spending it.
         """
         if not self._tokens_per_minute or tokens <= 0:
             return
-        self._sleep(tokens * 60.0 / self._tokens_per_minute)
+        delay = tokens * 60.0 / self._tokens_per_minute
+        with self._pace_lock:
+            now = self._monotonic()
+            starts_at = max(now, self._allowance_free_at)
+            self._allowance_free_at = starts_at + delay
+            wait = starts_at - now
+        if wait > 0:
+            self._sleep(wait)
 
     # --- one request --------------------------------------------------------
 
@@ -204,19 +254,21 @@ class OpenAIVisionProvider:
 
         # Bill first. The money left the account whatever the model said, and a
         # run that under-reports its own spend is worse than one that overspends.
-        self._ledger.record(LEDGER_SOURCE, units=len(batch), usd=_usd_for(response))
+        with self._books:
+            self._ledger.record(LEDGER_SOURCE, units=len(batch), usd=_usd_for(response))
         self._pace(_tokens_for(response))
 
         text = _response_text(response)
         payload = _parse_envelope(text)
         if payload is None:
-            self.parse_failures.append(
-                ParseFailure(
-                    image_ref=None,
-                    reason="response was not a {'detections': [...]} JSON object",
-                    raw=text,
+            with self._books:
+                self.parse_failures.append(
+                    ParseFailure(
+                        image_ref=None,
+                        reason="response was not a {'detections': [...]} JSON object",
+                        raw=text,
+                    )
                 )
-            )
             return []
 
         by_ref = {tile.image_ref: tile for tile in batch}
@@ -260,7 +312,8 @@ class OpenAIVisionProvider:
             return self._fail(tile.image_ref, str(error), raw)
 
     def _fail(self, image_ref: str | None, reason: str, raw: str) -> None:
-        self.parse_failures.append(ParseFailure(image_ref=image_ref, reason=reason, raw=raw))
+        with self._books:
+            self.parse_failures.append(ParseFailure(image_ref=image_ref, reason=reason, raw=raw))
         return None
 
     def _request(self, batch: Sequence[Tile]) -> dict[str, Any]:
@@ -276,7 +329,19 @@ class OpenAIVisionProvider:
             content.append(
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                    # `detail` is set, not defaulted, because the default is
+                    # "auto" -> high, and this tier bills a 640px tile at ~25k
+                    # tokens rather than the ~765 the geometry suggests. At four
+                    # tiles a request that is ~103k tokens, which puts a whole
+                    # territory over an hour of pure rate-limit waiting and an
+                    # order of magnitude past its cost budget. "low" is one flat
+                    # downscale to 512px — still the whole parcel in frame, and
+                    # a pool is a large high-contrast object, so the eval
+                    # harness is what says whether this costs any recall.
+                    "image_url": {
+                        "url": f"data:image/png;base64,{encoded}",
+                        "detail": IMAGE_DETAIL,
+                    },
                 }
             )
         content.append({"type": "text", "text": _TASK_PROMPT})
@@ -306,9 +371,10 @@ class CachedVisionProvider:
     and re-asking for it is the same spend as asking the first time.
     """
 
-    def __init__(self, inner: VisionProvider, *, cache: Cache) -> None:
+    def __init__(self, inner: VisionProvider, *, cache: Cache, chunk_tiles: int = 0) -> None:
         self._inner = inner
         self._cache = cache
+        self._chunk_tiles = max(0, int(chunk_tiles))
 
     @property
     def parse_failures(self) -> Sequence[Any]:
@@ -326,16 +392,32 @@ class CachedVisionProvider:
             else:
                 warm[tile.image_ref] = [Detection(**row) for row in cached]
 
-        if cold:
-            fresh: dict[str, list[Detection]] = {tile.image_ref: [] for tile in cold}
-            for detection in self._inner.detect(cold):
+        # Answers are banked in chunks rather than once at the end. The stage is
+        # the only one that spends money, and a run that dies on its last
+        # request used to throw away every answer it had already bought — so the
+        # retry paid twice for the same tiles. A chunk is the most that can now
+        # be lost, and `put` after each one is what makes a killed run resumable.
+        for group in self._chunks(cold):
+            fresh: dict[str, list[Detection]] = {tile.image_ref: [] for tile in group}
+            for detection in self._inner.detect(group):
                 fresh.setdefault(detection.image_ref, []).append(detection)
-            for tile in cold:
+            for tile in group:
                 rows = fresh.get(tile.image_ref, [])
                 self._cache.put(self._key(tile), [asdict(row) for row in rows])
                 warm[tile.image_ref] = rows
 
         return [detection for tile in batch for detection in warm.get(tile.image_ref, [])]
+
+    def _chunks(self, cold: Sequence[Tile]) -> list[Sequence[Tile]]:
+        """Cold tiles as banking units, preserving order. Empty in, nothing out."""
+        if not cold:
+            return []
+        if not self._chunk_tiles:
+            return [list(cold)]
+        return [
+            list(cold[start : start + self._chunk_tiles])
+            for start in range(0, len(cold), self._chunk_tiles)
+        ]
 
     def _key(self, tile: Tile) -> str:
         # The prompt version rides in the address so a changed prompt cannot be

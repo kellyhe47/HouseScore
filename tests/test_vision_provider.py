@@ -30,6 +30,8 @@ import importlib
 import json
 import logging
 import sys
+import threading
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -665,32 +667,39 @@ def test_parse_failures_surface_on_the_run(with_key):
 FAKE_TOTAL_TOKENS = 1200 + 180
 
 
-def test_pacing_waits_in_proportion_to_tokens_spent():
+def paced(batch, *, tpm, concurrency=1, batch_size=DEFAULT_BATCH_SIZE):
+    """Run `batch` against a frozen clock; return the provider and its waits.
+
+    The clock never advances, so what accumulates is the *reservation* — the
+    point on the shared timeline the allowance has been committed to. That is
+    the quantity the ceiling is made of, and unlike wall-clock it is identical
+    however many threads did the spending.
+    """
     slept = []
-    batch = tiles(4)
     provider = OpenAIVisionProvider(
         client=FakeOpenAI(batch),
         ledger=CostLedger(),
-        tokens_per_minute=60_000,
+        batch_size=batch_size,
+        concurrency=concurrency,
+        tokens_per_minute=tpm,
         sleep=slept.append,
+        monotonic=lambda: 0.0,
     )
     provider.detect(batch)
-    # 60_000 tokens/min is 1_000 tokens/second, so the wait is tokens / 1_000.
-    assert slept and all(pause > 0 for pause in slept)
-    assert sum(slept) == pytest.approx(FAKE_TOTAL_TOKENS / 1_000.0)
+    return provider, slept
 
 
-def test_a_slower_allowance_waits_longer():
-    fast, slow = [], []
-    batch = tiles(4)
-    for budget, sink in ((120_000, fast), (60_000, slow)):
-        OpenAIVisionProvider(
-            client=FakeOpenAI(batch),
-            ledger=CostLedger(),
-            tokens_per_minute=budget,
-            sleep=sink.append,
-        ).detect(batch)
-    assert sum(slow) == pytest.approx(2 * sum(fast))
+def test_pacing_reserves_time_in_proportion_to_tokens_spent():
+    # 60_000 tokens/min is 1_000 tokens/second, so one batch reserves tokens/1_000.
+    provider, slept = paced(tiles(16), tpm=60_000, batch_size=4)
+    assert slept and any(pause > 0 for pause in slept)
+    assert provider._allowance_free_at == pytest.approx(4 * FAKE_TOTAL_TOKENS / 1_000.0)
+
+
+def test_a_slower_allowance_reserves_longer():
+    fast, _ = paced(tiles(16), tpm=120_000, batch_size=4)
+    slow, _ = paced(tiles(16), tpm=60_000, batch_size=4)
+    assert slow._allowance_free_at == pytest.approx(2 * fast._allowance_free_at)
 
 
 def test_without_an_allowance_nothing_sleeps():
@@ -711,6 +720,81 @@ def test_an_injected_client_never_paces(with_key, monkeypatch):
     )
     batch = tiles(2)
     assert run_vision(batch, config=with_key, client=FakeOpenAI(batch)).declined is False
+
+
+# --- concurrency ------------------------------------------------------------
+#
+# The stage waits on the model far longer than it spends allowance, so requests
+# overlap. Two things must survive that: the order callers read positionally,
+# and the ceiling `_pace` holds.
+
+
+class BlockingClient(FakeOpenAI):
+    """Counts how many calls are in flight at once, and answers slowly."""
+
+    def __init__(self, known_tiles=(), hold=0.05):
+        super().__init__(known_tiles)
+        self.hold = hold
+        self.peak = 0
+        self._live = 0
+        self._lock = threading.Lock()
+        inner_create = self.chat.completions.create
+
+        def counting_create(**kwargs):
+            with self._lock:
+                self._live += 1
+                self.peak = max(self.peak, self._live)
+            try:
+                time.sleep(self.hold)
+                return inner_create(**kwargs)
+            finally:
+                with self._lock:
+                    self._live -= 1
+
+        self.chat.completions.create = counting_create
+
+
+def test_concurrent_requests_actually_overlap():
+    batch = tiles(16)
+    client = BlockingClient(batch)
+    openai_provider(client, batch_size=4, concurrency=4).detect(batch)
+    assert client.peak > 1
+
+
+def test_concurrency_preserves_batch_order():
+    """The evidence panel reads these positionally; faster must not mean reordered."""
+    batch = tiles(16)
+    serial = openai_provider(FakeOpenAI(batch), batch_size=4).detect(batch)
+    parallel = openai_provider(FakeOpenAI(batch), batch_size=4, concurrency=4).detect(batch)
+    assert [d.image_ref for d in parallel] == [d.image_ref for d in serial]
+
+
+def test_concurrency_does_not_widen_the_allowance():
+    """Four workers must not spend four times the tokens per minute.
+
+    This is the whole safety argument for turning concurrency on: the ceiling
+    is a property of the shared timeline, not of how many threads race for it.
+    """
+    batch = tiles(16)
+    serial, _ = paced(batch, tpm=60_000, batch_size=4, concurrency=1)
+    parallel, _ = paced(batch, tpm=60_000, batch_size=4, concurrency=4)
+    assert parallel._allowance_free_at == pytest.approx(serial._allowance_free_at)
+
+
+def test_every_batch_is_billed_exactly_once_under_concurrency():
+    batch = tiles(16)
+    ledger = CostLedger()
+    openai_provider(FakeOpenAI(batch), ledger=ledger, batch_size=4, concurrency=4).detect(batch)
+    assert ledger.as_dict()["sources"][LEDGER_SOURCE]["units"] == 16
+
+
+def test_parse_failures_are_not_lost_under_concurrency():
+    batch = tiles(16)
+    provider = openai_provider(
+        FakeOpenAI(batch, responder=responding("not json")), batch_size=4, concurrency=4
+    )
+    provider.detect(batch)
+    assert len(provider.parse_failures) == 4
 
 
 class StubOpenAIModule:
@@ -797,3 +881,65 @@ def test_importing_the_provider_does_not_import_the_openai_sdk(monkeypatch):
         for name in [n for n in sys.modules if n.startswith("houseaccount.vision")]:
             sys.modules.pop(name, None)
         sys.modules.update(saved)
+
+
+# --- banking answers as they arrive -----------------------------------------
+#
+# This stage is the only one that spends money. A run that died on its last
+# request used to discard every answer it had already bought, so the retry paid
+# twice for the same tiles — which is exactly what three killed runs did.
+
+
+class ExplodingAfter:
+    """Answers for the first `ok_tiles` tiles, then dies like a killed run."""
+
+    def __init__(self, ok_tiles):
+        self.ok_tiles = ok_tiles
+        self.seen = 0
+
+    def detect(self, tiles):
+        batch = list(tiles)
+        if self.seen >= self.ok_tiles:
+            raise RuntimeError("killed mid-run")
+        self.seen += len(batch)
+        return [
+            Detection(
+                pams_pin=t.pams_pin,
+                signal="pool",
+                present=True,
+                confidence=0.9,
+                image_ref=t.image_ref,
+                capture_date=t.capture_date,
+            )
+            for t in batch
+        ]
+
+
+def test_a_killed_run_keeps_the_answers_it_already_paid_for(tmp_path):
+    cache = Cache(tmp_path / "cache")
+    batch = tiles(16)
+    dying = CachedVisionProvider(ExplodingAfter(8), cache=cache, chunk_tiles=4)
+    with pytest.raises(RuntimeError):
+        dying.detect(batch)
+
+    # The resumed run must not re-ask for the tiles the dead one banked.
+    survivor = RecordingProvider()
+    CachedVisionProvider(survivor, cache=cache, chunk_tiles=4).detect(batch)
+    reasked = {t.image_ref for call in survivor.calls for t in call}
+    assert not (reasked & {t.image_ref for t in batch[:8]})
+
+
+def test_banking_in_chunks_still_returns_every_detection(tmp_path):
+    batch = tiles(16)
+    chunked = CachedVisionProvider(
+        RecordingProvider(), cache=Cache(tmp_path / "a"), chunk_tiles=4
+    ).detect(batch)
+    whole = CachedVisionProvider(RecordingProvider(), cache=Cache(tmp_path / "b")).detect(batch)
+    assert [d.image_ref for d in chunked] == [d.image_ref for d in whole]
+
+
+def test_without_chunking_the_old_single_pass_still_holds(tmp_path):
+    inner = RecordingProvider()
+    batch = tiles(16)
+    CachedVisionProvider(inner, cache=Cache(tmp_path / "cache")).detect(batch)
+    assert len(inner.calls) == 1

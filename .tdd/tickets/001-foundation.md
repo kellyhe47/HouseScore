@@ -1,11 +1,11 @@
 ---
 id: 001
 title: "Foundation: config, content-addressed cache, HTTP client, cost ledger, redaction guard"
-status: pending
+status: green
 depends_on: []
 touches: [src/houseaccount/config.py, src/houseaccount/cache.py, src/houseaccount/http.py, src/houseaccount/cost.py, src/houseaccount/sources/__init__.py, src/houseaccount/vision/__init__.py, src/houseaccount/scoring/__init__.py, tests/test_config.py, tests/test_cache.py, tests/test_http.py, tests/test_cost.py, tests/test_redaction.py]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [tests/test_config.py, tests/test_cache.py, tests/test_http.py, tests/test_cost.py, tests/test_redaction.py]
 branch: ""
 ---
 
@@ -39,3 +39,11 @@ client takes an injectable transport.
 - [ ] **Redaction guard** (`tests/test_redaction.py`): scanning `src/`, `eval/`, `web/` for the
       tokens `OWNER_NAME`, `ST_ADDRESS`, `CITY_STATE` yields zero hits. The guard must fail if a
       hit is introduced (demonstrate by mutation after the checkpoint commit, then revert).
+
+## Attempt log
+
+- iter 1: green first run. 87 tests. Redaction guard demonstrated red under an
+  injected `OWNER_NAME` in `src/houseaccount/config.py`, then reverted.
+- Style set for the run: `from __future__ import annotations`, frozen dataclasses,
+  cache stores raw response bytes (not decoded payloads), `requests` imported lazily
+  inside the default transport so the suite never touches it.

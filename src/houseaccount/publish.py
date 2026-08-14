@@ -74,6 +74,9 @@ EXCLUSION_REASON = "parcel record incomplete in county data"
 #: the `deed_vintage` block is that a reader can trust it against the map.
 MOVER_WINDOW_DAYS = int(THRESHOLDS["mover_90d_days"])
 
+#: The top mover band, read from the same rule for the same reason.
+TOP_BAND_DAYS = int(THRESHOLDS["mover_30d_days"])
+
 #: Two tables, created on first publish. `seq` is explicit because `explain_score`
 #: replays the trail in the order the engine built it, and rows in a table have
 #: no inherent order to fall back on.
@@ -131,6 +134,16 @@ class RunManifest:
     degradations: Sequence[str] = ()
     latest_deed_date: date | None = None
     doors_in_mover_window: int = 0
+    #: The SR1A sales register's own vintage, kept separate from
+    #: `latest_deed_date` so a reader can see which register supplied the
+    #: freshness — and, when the register is missing, that it was MOD-IV alone.
+    latest_sale_date: date | None = None
+    sales_source_files: Sequence[str] = ()
+    doors_with_sales_deed: int = 0
+    #: Doors inside the top mover band. Published because a non-zero
+    #: `doors_in_mover_window` with a zero here is the signature of the state's
+    #: recording-and-publication lag, not of a rule that failed.
+    doors_in_top_band: int = 0
 
 
 @dataclass(frozen=True)
@@ -385,10 +398,20 @@ def _deed_vintage_block(manifest: RunManifest) -> dict[str, Any]:
     verbatim rather than adding to it.
     """
     latest = manifest.latest_deed_date
+    sale = manifest.latest_sale_date
     return {
         "latest_deed_date": latest.isoformat() if latest is not None else None,
         "mover_window_days": MOVER_WINDOW_DAYS,
         "doors_in_mover_window": manifest.doors_in_mover_window,
+        "doors_in_top_band": manifest.doors_in_top_band,
+        "top_band_days": TOP_BAND_DAYS,
+        # Which register the freshness came from. An empty `source_files` with a
+        # populated `latest_deed_date` says plainly that only MOD-IV was read.
+        "sales_register": {
+            "latest_sale_date": sale.isoformat() if sale is not None else None,
+            "source_files": list(manifest.sales_source_files),
+            "doors_superseding_modiv": manifest.doors_with_sales_deed,
+        },
     }
 
 

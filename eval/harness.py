@@ -443,6 +443,13 @@ def _check_comparative(given: Mapping[str, Any], expect: Mapping[str, Any]) -> l
         mutated["vision"] = {}
     if "rental_registration_match=false" in description:
         mutated["rental_registration_match"] = False
+    # A structured override, rather than one more phrase sniffed out of the
+    # prose: a comparative that changes a parcel field names the field. Fixture
+    # 13's baseline is the same door read from the stale parcel deed, which no
+    # sentence-matching rule could express.
+    overrides = comparative.get("baseline_parcel") or {}
+    if overrides:
+        mutated["parcel"] = {**(mutated.get("parcel") or {}), **overrides}
 
     baseline = score_door(ScoreInput.from_fixture(mutated)).score
     if baseline != comparative["baseline_score"]:

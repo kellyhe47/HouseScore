@@ -54,6 +54,11 @@ join — a substantial addition that PRD R2.1 does not list and R6.0 does not as
 ship with the vintage disclosed?** The board records this as the one decision the PRD does not
 pre-make.
 
+**ANSWERED 2026-08-14 — add SR1A. Done in ticket 020.** The register now supplies deed recency
+wherever it is fresher than MOD-IV's, and the live run has 2 territory doors inside the mover
+window. This ticket's disclosure is not deleted by that: it is replaced by a narrower one, since
+NJ's ~6-week recording-and-publication lag still keeps the 30-day/100-point band unreachable.
+
 ## Attempt log
 
 - iter 1: green (1263 python, 214 JS). Live `make pipeline` now emits the disclosure:

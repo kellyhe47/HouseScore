@@ -118,7 +118,7 @@ from eval.harness import (  # noqa: E402
 GOLDEN_FILES = sorted(GOLDEN.glob("*.json"))
 FIXTURE_COUNT = len(GOLDEN_FILES)
 
-assert FIXTURE_COUNT == 12, f"expected 12 golden fixtures, found {FIXTURE_COUNT}"
+assert FIXTURE_COUNT == 13, f"expected 13 golden fixtures, found {FIXTURE_COUNT}"
 
 AS_OF = date(2026, 8, 1)
 
@@ -238,8 +238,8 @@ def report_path(tmp_path):
 
 def test_healthy_repo_passes_every_golden_fixture():
     report = run_eval()
-    assert report.fixtures_total == FIXTURE_COUNT == 12
-    assert report.fixtures_passed == 12
+    assert report.fixtures_total == FIXTURE_COUNT == 13
+    assert report.fixtures_passed == 13
     assert tuple(report.fixture_failures) == ()
     assert report.ok is True
 
@@ -248,7 +248,7 @@ def test_scored_fixtures_run_through_the_real_engine(monkeypatch):
     """Bend the engine's weights table and the harness must notice.
 
     A harness that re-implemented the arithmetic (the way `verify_claims.py`
-    does) would keep reporting 12/12 here.
+    does) would keep reporting a full pass count here.
     """
     monkeypatch.setitem(WEIGHTS, "mover_30d", 3)
     report = run_eval()
@@ -307,8 +307,8 @@ def test_deed_parse_cases_run_through_the_real_normalizer(
 )
 def test_a_broken_expectation_is_reported_as_a_failure(tmp_path, name, mutate, why):
     report = run_eval(golden_dir=golden_dir_with(tmp_path, name, mutate))
-    assert report.fixtures_total == 12
-    assert report.fixtures_passed == 11, why
+    assert report.fixtures_total == 13
+    assert report.fixtures_passed == FIXTURE_COUNT - 1, why
     assert [f.name for f in report.fixture_failures] == [name]
     assert report.fixture_failures[0].detail, "a failure must explain itself"
     assert report.ok is False
@@ -554,8 +554,8 @@ def test_the_printed_report_says_which_denominator_the_rate_used():
 def test_report_json_carries_every_key_the_ethics_page_needs():
     payload = run_eval().as_dict()
     assert REQUIRED_JSON_KEYS <= set(payload)
-    assert payload["fixtures_total"] == 12
-    assert payload["fixtures_passed"] == 12
+    assert payload["fixtures_total"] == 13
+    assert payload["fixtures_passed"] == 13
     assert payload["fixture_failures"] == []
     assert payload["metrics_source"] == FROZEN_SOURCE
     assert payload["resolve_match_rate_threshold"] == MATCH_RATE_FLOOR
@@ -584,7 +584,7 @@ def test_printed_report_carries_every_required_number(label_text, attribute):
 
 
 def test_printed_report_carries_the_fixture_pass_count():
-    assert "12/12" in run_eval().render()
+    assert f"{FIXTURE_COUNT}/{FIXTURE_COUNT}" in run_eval().render()
 
 
 # --- the exit path ----------------------------------------------------------
@@ -594,12 +594,15 @@ def test_main_exits_zero_on_a_healthy_repo_and_writes_the_json(report_path, caps
     assert main(["--report", str(report_path)]) == 0
 
     printed = capsys.readouterr().out
-    assert "12/12" in printed
+    assert f"{FIXTURE_COUNT}/{FIXTURE_COUNT}" in printed
     assert f"source: {FROZEN_SOURCE}" in printed
 
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert REQUIRED_JSON_KEYS <= set(payload)
-    assert (payload["fixtures_passed"], payload["fixtures_total"]) == (12, 12)
+    assert (payload["fixtures_passed"], payload["fixtures_total"]) == (
+        FIXTURE_COUNT,
+        FIXTURE_COUNT,
+    )
     assert payload["ok"] is True
 
 
@@ -614,7 +617,7 @@ def test_main_writes_the_json_even_when_the_run_fails(tmp_path, report_path):
     assert code != 0
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["ok"] is False
-    assert payload["fixtures_passed"] == 11
+    assert payload["fixtures_passed"] == FIXTURE_COUNT - 1
     assert [f["name"] for f in payload["fixture_failures"]] == ["new_mover_high_score"]
 
 
@@ -636,7 +639,7 @@ def test_python_dash_m_eval_harness_exits_zero(report_path):
     """`make eval` itself. Report redirected: never the repo's real one."""
     proc = run_module("--report", str(report_path))
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "12/12" in proc.stdout
+    assert f"{FIXTURE_COUNT}/{FIXTURE_COUNT}" in proc.stdout
     assert f"source: {FROZEN_SOURCE}" in proc.stdout
     assert json.loads(report_path.read_text(encoding="utf-8"))["ok"] is True
 

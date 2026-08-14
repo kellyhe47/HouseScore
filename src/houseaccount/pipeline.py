@@ -58,6 +58,7 @@ from houseaccount.http import SourceError, Transport, requests_transport
 from houseaccount.normalize import parse_deed_date
 from houseaccount.publish import (
     MOVER_WINDOW_DAYS,
+    TOP_BAND_DAYS,
     PublishResult,
     RunManifest,
     parcel_record_incomplete,
@@ -67,6 +68,7 @@ from houseaccount.resolve import (
     SIGNAL_ACS,
     SIGNAL_PARCEL,
     SIGNAL_PERMITS,
+    SIGNAL_SALES,
     DoorFacts,
     ResolveReport,
     resolve,
@@ -76,6 +78,7 @@ from houseaccount.sources.acs import AcsResult, AcsSource
 from houseaccount.sources.parcels import DEFAULT_MUN, Parcel, ParcelSource
 from houseaccount.sources.permits import PERMIT_WINDOW_DAYS, PermitRecord, PermitSource
 from houseaccount.sources.rental import NullRentalProvider, RentalRegistrationProvider
+from houseaccount.sources.sales import Sale, SalesExtract, SalesSource
 from houseaccount.sources.tiger import BlockGroupIndex, TigerSource
 from houseaccount.territory import (
     select_territory,
@@ -126,6 +129,12 @@ class DeedVintage:
 
     latest_deed_date: date | None
     doors_in_mover_window: int
+    #: The sales register's own newest deed, and the files it was read from.
+    latest_sale_date: date | None = None
+    source_files: tuple[str, ...] = ()
+    #: Doors inside the top band. Zero while `doors_in_mover_window` is not is
+    #: the fingerprint of the state's recording lag — see `_recording_lag_note`.
+    doors_in_top_band: int = 0
 
 
 def code_version() -> str:
@@ -194,15 +203,22 @@ def run_pipeline(
         cache=cache, transport=transport, degradations=degradations
     )
     acs = _harvest_acs(cache=cache, transport=transport, config=config, degradations=degradations)
+    sales = _harvest_sales(
+        cache=cache, transport=transport, mun=mun, as_of=as_of, degradations=degradations
+    )
 
     # --- resolve ------------------------------------------------------------
-    retrieved = {signal: moment.date() for signal in (SIGNAL_PARCEL, SIGNAL_PERMITS, SIGNAL_ACS)}
+    retrieved = {
+        signal: moment.date()
+        for signal in (SIGNAL_PARCEL, SIGNAL_PERMITS, SIGNAL_ACS, SIGNAL_SALES)
+    }
     resolved = resolve(
         territory,
         permits,
         acs,
         rental_provider if rental_provider is not None else NullRentalProvider(),
         as_of,
+        sales=sales.sales,
         block_group_index=block_groups,
         # R3.2 is a municipality-wide question and the harvest already holds
         # every municipal parcel, so the graded denominator is measured against
@@ -216,7 +232,9 @@ def run_pipeline(
         _degrade(degradations, resolved.report.rental_declination_reason)
 
     doors = list(resolved.doors.values())
-    vintage = _deed_vintage(parcels, doors, as_of=as_of, degradations=degradations)
+    vintage = _deed_vintage(
+        parcels, doors, as_of=as_of, degradations=degradations, sales=sales
+    )
 
     # --- vision -------------------------------------------------------------
     vision = _run_vision(
@@ -248,6 +266,10 @@ def run_pipeline(
         degradations=tuple(degradations),
         latest_deed_date=vintage.latest_deed_date,
         doors_in_mover_window=vintage.doors_in_mover_window,
+        latest_sale_date=vintage.latest_sale_date,
+        sales_source_files=vintage.source_files,
+        doors_with_sales_deed=resolved.report.sales_applied,
+        doors_in_top_band=vintage.doors_in_top_band,
     )
     published = publish(
         scored, report=resolved.report, manifest=manifest, data_dir=config.data_dir
@@ -309,6 +331,39 @@ def _harvest_permits(
             "permit points on this run, so the hires-out signal is missing everywhere",
         )
         return ()
+
+
+def _harvest_sales(
+    *,
+    cache: Cache,
+    transport: Transport,
+    mun: str,
+    as_of: date,
+    degradations: list[str],
+) -> SalesExtract:
+    """The SR1A sales register, or an empty extract and a named degradation.
+
+    Not load-bearing. MOD-IV still carries a deed date for every parcel, so a
+    refused download costs the run its *freshness*, not its Mover group — the
+    score falls back to the county's own date exactly as it did before this
+    source existed. That is a materially different failure from the parcel
+    harvest going down, and it is reported rather than raised.
+    """
+    try:
+        extract = SalesSource(cache=cache, transport=transport).fetch(
+            mun, as_of=as_of, window_days=MOVER_WINDOW_DAYS
+        )
+    except SourceError as error:
+        _degrade(
+            degradations,
+            f"the NJ SR1A sales register declined ({error}), so deed recency falls back to "
+            "the MOD-IV extract's own deed date",
+        )
+        return SalesExtract()
+
+    if extract.reason:
+        _degrade(degradations, extract.reason)
+    return extract
 
 
 def _harvest_block_groups(
@@ -434,6 +489,7 @@ def _deed_vintage(
     *,
     as_of: date,
     degradations: list[str],
+    sales: SalesExtract | None = None,
 ) -> DeedVintage:
     """Measure the extract's deed vintage, and say so when it costs the Mover group.
 
@@ -449,16 +505,60 @@ def _deed_vintage(
     same list an operator already reads for a refused provider.
     """
     parsed = [parse_deed_date(parcel.deed_date, as_of) for parcel in parcels]
-    latest = max((day for day in parsed if day is not None), default=None)
+    modiv_latest = max((day for day in parsed if day is not None), default=None)
+
+    sold = [parse_deed_date(sale.deed_date, as_of) for sale in (sales.sales if sales else ())]
+    sale_latest = max((day for day in sold if day is not None), default=None)
+
+    # The feed's vintage is the freshest date either register can show, because
+    # that is what actually determines whether the group can fire.
+    latest = max((day for day in (modiv_latest, sale_latest) if day is not None), default=None)
 
     in_window = sum(
         1
         for door in doors
         if door.deed_date is not None and (as_of - door.deed_date).days <= MOVER_WINDOW_DAYS
     )
+    in_top_band = sum(
+        1
+        for door in doors
+        if door.deed_date is not None and (as_of - door.deed_date).days <= TOP_BAND_DAYS
+    )
+
     if in_window == 0:
         _degrade(degradations, _mover_unearnable_note(latest))
-    return DeedVintage(latest_deed_date=latest, doors_in_mover_window=in_window)
+    elif in_top_band == 0 and sale_latest is not None:
+        _degrade(degradations, _recording_lag_note(sale_latest, as_of=as_of))
+
+    return DeedVintage(
+        latest_deed_date=latest,
+        doors_in_mover_window=in_window,
+        latest_sale_date=sale_latest,
+        source_files=tuple(sales.source_files) if sales else (),
+        doors_in_top_band=in_top_band,
+    )
+
+
+def _recording_lag_note(latest_sale: date, *, as_of: date) -> str:
+    """Why the top band is empty even though the Mover group fired.
+
+    A distinct finding from the stale-extract note above, and it must not be
+    silently dropped once the sales register makes the group fire at all: a deed
+    reaches the published register only after it is recorded by the county and
+    the state reissues the file, and that pipeline runs weeks behind the closing.
+    So the freshest sale a run can *possibly* see is already older than the top
+    band, and the 100-point tier stays unearnable for reasons no code here can
+    fix. Saying so is the difference between a limit and a bug.
+    """
+    lag = (as_of - latest_sale).days
+    return (
+        f"no door is inside the {TOP_BAND_DAYS}-day top mover band: the freshest sale in the "
+        f"SR1A register closed {latest_sale.isoformat()}, {lag} days ago, because a deed reaches "
+        "the published register only after county recording and the state's next file release. "
+        f"The Mover group did fire in the wider {MOVER_WINDOW_DAYS}-day window; the "
+        f"{TOP_BAND_DAYS}-day tier is unreachable at this source's publication cadence, not "
+        "because the rule failed."
+    )
 
 
 def _mover_unearnable_note(latest: date | None) -> str:

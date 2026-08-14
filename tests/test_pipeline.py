@@ -32,7 +32,7 @@ import json
 import logging
 import re
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -52,10 +52,12 @@ from houseaccount.pipeline import (
 )
 from houseaccount.publish import DOORS_GEOJSON_NAME, EXCLUSION_REASON, RUN_MANIFEST_NAME
 from houseaccount.resolve import ResolveReport
-from houseaccount.scoring.engine import SOURCE_ACS, SOURCE_IMAGERY
+from houseaccount.scoring.engine import SOURCE_ACS, SOURCE_IMAGERY, SOURCE_SR1A
 from houseaccount.scoring.weights import THRESHOLDS
 from houseaccount.sources import parcels as parcels_module
 from houseaccount.sources import permits as permits_module
+import test_sales
+from houseaccount.sources import sales as sales_module
 from houseaccount.sources import tiger as tiger_module
 from houseaccount.sources.acs import NO_KEY_REASON as ACS_NO_KEY_REASON
 from houseaccount.sources.rental import DECLINATION_REASON as RENTAL_DECLINATION_REASON
@@ -222,6 +224,7 @@ BLOCK_GROUP_FEATURES = [
 
 ROUTES = {
     "parcels": parcels_module.QUERY_URL,
+    "sales": "https://www.nj.gov/treasury/",
     "permits": permits_module.SOCRATA_PERMITS_URL,
     "tiger": tiger_module.TIGERWEB_BLOCK_GROUPS_URL,
     "acs": "https://api.census.gov/data/",
@@ -245,6 +248,22 @@ def collection(features):
     return ok({"type": "FeatureCollection", "features": list(features)})
 
 
+def sr1a_zip(*sales):
+    """The SR1A archive, built from the layout-derived helpers in `test_sales`.
+
+    Shared rather than re-implemented so there is exactly one place in the suite
+    that knows what a 663-character record looks like.
+    """
+    return test_sales.zipped(*sales)
+
+
+def sr1a_sale(**overrides):
+    """One Ramsey sale record, defaulted onto the territory's mover parcel."""
+    fields = {"BLOCK": "01101", "LOT": "00003", "PROPERTY-LOCATION": "3 MAPLE ST"}
+    fields.update(overrides)
+    return test_sales.ramsey(**fields)
+
+
 class RoutingTransport:
     """Answers each source at its own URL, and records every call.
 
@@ -259,6 +278,10 @@ class RoutingTransport:
             "tiger": collection(BLOCK_GROUP_FEATURES),
             "acs": ok(ACS_ROWS),
             "orthos": raw(PNG),
+            # A valid, empty archive by default: the SR1A register exists and is
+            # readable, but holds no sale for this town, so every existing test
+            # keeps scoring off the MOD-IV deed it was written against.
+            "sales": raw(sr1a_zip()),
         }
         self.answers.update(overrides)
         self.calls = []
@@ -877,3 +900,177 @@ def test_the_module_is_runnable_as_python_dash_m(tmp_path):
 
     assert re.search(r'if __name__ == "__main__":', source)
     assert re.search(r"main\(\)", source)
+
+
+# --- the SR1A sales register (T020) -------------------------------------------
+#
+# Ticket 019 disclosed that the county extract was twenty months stale and the
+# heaviest group in the model could not fire. This source is the fix, and these
+# tests are about the seam between it and the run: the register supersedes a
+# stale deed, its absence costs freshness rather than the run, and whatever the
+# register cannot reach is still disclosed rather than quietly dropped.
+
+
+def sales_register(config):
+    return deed_vintage(config)["sales_register"]
+
+
+def test_a_fresh_sale_makes_the_mover_group_fire_on_a_stale_extract(tmp_path):
+    """The whole ticket, end to end: the same stale extract that scored zero
+    movers in T019, plus the register, scores a mover."""
+    config = config_for(tmp_path)
+
+    result = go(
+        config,
+        RoutingTransport(
+            parcels=collection(STALE_PARCEL_FEATURES),
+            sales=raw(sr1a_zip(sr1a_sale(**{"DEED-DATE": "260601"}))),
+        ),
+    )
+
+    movers = [
+        pin
+        for pin, props in by_pin(config).items()
+        if any(item["type"] == "deed_recency" for item in props["evidence"])
+    ]
+    assert movers == [PIN_MOVER], "the register should have moved exactly the sold door"
+    assert deed_vintage(config)["doors_in_mover_window"] == 1
+    assert result.report.sales_applied == 1
+
+
+def test_the_mover_evidence_names_the_register_not_the_parcel_record(tmp_path):
+    config = config_for(tmp_path)
+
+    go(
+        config,
+        RoutingTransport(
+            parcels=collection(STALE_PARCEL_FEATURES),
+            sales=raw(sr1a_zip(sr1a_sale(**{"DEED-DATE": "260601"}))),
+        ),
+    )
+
+    (recency,) = [
+        item for item in by_pin(config)[PIN_MOVER]["evidence"] if item["type"] == "deed_recency"
+    ]
+    assert recency["source"] == SOURCE_SR1A
+
+
+def test_the_manifest_reports_the_register_it_actually_read(tmp_path):
+    config = config_for(tmp_path)
+
+    go(
+        config,
+        RoutingTransport(
+            parcels=collection(STALE_PARCEL_FEATURES),
+            sales=raw(sr1a_zip(sr1a_sale(**{"DEED-DATE": "260601"}))),
+        ),
+    )
+
+    block = sales_register(config)
+    assert block["latest_sale_date"] == "2026-06-01"
+    assert block["doors_superseding_modiv"] == 1
+    assert block["source_files"] == [
+        "https://www.nj.gov/treasury/taxation/lpt/statdata/YTDSR1A2026.zip"
+    ]
+    # The feed's vintage is now the register's date, not the county's.
+    assert deed_vintage(config)["latest_deed_date"] == "2026-06-01"
+
+
+def test_the_unreachable_top_band_is_disclosed_rather_than_left_looking_broken(tmp_path):
+    """The residual limit T019 must not lose. A deed reaches the published
+    register only after county recording and the state's next release, so the
+    freshest sale a run can see is already weeks old and the 100-point tier
+    cannot be earned — a property of the source's cadence, not of the rule."""
+    config = config_for(tmp_path)
+
+    result = go(
+        config,
+        RoutingTransport(
+            parcels=collection(STALE_PARCEL_FEATURES),
+            sales=raw(sr1a_zip(sr1a_sale(**{"DEED-DATE": "260601"}))),
+        ),
+    )
+
+    block = deed_vintage(config)
+    assert block["doors_in_mover_window"] == 1
+    assert block["doors_in_top_band"] == 0
+    assert block["top_band_days"] == int(THRESHOLDS["mover_30d_days"])
+
+    (note,) = mover_notes(result.degradations)
+    assert "2026-06-01" in note
+    assert "recording" in note.lower()
+    assert note in manifest(config)["degradations"]
+
+
+def test_a_sale_inside_the_top_band_earns_the_top_band_and_says_nothing(tmp_path):
+    """The disclosure above is a measurement, not a fixed string: give the run a
+    sale from last week and it disappears."""
+    config = config_for(tmp_path)
+    last_week = (AS_OF - timedelta(days=7)).strftime("%y%m%d")
+
+    result = go(
+        config,
+        RoutingTransport(
+            parcels=collection(STALE_PARCEL_FEATURES),
+            sales=raw(sr1a_zip(sr1a_sale(**{"DEED-DATE": last_week}))),
+        ),
+    )
+
+    assert deed_vintage(config)["doors_in_top_band"] == 1
+    assert mover_notes(result.degradations) == []
+    assert by_pin(config)[PIN_MOVER]["score"] == 100
+
+
+def test_the_register_refusing_degrades_the_run_without_ending_it(tmp_path):
+    """Not load-bearing: MOD-IV still carries a deed for every parcel, so a
+    refused download costs the run freshness, not its Mover group."""
+    config = config_for(tmp_path)
+
+    result = go(config, RoutingTransport(sales=refused(503)))
+
+    # Every door the extract can support still publishes: 3 doors, the third
+    # being the R9.4 record the county cannot support a score for at all.
+    assert (result.published.doors_total, result.published.doors_scored) == (3, 2)
+    (note,) = [n for n in result.degradations if "SR1A" in n]
+    assert "MOD-IV" in note, "the note must name what the run fell back to"
+    assert sales_register(config) == {
+        "latest_sale_date": None,
+        "source_files": [],
+        "doors_superseding_modiv": 0,
+    }
+
+
+def test_the_register_is_read_once_and_never_again_on_a_warm_cache(tmp_path):
+    """R2.3 covers this source too — and the 113 MB download is the one it
+    matters most for."""
+    config = config_for(tmp_path)
+    transport = RoutingTransport()
+    go(config, transport)
+    assert transport.calls_to("sales")
+
+    go(config, ExplodingTransport(), client=ExplodingVisionClient())
+
+
+def test_no_identity_byte_from_the_register_reaches_the_cache_or_the_artifacts(tmp_path):
+    """The register is statewide and its layout reserves grantor/grantee identity
+    columns. R11.1 says none of it may land on disk — and the raw download is
+    deliberately never cached, only the distilled projection."""
+    config = config_for(tmp_path)
+
+    go(
+        config,
+        RoutingTransport(
+            parcels=collection(STALE_PARCEL_FEATURES),
+            sales=raw(sr1a_zip(sr1a_sale(**{"DEED-DATE": "260601"}))),
+        ),
+    )
+
+    written = []
+    for root in (config.cache_dir, config.data_dir):
+        for path in root.rglob("*"):
+            if path.is_file():
+                written.append(path.read_bytes().decode("utf-8", "replace").upper())
+    haystack = "\n".join(written)
+    assert haystack, "the run should have written something"
+    for junk in test_sales.IDENTITY_COLUMNS.values():
+        assert junk.upper() not in haystack

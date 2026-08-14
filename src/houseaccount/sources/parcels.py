@@ -52,6 +52,10 @@ OUT_FIELDS: tuple[str, ...] = (
     "PCL_MUN",
     "PCLBLOCK",
     "PCLLOT",
+    # The condominium qualifier. Without it the twenty-five units sharing block
+    # 4001 / lot 22 are one indistinguishable parcel, and an SR1A sale of any one
+    # of them would land on all of them (see `normalize.sale_key`).
+    "PCLQCODE",
     "PROP_CLASS",
     "PROP_LOC",
     "ZIP5",
@@ -81,6 +85,8 @@ class Parcel:
     zip5: str = ""
     pclblock: str = ""
     pcllot: str = ""
+    #: Condominium qualifier ("C0115"), blank on a detached parcel.
+    qualifier: str = ""
     deed_date: str | None = None
     sale_price: float = 0.0
     sales_code: str = ""
@@ -167,6 +173,7 @@ def _to_parcel(feature: Mapping[str, Any]) -> Parcel:
         zip5=_text(properties.get("ZIP5")),
         pclblock=_text(properties.get("PCLBLOCK")),
         pcllot=_text(properties.get("PCLLOT")),
+        qualifier=_text(properties.get("PCLQCODE")).strip(),
         # A missing deed date is a real signal (R6.1 degrades on it), so it stays
         # None rather than collapsing to "".
         deed_date=_optional_text(properties.get("DEED_DATE")),

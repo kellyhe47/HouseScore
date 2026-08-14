@@ -490,6 +490,33 @@ test('a run with doors inside the mover window reports the signal live', () => {
   assert.equal(row.reason, null);
 });
 
+test('a live mover signal still carries the limit the run recorded', () => {
+  // The T020 case. The sales register makes the group fire, but a deed reaches
+  // that register only after county recording and the state's next release, so
+  // the top band can still be unreachable. The signal is live *and* limited, and
+  // a green badge that dropped the sentence would be the T019 regression back
+  // again in a nicer colour.
+  const note =
+    'no door is inside the 30-day top mover band: the freshest sale in the SR1A '
+    + 'register closed 2026-06-15, 60 days ago, because a deed reaches the published '
+    + 'register only after county recording and the state\u2019s next file release.';
+  const row = moverRow(
+    runManifest({
+      degradations: [note],
+      deed_vintage: {
+        latest_deed_date: '2026-06-15',
+        mover_window_days: 90,
+        doors_in_mover_window: 2,
+        doors_in_top_band: 0,
+        top_band_days: 30,
+      },
+    })
+  );
+
+  assert.equal(row.live, true, 'the group did fire, so the row is live');
+  assert.equal(row.reason, note, 'and the limit the run measured is still printed');
+});
+
 test('the vintage is read from the manifest, not from a date written into the page', () => {
   // Same page, a different extract — and the note stripped, so the only place
   // the date can come from is the recorded block.

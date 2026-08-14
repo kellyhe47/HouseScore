@@ -21,7 +21,26 @@ Rubric territory is a ~540-home polygon subset of this.
 
 **Pagination:** maxRecordCount 2000, `resultOffset` pagination supported. Ramsey = 3 pages. Public domain data.
 
-**SR1A sales history:** no API — flat zips at https://www.nj.gov/treasury/taxation/lpt/statdata.shtml (YTDSR1A2026.zip, annuals to ~2020; layout PDF SR1Afilelayout.pdf). Parcel service already carries latest sale per parcel; SR1A only for full history.
+**SR1A sales history:** no API — flat zips at https://www.nj.gov/treasury/taxation/lpt/statdata.shtml (YTDSR1A2026.zip, annuals to ~2020; layout PDF SR1Afilelayout.pdf).
+
+**SR1A re-audited 2026-08-14 and now HARVESTED (ticket 020).** The earlier note here —
+"parcel service already carries latest sale per parcel; SR1A only for full history" — was wrong in
+the way that mattered: MOD-IV's `DEED_DATE` is the latest deed *the county extract knows about*,
+and that extract lagged 20 months. Measured against the live files:
+
+- `YTDSR1A2026.zip`: 10,984,774 bytes, last modified **2026-08-12**; unzips to one 113 MB text file,
+  169,935 records, **every record exactly 663 chars** as the layout declares.
+- Ramsey (county `02` + district `48`) = **240 records**, deed dates **2025-01-10 → 2026-06-15**.
+  MOD-IV's newest deed anywhere in Ramsey: 2024-12-06. The same sold parcels read 1996–2022 in
+  MOD-IV — the *prior* owner's deed.
+- 11 sales inside the 90-day mover window; 10 join a live parcel; 2 are in the published territory.
+- **Identity columns (grantor/grantee name, street, city/state, zip) are blank in all 169,935
+  records** — the state redacts them at publication. The parser still reads an allowlist only.
+- **Condo trap:** a complex's units share one block/lot (20 Ramsey sales on block 4001 lot 22) and
+  differ only by `QUALIFICATION-CODES`. The parcel layer's matching field is **`PCLQCODE`** and its
+  PAMS_PIN is `0248_4001_22_C0115`, so the sales join key must include the qualifier.
+- **Residual limit:** `DATE-RECORDED` stops at 2026-06-30 in a file published 2026-08-12 — a ~6-week
+  recording-and-publication lag, so the 30-day/100-point mover band stays unreachable regardless.
 
 ## Gotchas
 - DEED_DATE 2-digit year parse; SALE_PRICE nominal-sale noise; YR_CONSTR=0; MOD-IV attrs lag current tax year.

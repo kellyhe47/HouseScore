@@ -63,24 +63,33 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
 
-from houseaccount.normalize import normalize_address, parcel_key, parse_deed_date, situs_display
+from houseaccount.normalize import (
+    normalize_address,
+    parcel_key,
+    parse_deed_date,
+    sale_key,
+    situs_display,
+)
 from houseaccount.scoring.engine import (
     SOURCE_ACS,
     SOURCE_MODIV,
     SOURCE_PERMITS,
     SOURCE_RENTAL,
+    SOURCE_SR1A,
     ScoreInput,
 )
 from houseaccount.sources.acs import AcsResult, BlockGroupStats
 from houseaccount.sources.parcels import DEFAULT_MUN, Parcel
 from houseaccount.sources.permits import PERMIT_WINDOW_DAYS, permits_within
 from houseaccount.sources.rental import RentalRegistrationProvider
+from houseaccount.sources.sales import Sale, latest_by_parcel
 
 #: Provenance keys — one per signal a door can carry.
 SIGNAL_PARCEL = "parcel"
 SIGNAL_PERMITS = "permits"
 SIGNAL_ACS = "acs"
 SIGNAL_RENTAL = "rental"
+SIGNAL_SALES = "sales"
 
 #: Why an in-territory permit reached no door. Each is a distinct failure a
 #: human can act on: fix the parcel extract, obtain an addressed permit list, or
@@ -148,6 +157,9 @@ class DoorFacts:
     yr_constr: int
     net_value: float
     calc_acre: float
+    #: Which register `deed_date` came from — MOD-IV, or the SR1A sales file when
+    #: it held a newer sale for this parcel.
+    deed_source: str = SOURCE_MODIV
     permits_2yr: tuple[Any, ...] = ()
     block_group_geoid: str | None = None
     block_group: BlockGroupStats | None = None
@@ -175,6 +187,7 @@ class DoorFacts:
             deed_date=self.deed_date,
             sale_price=self.sale_price,
             sales_code=self.sales_code,
+            deed_source=self.deed_source,
             yr_constr=self.yr_constr,
             net_value=self.net_value,
             calc_acre=self.calc_acre,
@@ -230,6 +243,12 @@ class ResolveReport:
     acs_available: bool = False
     acs_reason: str | None = None
     rental_declination_reason: str | None = None
+    #: SR1A sale records read for the municipality, the parcels they collapse to
+    #: (a condominium contributes many sales and many parcels), and the doors
+    #: whose deed the register actually superseded.
+    sales_total: int = 0
+    sales_parcels: int = 0
+    sales_applied: int = 0
 
 
 @dataclass(frozen=True)
@@ -247,6 +266,7 @@ def resolve(
     rental_provider: RentalRegistrationProvider,
     as_of: date,
     *,
+    sales: Sequence[Sale] = (),
     block_group_index: Any | None = None,
     municipal_parcels: Sequence[Parcel] | None = None,
     mun: str = DEFAULT_MUN,
@@ -286,6 +306,9 @@ def resolve(
         ),
     )
 
+    latest_sales = latest_by_parcel(sales, sale_key)
+    sales_applied = 0
+
     doors: dict[str, DoorFacts] = {}
     for parcel, key, address in zip(parcels, keys, addresses):
         geoid = (
@@ -296,6 +319,14 @@ def resolve(
             sorted(landed.get(parcel.pams_pin, ()), key=_newest_first, reverse=True)
         )
         is_rental = bool(rental_provider.is_registered_rental(parcel.pams_pin))
+
+        deed = _latest_deed(
+            parcel,
+            latest_sales.get(sale_key(mun, parcel.pclblock, parcel.pcllot, parcel.qualifier)),
+            as_of=as_of,
+        )
+        if deed.source == SOURCE_SR1A:
+            sales_applied += 1
 
         doors[parcel.pams_pin] = DoorFacts(
             pams_pin=parcel.pams_pin,
@@ -309,9 +340,10 @@ def resolve(
             situs=situs_display(parcel.prop_loc, parcel.zip5),
             centroid=parcel.centroid,
             geometry=parcel.geometry,
-            deed_date=parse_deed_date(parcel.deed_date, as_of),
-            sale_price=parcel.sale_price,
-            sales_code=parcel.sales_code,
+            deed_date=deed.deed_date,
+            sale_price=deed.sale_price,
+            sales_code=deed.sales_code,
+            deed_source=deed.source,
             yr_constr=parcel.yr_constr,
             net_value=parcel.net_value,
             calc_acre=parcel.calc_acre,
@@ -325,6 +357,7 @@ def resolve(
                 has_permits=bool(door_permits),
                 has_block_group=stats is not None,
                 is_rental=is_rental,
+                deed_source=deed.source,
             ),
         )
 
@@ -337,8 +370,49 @@ def resolve(
             unmatched=unmatched,
             acs=acs,
             rental_provider=rental_provider,
+            sales_total=len(list(sales)),
+            sales_parcels=len(latest_sales),
+            sales_applied=sales_applied,
         ),
     )
+
+
+# --- the deed merge ----------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Deed:
+    """The deed facts one door was actually scored from, and where they came from."""
+
+    deed_date: date | None
+    sale_price: float
+    sales_code: str
+    source: str
+
+
+def _latest_deed(parcel: Parcel, sale: Sale | None, *, as_of: date) -> _Deed:
+    """MOD-IV's deed, or the SR1A sale when the register holds a newer one.
+
+    Newer *strictly*: when both registers name the same transfer — the ordinary
+    case once the county catches up — the parcel record stays authoritative, so
+    a door's provenance does not flip between runs for a date that never moved.
+
+    The whole record moves together. Taking SR1A's date but MOD-IV's price would
+    describe two different transfers as one, and the engine's non-arm's-length
+    rule reads exactly that pair; a fresh sale carrying a stale $1 would be
+    zeroed as nominal. The NU code takes the `sales_code` slot because it means
+    the same thing — the state's reason this sale was not usable — which is what
+    lets the mover rules stay untouched by this ticket.
+    """
+    modiv = parse_deed_date(parcel.deed_date, as_of)
+    if sale is None:
+        return _Deed(modiv, parcel.sale_price, parcel.sales_code, SOURCE_MODIV)
+
+    recorded = parse_deed_date(sale.deed_date, as_of)
+    if recorded is None or (modiv is not None and recorded <= modiv):
+        return _Deed(modiv, parcel.sale_price, parcel.sales_code, SOURCE_MODIV)
+
+    return _Deed(recorded, sale.sale_price, sale.nu_code.strip(), SOURCE_SR1A)
 
 
 # --- the permit join ---------------------------------------------------------
@@ -505,6 +579,7 @@ def _provenance(
     has_permits: bool,
     has_block_group: bool,
     is_rental: bool,
+    deed_source: str = SOURCE_MODIV,
 ) -> dict[str, Provenance]:
     """One entry per signal that actually contributed a fact to this door.
 
@@ -514,6 +589,11 @@ def _provenance(
     absence of the door from a list — so it earns no attribution.
     """
     sources = [(SIGNAL_PARCEL, SOURCE_MODIV)]
+    # Only when the sales register actually supplied this door's deed. A parcel
+    # SR1A has no newer sale for contributed no fact, and claiming it did would
+    # attribute the county's own date to the wrong register.
+    if deed_source == SOURCE_SR1A:
+        sources.append((SIGNAL_SALES, SOURCE_SR1A))
     if has_permits:
         sources.append((SIGNAL_PERMITS, SOURCE_PERMITS))
     if has_block_group:
@@ -534,6 +614,9 @@ def _report(
     unmatched: Sequence[UnmatchedPermit],
     acs: AcsResult,
     rental_provider: RentalRegistrationProvider,
+    sales_total: int = 0,
+    sales_parcels: int = 0,
+    sales_applied: int = 0,
 ) -> ResolveReport:
     """The graded numbers, all of them derived from the resolved doors."""
     matched_by_block_lot = permit_counts["matched_by_block_lot"]
@@ -574,6 +657,9 @@ def _report(
         acs_available=acs.available,
         acs_reason=acs.reason,
         rental_declination_reason=rental_provider.declination_reason(),
+        sales_total=sales_total,
+        sales_parcels=sales_parcels,
+        sales_applied=sales_applied,
     )
 
 

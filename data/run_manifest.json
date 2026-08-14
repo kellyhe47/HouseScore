@@ -1,13 +1,14 @@
 {
-  "run_at": "2026-08-14T11:11:14.481523+00:00",
+  "run_at": "2026-08-14T15:48:30.134635+00:00",
   "as_of": "2026-08-14",
-  "code_version": "7e2aa11",
+  "code_version": "7860bbd",
   "territory_median_value": 743350.0,
   "acs_dual_income_threshold": 0.35,
   "retrieved": {
     "parcel": "2026-08-14",
     "permits": "2026-08-14",
-    "acs": "2026-08-14"
+    "acs": "2026-08-14",
+    "sales": "2026-08-14"
   },
   "cost_usd": 0,
   "cost_per_door": 0.0,
@@ -16,15 +17,24 @@
   "doors_unscored": 0,
   "coverage": 1.0,
   "deed_vintage": {
-    "latest_deed_date": "2024-12-06",
+    "latest_deed_date": "2026-06-15",
     "mover_window_days": 90,
-    "doors_in_mover_window": 0
+    "doors_in_mover_window": 2,
+    "doors_in_top_band": 0,
+    "top_band_days": 30,
+    "sales_register": {
+      "latest_sale_date": "2026-06-15",
+      "source_files": [
+        "https://www.nj.gov/treasury/taxation/lpt/statdata/YTDSR1A2026.zip"
+      ],
+      "doors_superseding_modiv": 18
+    }
   },
   "degradations": [
     "CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so block-group statistics were not fetched",
     "municipal rental registration not obtained via OPRA",
-    "no door in this territory has a deed dated inside the 90-day mover window: the newest deed anywhere in the MOD-IV extract is 2024-12-06. The Mover group — the heaviest signal in the model — therefore scored zero everywhere on this run. That is the vintage of the county extract, not a rule that failed to fire.",
-    "ANTHROPIC_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms."
+    "no door is inside the 30-day top mover band: the freshest sale in the SR1A register closed 2026-06-15, 60 days ago, because a deed reaches the published register only after county recording and the state's next file release. The Mover group did fire in the wider 90-day window; the 30-day tier is unreachable at this source's publication cadence, not because the rule failed.",
+    "OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms."
   ],
   "resolve": {
     "doors_total": 540,

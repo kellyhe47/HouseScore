@@ -15,7 +15,7 @@ failing output in the ticket file.
 ## Definition of done (from docs/handoff-prompt.md)
 
 - `make pipeline` — harvest→resolve→vision→score→publish, fresh clone, documented env vars only.
-- `make eval` — 12 golden fixtures green via the **real** engine + vision P/R + hallucination +
+- `make eval` — 13 golden fixtures green via the **real** engine + vision P/R + hallucination +
   cost-per-door + entity-resolution match rate ≥95%.
 - Map UI + MCP server (tools exactly `get_door_score`, `explain_score`, `plan_route`) deploy-ready
   and publicly reachable; Data & Ethics page live.
@@ -50,6 +50,7 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 017 | R3.2 match rate: municipal denominator, not territory blocks | green | 1 | 006,008,009 | W6b seq |
 | 018 | make eval reads the published run manifest | green | 1 | 009,017 | W9 batch |
 | 019 | Disclose the MOD-IV deed vintage (Mover cannot fire) | green | 1 | 009,014 | W11 seq |
+| 020 | NJ SR1A sales register as a fresh deed source (Mover fires) | green | 1 | 019 | W12 seq |
 
 ## Wave plan
 
@@ -67,12 +68,18 @@ run still published every door. The permit match-rate defect this surfaced becam
 
 ## Open questions raised during the run
 
-**Ticket 019 / open decision for the human.** The MOD-IV extract's newest deed anywhere in Ramsey
-is 2024-12-06, ~20 months before `as_of`, so **zero** parcels fall in the 90-day mover window and
-the 100-point Mover group cannot fire on this data vintage. The parser is correct (fixture 11
-passes; raw `'240920'` parses to 2024-09-20) — the source is stale. Ticket 019 discloses it.
-**The question the PRD does not pre-make: add NJ SR1A sales flat-files as a fresher deed source so
-Mover can fire, or ship with the vintage disclosed?**
+**Ticket 019 / open decision for the human — ANSWERED 2026-08-14: add SR1A.** The MOD-IV extract's
+newest deed anywhere in Ramsey was 2024-12-06, ~20 months before `as_of`, so **zero** parcels fell
+in the 90-day mover window and the 100-point Mover group could not fire. The parser was correct
+(fixture 11 passes) — the source was stale. Ticket 019 disclosed it; **ticket 020 fixed it** by
+harvesting the NJ SR1A sales register, on the human's decision that new-homeowner recency is the
+most important component of the score and must be sourced fresh.
+
+Result on the live run: 18 territory doors had their stale deed superseded, **2 doors entered the
+90-day mover window and now score 100** (5 Sycamore Ct sold 2026-05-28; 41 Ramsey Ave sold
+2026-06-01) — both previously invisible. The residual limit is disclosed rather than dropped: NJ's
+~6-week recording-and-publication lag means the freshest sale a run can see is already ~60 days
+old, so the 30-day/100-point band remains structurally unreachable at this source's cadence.
 
 
 ## Phase 3 — PRD walk (orchestrator, end of run)
@@ -81,7 +88,7 @@ Mover can fire, or ship with the vintage disclosed?**
 |---|---|---|
 | R1.1 territory | ✅ | `data/territory.geojson`, 540 class-2 parcels nearest the country club; deterministic, idempotent |
 | R1.2 parcel source | ✅ | ArcGIS paginated via `resultOffset`, 5,671 Ramsey parcels, cached |
-| R2.1 sources | ⚠️ | parcels · permits · ACS · orthos · rental seam all built. **Street View not built** — see gaps |
+| R2.1 sources | ⚠️ | parcels · **SR1A sales** · permits · ACS · orthos · rental seam all built. **Street View not built** — see gaps |
 | R2.2 pipeline autonomy | ✅ | `make pipeline`, fresh clone, no credentials, 12s cold / 0.3s warm, 540/540 published |
 | R2.3 caching | ✅ | content-addressed cache; warm run makes zero network calls (test-enforced) |
 | R3.1/3.2 entity resolution | ✅ | block/lot join + address fallback; **municipal match rate 0.974** ≥ 0.95 |
@@ -107,5 +114,5 @@ Mover can fire, or ship with the vintage disclosed?**
 1. **Street View was never built** (R4.2). The ToS analysis that justifies avoiding it *is* published, and all bulk signals come from public-domain orthos as R4.1 requires — but the ~50-door demo the PRD describes does not exist.
 2. **The vision stage has never run.** No `ANTHROPIC_API_KEY` in this environment. The code path is real and unit-tested against a fake client; the declination is recorded in every run manifest.
 3. **No hand labels.** So vision P/R is fixture 09's frozen arithmetic, printed under a loud NOT-A-MEASUREMENT banner. Nothing was fabricated.
-4. **The Mover group scored zero everywhere** — the MOD-IV extract's newest deed is 20 months stale. Disclosed by ticket 019; the fix (NJ SR1A flat files) is the one open decision for the human.
+4. ~~**The Mover group scored zero everywhere**~~ — **fixed by ticket 020.** The MOD-IV extract's newest deed was 20 months stale; the NJ SR1A sales register now supplies deed recency wherever it is fresher. 2 territory doors are inside the mover window and score 100. What remains disclosed, because no code can fix it: NJ's ~6-week recording-and-publication lag keeps the 30-day/100-point band unreachable.
 5. **Nothing is deployed.** Ticket 016 is blocked on Fly.io/Vercel credentials, with the exact runbook.

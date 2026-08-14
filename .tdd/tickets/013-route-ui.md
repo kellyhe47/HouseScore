@@ -3,7 +3,7 @@ id: 013
 title: "Route UI + walk mode (R10, wireframe frames 4–4d)"
 status: pending
 depends_on: [010, 011, 012]
-touches: [web/js/route-ui.js, web/js/walk.js, web/js/share.js, web/js/route-ui.test.js, web/js/walk.test.js, web/js/share.test.js, web/index.html]
+touches: [web/js/route-ui.js, web/js/walk.js, web/js/share.js, web/js/panel.js, web/js/route-ui.test.js, web/js/walk.test.js, web/js/share.test.js, web/js/panel.test.js, web/index.html, web/js/map.js, src/houseaccount/server/api.py, src/houseaccount/server/published.py, tests/test_server.py]
 iterations: 0
 test_files: []
 branch: ""
@@ -13,6 +13,17 @@ branch: ""
 
 The field-rep flow: plan a route, adjust it live, walk it. Logic in ES modules; `POST /api/route`
 (T011) is the only planner — never re-implement ordering in JS.
+
+### Scope amendment (orchestrator, after 012's live probe)
+
+The approved prototype's evidence panel has **"Rep talk track"** (R7.2) and **"Score breakdown"**
+sections that 012 could not build: `GET /api/door/{pin}` returns only the published properties.
+The server already has both ingredients — group math in SQLite (ticket 011 amendment 1) and
+`route.talk_track_for` — so this ticket also:
+
+- extends `GET /api/door/{pin}` with `groups`, `raw_total` and `talk_track`;
+- renders both sections in the evidence panel, matching the prototype, including the
+  "→ capped 100" / "→ floored 0" clamp line from DESIGN-ADDITIONS.
 
 ## Acceptance criteria
 

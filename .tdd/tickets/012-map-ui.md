@@ -1,10 +1,10 @@
 ---
 id: 012
 title: "Map UI core: choropleth, filter, evidence panel, degraded states (R9)"
-status: tests-written
+status: green
 depends_on: [009, 011]
 touches: [web/index.html, web/styles.css, web/js/ramp.js, web/js/panel.js, web/js/filter.js, web/js/state.js, web/js/map.js, web/js/ramp.test.js, web/js/panel.test.js, web/js/filter.test.js, web/js/state.test.js]
-iterations: 0
+iterations: 1
 test_files: [web/js/ramp.test.js, web/js/filter.test.js, web/js/panel.test.js, web/js/state.test.js]
 branch: ""
 ---
@@ -44,3 +44,16 @@ Score ramp stops (linear interpolation between them, RGB):
       375px bottom-sheet requirement (R9.2), with the header wrap fix from DESIGN-ADDITIONS.
 - [ ] Live probe: `index.html` loads against the running server with **zero console errors**,
       renders the parcels, and the score filter visibly changes the rendered set.
+
+## Attempt log
+
+- iter 1: green (65 JS tests). Orchestrator live probe in the in-app browser at 1280x800 and
+  375x812 against the real 540-door artifact: zero console errors, choropleth renders, click →
+  evidence panel with real sentences/sources/dates, low-confidence banner, bottom sheet + header
+  wrap at mobile width.
+- Score labels are an HTML overlay rather than a MapLibre symbol layer, so there is no external
+  glyph-server dependency (keyless requirement).
+- Implementer added a `ready → error` edge to the state machine so a refetch failure can reach
+  the R9.3 banner from a drawn map. No locked test covers that edge; all 65 still pass.
+- Known gap handed to 013: the panel has no "Rep talk track" or "Score breakdown" section
+  because `GET /api/door/{pin}` publishes neither. Amended into 013's scope.

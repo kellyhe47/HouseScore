@@ -42,7 +42,7 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 009 | Publish + pipeline orchestrator (R2.2) | green | 1 | 003,004,005,006,007 | W6 seq |
 | 010 | Route planner module (R10.1–10.3) | pending | 0 | 003 | W5 par |
 | 011 | MCP server + HTTP API (R8) | green | 1 | 009,010 | W7 seq |
-| 012 | Map UI core (R9) | tests-written | 0 | 009,011 | W8 seq |
+| 012 | Map UI core (R9) | green | 1 | 009,011 | W8 seq |
 | 013 | Route UI + walk mode (R10 frames 4–4d) | pending | 0 | 010,011,012 | W8 seq |
 | 014 | Data & Ethics page (R11.4) | pending | 0 | 008,012 | W9 batch |
 | 015 | README + reproducibility + cost report (R13/R14) | pending | 0 | 009,011 | W9 batch |

@@ -28,6 +28,22 @@ export const SHEET_BREAKPOINT = 768;
 export const COPIED_MESSAGE = 'Address copied';
 
 /**
+ * R8.1's five scoring groups, in ICP order with their ceilings.
+ *
+ * The order is the argument: mover, then hires-out, then capacity, then need is
+ * the order the ICP was written in, and the breakdown reads as the case for the
+ * door rather than as a leaderboard of whichever group happened to score most.
+ * The modifier's "max" is a floor — the one group that can only subtract.
+ */
+const SCORE_GROUPS = [
+  { key: 'mover', label: 'Mover', max: 100 },
+  { key: 'hires_out', label: 'Hires-out', max: 60 },
+  { key: 'capacity', label: 'Capacity', max: 30 },
+  { key: 'need', label: 'Need', max: 30 },
+  { key: 'modifier', label: 'Modifier', max: -15 },
+];
+
+/**
  * One evidence line, ready to render.
  *
  * `signed` and `hasSign` are separate because a zero-point line is not "+0" —
@@ -48,6 +64,49 @@ function toRow(item) {
     retrieved: item.retrieved,
     imagery: item.imagery ?? null,
   };
+}
+
+/**
+ * The score's arithmetic, shown (R8.1, wireframe frame 2b).
+ *
+ * Only the door endpoint carries `groups` and `raw_total` — the published
+ * GeoJSON deliberately does not (R11.1) — so this returns null whenever the
+ * panel was opened from the map's own properties, and the section simply is not
+ * there until the detail fetch lands. An unscored door has no arithmetic to
+ * show at all.
+ */
+function buildBreakdown(door, scored) {
+  if (!scored || !door.groups || door.raw_total === null || door.raw_total === undefined) {
+    return null;
+  }
+
+  const groups = SCORE_GROUPS.filter(
+    // A zero modifier is not a finding. Every other group's zero is one — "no
+    // permits in the window" is why the door scored what it did — but a row
+    // reading "Modifier 0 / −15" implies a demotion that was never applied.
+    (group) => group.key !== 'modifier' || (door.groups[group.key] ?? 0) !== 0
+  ).map((group) => ({ ...group, points: door.groups[group.key] ?? 0 }));
+
+  return {
+    groups,
+    rawTotal: door.raw_total,
+    score: door.score,
+    mathLine: mathLine(door.raw_total, door.score),
+  };
+}
+
+/**
+ * The line under the bars.
+ *
+ * A clamped score has to say so, in both directions: "100" that was really 108
+ * and "0" that was really −15 are each a claim about a door that the raw total
+ * contradicts, and hiding the clamp would make the group bars fail to add up
+ * for the one reader who checks.
+ */
+function mathLine(rawTotal, score) {
+  if (rawTotal > 100) return `raw ${rawTotal} → capped ${score}`;
+  if (rawTotal < 0) return `raw ${rawTotal} → floored ${score}`;
+  return `raw ${rawTotal} = score ${score}`;
 }
 
 /**
@@ -85,6 +144,11 @@ export function buildPanel(door) {
     // sense where a trail was attempted. An unscored door has its own message.
     footer: scored && !hasImagery ? NO_IMAGERY_FOOTER : null,
     exclusionMessage: scored ? null : EXCLUSION_MESSAGE,
+    // Both arrive only with the door endpoint's detail (R7.2 / R8.1). Null here
+    // means "not fetched yet or not applicable", and the panel renders without
+    // the section rather than with an empty one.
+    talkTrack: door.talk_track ?? null,
+    breakdown: buildBreakdown(door, scored),
   };
 }
 

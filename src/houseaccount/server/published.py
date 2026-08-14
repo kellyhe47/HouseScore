@@ -150,16 +150,7 @@ class Territory:
         (R10.1), so filtering here would only make two places responsible for
         the same rule.
         """
-        return tuple(
-            RouteDoor(
-                pams_pin=door.pams_pin,
-                address=door.situs,
-                score=door.score,
-                centroid=door.centroid,
-                top_evidence=door.top_evidence,
-            )
-            for door in self.doors
-        )
+        return tuple(_route_door(door) for door in self.doors)
 
 
 def resolve_data_dir(data_dir: Path | None) -> Path:
@@ -216,6 +207,7 @@ def route_payload(
     hours: float,
     start_point: tuple[float, float],
     max_doors: int | None = None,
+    exclude: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """The one route answer both surfaces return (R10.3).
 
@@ -223,6 +215,14 @@ def route_payload(
     bound at import, so there is exactly one planner and swapping it swaps it
     for the MCP tool and the map at once. The stops are serialized straight off
     the planner's `Stop`, so neither surface invents a stop shape of its own.
+
+    **`exclude` re-plans, it does not filter.** `Route.exclude` drops the named
+    doors from the candidate list and plans again from the same start and
+    budget, because removing a stop changes where the rep is standing for every
+    later decision — a filtered route would keep its detours around a house
+    nobody is visiting. Doing that in the browser instead would put route
+    ordering in JavaScript, which R10.3 forbids. Unknown PINs name no candidate
+    and therefore change nothing.
     """
     planned = route_module.plan_route(
         territory.route_doors(),
@@ -230,6 +230,8 @@ def route_payload(
         start_point=start_point,
         max_doors=max_doors,
     )
+    if exclude:
+        planned = planned.exclude(exclude)
     return {
         "stops": [asdict(stop) for stop in planned.stops],
         "total_minutes": planned.total_minutes,
@@ -237,7 +239,51 @@ def route_payload(
     }
 
 
+def door_payload(door: Door) -> dict[str, Any]:
+    """One door as `GET /api/door/{pin}` serves it (R7.2, R8.1, R9.1).
+
+    The R11.1 published properties verbatim, plus the three fields only a
+    single-door lookup can afford to carry:
+
+    * `groups` / `raw_total` — the group math the panel's "Score breakdown"
+      draws. It lives in SQLite rather than in `doors.geojson` on purpose: the
+      map downloads the allowlist for 540 doors and has no use for arithmetic it
+      will never draw 539 of.
+    * `talk_track` — built here through `route.talk_track_for` off the same
+      `RouteDoor` the planner would build, so the opener in the evidence panel
+      and the opener in the route list are one sentence rather than two
+      implementations that agree today.
+
+    All three are `None` for an unscored door: no score, no breakdown, no
+    opener — the panel shows its exclusion instead (R9.4).
+    """
+    payload = dict(door.properties)
+    scored = door.score is not None
+
+    payload["groups"] = dict(door.groups) if scored and door.groups else None
+    payload["raw_total"] = door.raw_total if scored else None
+    payload["talk_track"] = route_module.talk_track_for(_route_door(door)) if scored else None
+    return payload
+
+
 # --- internals ----------------------------------------------------------------
+
+
+def _route_door(door: Door) -> RouteDoor:
+    """One door in the planner's vocabulary.
+
+    The single place a `Door` becomes a `RouteDoor`, so the talk track on the
+    evidence panel is built from exactly the same candidate the planner builds
+    its stops from. Two spellings of this would be two openers for one door the
+    day either side changed (R7.2).
+    """
+    return RouteDoor(
+        pams_pin=door.pams_pin,
+        address=door.situs,
+        score=door.score,
+        centroid=door.centroid,
+        top_evidence=door.top_evidence,
+    )
 
 
 def _door(feature: Mapping[str, Any], group_math: Mapping[str, tuple[Any, Any]]) -> Door:

@@ -2,11 +2,13 @@
  * The browser layer: everything that touches the DOM, MapLibre or the network.
  *
  * The rules this screen obeys — the colour ramp, the score filter, the coverage
- * readout, the evidence panel's shape, the load/error/retry machine — live in
- * `ramp.js`, `filter.js`, `panel.js` and `state.js`, which are DOM-free and
- * unit-tested. This file is the wiring: it fetches the published run, hands it
- * to those modules, and renders whatever they say. Nothing here decides what a
- * score looks like or which doors a range selects.
+ * readout, the evidence panel's shape, the load/error/retry machine, the route
+ * request, walk-mode bookkeeping, the share format — live in `ramp.js`,
+ * `filter.js`, `panel.js`, `state.js`, `route-ui.js`, `walk.js` and `share.js`,
+ * which are DOM-free and unit-tested. This file is the wiring: it fetches the
+ * published run, hands it to those modules, and renders whatever they say.
+ * Nothing here decides what a score looks like, which doors a range selects, or
+ * what order a walk goes in.
  *
  * Loaded as `<script type="module">`, no build step, no bundler.
  */
@@ -15,6 +17,9 @@ import { scoreColor, UNSCORED_COLOR, RAMP_CSS_GRADIENT } from './ramp.js';
 import { coverageText, filterDoors } from './filter.js';
 import { buildPanel, copyAddress, panelLayout } from './panel.js';
 import { createMapState } from './state.js';
+import { createRoutePlanner } from './route-ui.js';
+import { createWalk, readWalk, clearWalk, resumeOffer } from './walk.js';
+import { copyAsText, copyShareLink, readShare } from './share.js';
 
 /* ── Configuration ───────────────────────────────────────────────────────── */
 
@@ -41,7 +46,38 @@ const LABEL_ZOOM = 17;
 /** Out-of-range parcels stay on the map, dimmed, so the territory keeps its shape. */
 const DIM_OPACITY = 0.14;
 
+/** With a route on screen, everything not on it recedes but stays legible. */
+const OFF_ROUTE_OPACITY = 0.28;
+
 const TOAST_MS = 1800;
+
+/** The hours a rep actually has (frame 4c). Strings, because they are labels. */
+const HOURS_OPTIONS = ['0.5', '1', '1.5', '2', '3'];
+
+/**
+ * A short "why this door" chip per evidence type (wireframe frame 4d).
+ *
+ * The route payload carries a talk track but no chip, so the chip is derived
+ * here from the door's own top evidence — presentation over data the map
+ * already holds, never a second opinion about the score.
+ */
+const CHIP_LABELS = {
+  deed_recency: 'recent mover',
+  mover: 'recent mover',
+  permit_history: 'permit activity',
+  contractor_churn: 'no repeat contractor',
+  assessed_value: 'above median value',
+  acs_dual_income: 'block-group context',
+  home_age: 'older home',
+  lot_size: 'large lot',
+  pool: 'pool home',
+  condition_decline: 'condition declining',
+  deferred_maintenance: 'deferred maintenance',
+  tenure: 'long tenure',
+  rental_registration: 'registered rental',
+  non_arms_length_transfer: "non-arm's-length deed",
+  data_gap: 'partial data',
+};
 
 /* ── Element handles ─────────────────────────────────────────────────────── */
 
@@ -66,10 +102,44 @@ const els = {
   panelBody: $('panel-body'),
   panelClose: $('panel-close'),
   copyAddress: $('copy-address'),
+  toggleMath: $('toggle-math'),
   lightbox: $('lightbox'),
   lightboxFrame: $('lightbox-frame'),
   lightboxLabel: $('lightbox-label'),
   lightboxSub: $('lightbox-sub'),
+
+  routePins: $('route-pins'),
+  pickHint: $('pick-hint'),
+  routeBar: $('route-bar'),
+  resumeBanner: $('resume-banner'),
+  resumeLabel: $('resume-label'),
+
+  routePanel: $('route-panel'),
+  hoursOptions: $('hours-options'),
+  routeDoors: $('route-doors'),
+  pickStart: $('pick-start'),
+  planGo: $('plan-route-go'),
+  cancelPlan: $('cancel-plan'),
+  routeEmpty: $('route-empty'),
+  routeError: $('route-error'),
+  routeList: $('route-list'),
+  routeFoot: $('route-foot'),
+  routeSummary: $('route-summary'),
+  routeDisclosure: $('route-disclosure'),
+
+  walk: $('walk'),
+  walkProgress: $('walk-progress'),
+  walkLeft: $('walk-left'),
+  walkBar: $('walk-bar'),
+  walkStop: $('walk-stop'),
+  walkMeta: $('walk-meta'),
+  walkAddr: $('walk-addr'),
+  walkChip: $('walk-chip'),
+  walkTalk: $('walk-talk'),
+  walkActions: $('walk-actions'),
+  walkUpcoming: $('walk-upcoming'),
+  walkFinished: $('walk-finished'),
+  walkSummary: $('walk-summary'),
 };
 
 /* ── Application state ───────────────────────────────────────────────────── */
@@ -85,6 +155,25 @@ let selectedPin = null;
 let map = null;
 let toastTimer = null;
 let labelFrame = null;
+
+/** The detail body of the selected door, once `/api/door/{pin}` answers. */
+let selectedDetail = null;
+/** Frame 2b's toggle: the breakdown is opt-in, not the default reading. */
+let showMath = false;
+
+/* Route + walk state. */
+const planner = createRoutePlanner({ fetch: (...args) => fetch(...args), apiBase: API_BASE });
+/** Where the rep parks, as [lng, lat]. Null until they pick it on the map. */
+let startPoint = null;
+let pickingStart = false;
+let planning = false;
+let hours = '2';
+/** The current `RouteView`, or null when no route is planned. */
+let routeView = null;
+/** The active walk, or null. */
+let walk = null;
+/** A `resumeOffer` waiting on the map, or null. */
+let pendingResume = null;
 
 /* ── Small DOM helpers ───────────────────────────────────────────────────── */
 
@@ -143,6 +232,11 @@ async function loadDoors() {
     renderMachine();
     renderMap();
     renderFilter();
+
+    // Both need the territory in hand: a resume banner has to name stops, and a
+    // share link has to resolve its PINs to doors that exist.
+    offerResume();
+    openSharedRoute();
   } catch (error) {
     console.error('[houseaccount] doors layer failed to load:', error);
     machine.fail();
@@ -227,24 +321,61 @@ function sourceData() {
     (door) => door.properties.score !== null && inRange.has(door.properties.PAMS_PIN)
   );
 
+  // With a route planned, the walk is the subject and the rest of the territory
+  // is context — so off-route doors recede rather than vanish (frame 4).
+  const onRoute = routeView ? new Set(routeView.rows.map((row) => row.pin)) : null;
+  const knocked = walk ? new Set(walk.knocked) : null;
+
   return {
     type: 'FeatureCollection',
     features: doors
       .filter((door) => door.geometry)
       .map((door) => {
         const { PAMS_PIN, score } = door.properties;
+        const done = knocked ? knocked.has(PAMS_PIN) : false;
+
+        let opacity = inRange.has(PAMS_PIN) ? 1 : DIM_OPACITY;
+        if (onRoute && !onRoute.has(PAMS_PIN)) opacity = Math.min(opacity, OFF_ROUTE_OPACITY);
+
         return {
           type: 'Feature',
           geometry: door.geometry,
           properties: {
             PAMS_PIN,
-            _color: scoreColor(score),
-            _opacity: inRange.has(PAMS_PIN) ? 1 : DIM_OPACITY,
+            // A knocked door goes grey: the map is the rep's record of where
+            // they have been, not just of where they were sent.
+            _color: done ? '#B9BCC2' : scoreColor(score),
+            _opacity: done ? 0.6 : opacity,
             _scored: score === null ? 0 : 1,
           },
         };
       }),
   };
+}
+
+/** The dashed walking path: the parking spot, then every stop in order. */
+function routeLineData() {
+  const coordinates = [];
+  if (startPoint) coordinates.push(startPoint);
+  for (const row of routeView ? routeView.rows : []) {
+    const door = byPin(row.pin);
+    if (door && door.centroid) coordinates.push(door.centroid);
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features:
+      coordinates.length > 1
+        ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: {} }]
+        : [],
+  };
+}
+
+function refreshMapData() {
+  if (!map || !map.getSource('doors')) return;
+  map.getSource('doors').setData(sourceData());
+  map.getSource('route').setData(routeLineData());
+  scheduleLabels();
 }
 
 function boundsOfDoors() {
@@ -336,6 +467,15 @@ function renderMap() {
       paint: { 'line-color': '#E8791A', 'line-width': 2.4 },
     });
 
+    map.addSource('route', { type: 'geojson', data: routeLineData() });
+    map.addLayer({
+      id: 'route-line',
+      type: 'line',
+      source: 'route',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#E8791A', 'line-width': 2.5, 'line-dasharray': [3, 2] },
+    });
+
     const bounds = boundsOfDoors();
     if (bounds) map.fitBounds(bounds, { padding: 48, duration: 0 });
 
@@ -343,6 +483,12 @@ function renderMap() {
   });
 
   map.on('click', (event) => {
+    // While picking a start the whole canvas is one control, so a parcel click
+    // means "park here", not "tell me about this door" (frame 4c).
+    if (pickingStart) {
+      setStartPoint([event.lngLat.lng, event.lngLat.lat]);
+      return;
+    }
     const hits = map.queryRenderedFeatures(event.point, { layers: ['doors-fill'] });
     if (hits.length) selectDoor(hits[0].properties.PAMS_PIN);
     else closePanel();
@@ -367,6 +513,7 @@ function scheduleLabels() {
   labelFrame = requestAnimationFrame(() => {
     labelFrame = null;
     renderLabels();
+    renderRoutePins();
   });
 }
 
@@ -392,6 +539,42 @@ function renderLabels() {
   els.labels.appendChild(fragment);
 }
 
+/**
+ * The numbered stop markers and the parking spot.
+ *
+ * HTML over the canvas rather than a symbol layer: numbers in a MapLibre symbol
+ * layer need a glyph server, and this page deliberately has no external tile or
+ * font dependency it could lose.
+ */
+function renderRoutePins() {
+  if (!map) return;
+  clear(els.routePins);
+
+  const fragment = document.createDocumentFragment();
+  const knocked = walk ? new Set(walk.knocked) : null;
+
+  if (startPoint) {
+    const point = map.project(startPoint);
+    const marker = el('span', 'route-pin is-start', 'P');
+    marker.style.left = `${Math.round(point.x)}px`;
+    marker.style.top = `${Math.round(point.y)}px`;
+    fragment.appendChild(marker);
+  }
+
+  for (const row of routeView ? routeView.rows : []) {
+    const door = byPin(row.pin);
+    if (!door || !door.centroid) continue;
+    const point = map.project(door.centroid);
+    const done = knocked ? knocked.has(row.pin) : false;
+    const marker = el('span', `route-pin${done ? ' is-knocked' : ''}`, row.n);
+    marker.style.left = `${Math.round(point.x)}px`;
+    marker.style.top = `${Math.round(point.y - 16)}px`;
+    fragment.appendChild(marker);
+  }
+
+  els.routePins.appendChild(fragment);
+}
+
 /* ── Score filter ────────────────────────────────────────────────────────── */
 
 // The legend is painted from the same two constants the parcels are, so it can
@@ -405,8 +588,7 @@ function renderFilter() {
   els.rangeHi.value = String(hi);
   els.rangeLabel.textContent = `score ${lo}–${hi}`;
   if (map && map.getSource('doors')) {
-    map.getSource('doors').setData(sourceData());
-    scheduleLabels();
+    refreshMapData();
   } else {
     // Keeps `visible` in step before the map exists.
     sourceData();
@@ -430,15 +612,41 @@ function selectDoor(pin) {
   if (!door) return;
 
   selectedPin = pin;
+  selectedDetail = null;
+  showMath = false;
   if (map && map.getLayer('doors-selected')) {
     map.setFilter('doors-selected', ['==', ['get', 'PAMS_PIN'], pin]);
   }
+
+  // Drawn twice on purpose. The map already holds every published property, so
+  // the panel opens on the click with the evidence trail intact; the talk track
+  // and the group math live only on the door endpoint (R11.1 keeps them out of
+  // the 540-door download), so they arrive a moment later and fill in.
   renderPanel(buildPanel(door.properties));
   revealSelected(door);
+  loadDoorDetail(pin);
+}
+
+async function loadDoorDetail(pin) {
+  try {
+    const response = await fetch(`${API_BASE}/door/${encodeURIComponent(pin)}`);
+    if (!response.ok) return;
+    const detail = await response.json();
+    // The rep may have clicked another door while this was in flight; the late
+    // answer belongs to a panel that is no longer open.
+    if (selectedPin !== pin) return;
+    selectedDetail = detail;
+    renderPanel(buildPanel(detail));
+  } catch {
+    // The panel is already useful without the detail. A failed lookup costs the
+    // talk track and the breakdown, not the door.
+  }
 }
 
 function closePanel() {
   selectedPin = null;
+  selectedDetail = null;
+  showMath = false;
   els.panel.hidden = true;
   if (map && map.getLayer('doors-selected')) {
     map.setFilter('doors-selected', ['==', ['get', 'PAMS_PIN'], '']);
@@ -446,15 +654,27 @@ function closePanel() {
 }
 
 els.panelClose.addEventListener('click', closePanel);
+// Escape unwinds one layer at a time, outermost first.
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (!els.lightbox.hidden) closeLightbox();
-  else closePanel();
+  else if (pickingStart) {
+    pickingStart = false;
+    openRoutePanel();
+  } else if (!els.panel.hidden) closePanel();
+  else if (!els.routePanel.hidden) closeRoutePanel();
 });
 
 els.copyAddress.addEventListener('click', () => {
   const door = byPin(selectedPin);
   if (door) copyAddress(door.properties, emit);
+});
+
+// Frame 2b: the arithmetic is opt-in. The evidence trail is what the rep reads
+// at the door; the group math is what they open when someone asks "why 62?".
+els.toggleMath.addEventListener('click', () => {
+  showMath = !showMath;
+  if (selectedDetail) renderPanel(buildPanel(selectedDetail));
 });
 
 /**
@@ -485,6 +705,9 @@ function revealSelected(door) {
 
 function renderPanel(panel) {
   els.panel.dataset.layout = panelLayout(window.innerWidth);
+  const reopening = els.panelPin.textContent !== `PIN ${panel.pin}`;
+  const scrollTop = reopening ? 0 : els.panelBody.scrollTop;
+
   els.panelAddr.textContent = panel.situs;
   els.panelPin.textContent = `PIN ${panel.pin}`;
 
@@ -497,8 +720,14 @@ function renderPanel(panel) {
     renderScored(body, panel);
   }
 
+  // The math toggle only means something once the breakdown has arrived.
+  els.toggleMath.hidden = !panel.breakdown;
+  els.toggleMath.textContent = showMath ? 'Hide math' : 'Show math';
+
   els.panel.hidden = false;
-  body.scrollTop = 0;
+  // Re-rendering in place when the detail lands must not throw the reader back
+  // to the top of a panel they have already started scrolling.
+  body.scrollTop = scrollTop;
 }
 
 /** R9.4: the exclusion state, tied back to the coverage count it explains. */
@@ -565,6 +794,50 @@ function renderScored(body, panel) {
   // R9.3: say so when nothing came from imagery, rather than leaving a gap the
   // rep has to interpret.
   if (panel.footer) body.appendChild(el('div', 'nofooter', panel.footer));
+
+  // R7.2: the one sentence the rep says out loud — the same sentence the route
+  // list shows, because both come from the server's `talk_track_for`.
+  if (panel.talkTrack) {
+    const block = el('div', 'talktrack');
+    block.appendChild(el('div', 'talktrack__head', 'Rep talk track'));
+    block.appendChild(el('div', 'talktrack__line', `“${panel.talkTrack}”`));
+    body.appendChild(block);
+  }
+
+  if (panel.breakdown && showMath) body.appendChild(renderBreakdown(panel.breakdown));
+}
+
+/** Frame 2b: each group as a bar against its ceiling, then the arithmetic. */
+function renderBreakdown(breakdown) {
+  const block = el('div', 'breakdown');
+  block.appendChild(el('div', 'sectionhead', 'Score breakdown'));
+
+  const groups = el('div', 'breakdown__groups');
+  for (const group of breakdown.groups) {
+    const row = el('div');
+
+    const head = el('div', 'breakdown__row-head');
+    head.appendChild(el('span', 'breakdown__name', group.label));
+    head.appendChild(el('span', 'breakdown__value', `${group.points} / ${group.max}`));
+    row.appendChild(head);
+
+    const track = el('div', 'breakdown__track');
+    const fill = el('div', 'breakdown__fill');
+    // Proportion of the group's own ceiling, so a 15/30 capacity and a 50/100
+    // mover read as the same half-full bar. The modifier's ceiling is negative,
+    // so its share is taken on magnitude and painted in the debit colour.
+    const share = group.max === 0 ? 0 : Math.abs(group.points / group.max);
+    fill.style.width = `${Math.round(Math.min(1, share) * 100)}%`;
+    fill.style.background = group.points < 0 ? '#A4442C' : scoreColor(40 + share * 60);
+    track.appendChild(fill);
+    row.appendChild(track);
+
+    groups.appendChild(row);
+  }
+  block.appendChild(groups);
+
+  block.appendChild(el('div', 'breakdown__math', breakdown.mathLine));
+  return block;
 }
 
 function evidenceRow(row) {
@@ -644,11 +917,460 @@ els.lightbox.addEventListener('click', (event) => {
   if (event.target === els.lightbox) closeLightbox();
 });
 
-/* ── Next-ticket surfaces, present because the approved design has them ──── */
+/* ── Route planner (wireframe frames 4–4c, R10.1–R10.3) ──────────────────── */
 
-$('plan-route').addEventListener('click', () =>
-  showToast('Route planning arrives in the next build')
+/** "1h54m" — a duration, never a time of day (R10.2). */
+function formatDuration(minutes) {
+  const total = Math.max(0, Math.round(minutes ?? 0));
+  return `${Math.floor(total / 60)}h${String(total % 60).padStart(2, '0')}m`;
+}
+
+/** The door's loudest evidence, as a chip (frame 4d's "top reason"). */
+function chipFor(pin) {
+  const door = byPin(pin);
+  const evidence = door && door.properties.evidence;
+  if (!evidence || evidence.length === 0) return null;
+
+  const top = [...evidence].sort((a, b) => Math.abs(b.points) - Math.abs(a.points))[0];
+  return CHIP_LABELS[top.type] ?? top.type.replace(/_/g, ' ');
+}
+
+function openRoutePanel() {
+  els.routePanel.hidden = false;
+  // Two bottom sheets cannot share the bottom of a phone, so the evidence panel
+  // yields to the planner and the parcel outline is what keeps the door findable.
+  if (panelLayout(window.innerWidth) === 'sheet') closePanel();
+  renderRouteChrome();
+}
+
+function closeRoutePanel() {
+  els.routePanel.hidden = true;
+  pickingStart = false;
+  renderRouteChrome();
+}
+
+/** The floating furniture that depends on route state, in one place. */
+function renderRouteChrome() {
+  els.pickHint.hidden = !pickingStart;
+  els.routeBar.hidden = !(routeView && !routeView.isEmpty && els.routePanel.hidden && !walk);
+  els.resumeBanner.hidden = !pendingResume || Boolean(walk);
+  if (map) map.getCanvas().style.cursor = pickingStart ? 'crosshair' : 'grab';
+}
+
+els.hoursOptions.append(
+  ...HOURS_OPTIONS.map((value) => {
+    const button = el('button', 'segmented__btn', value);
+    button.type = 'button';
+    button.dataset.hours = value;
+    button.setAttribute('aria-pressed', String(value === hours));
+    button.addEventListener('click', () => {
+      hours = value;
+      renderHours();
+      // Frame 4c: the sliders stay live — changing the budget re-asks the
+      // planner rather than trimming the route the browser already has.
+      if (routeView) runPlan({ hours: Number(hours) });
+    });
+    return button;
+  })
 );
+
+function renderHours() {
+  for (const button of els.hoursOptions.children) {
+    button.setAttribute('aria-pressed', String(button.dataset.hours === hours));
+  }
+}
+
+els.routeDoors.addEventListener('change', () => {
+  const target = Math.max(1, Math.min(60, Number(els.routeDoors.value) || 20));
+  els.routeDoors.value = String(target);
+  if (routeView) runPlan({ maxDoors: target });
+});
+
+els.pickStart.addEventListener('click', () => {
+  pickingStart = true;
+  // The map is the control now, so the panel gets out of its way.
+  els.routePanel.hidden = true;
+  renderRouteChrome();
+});
+
+/**
+ * Accept a parking spot, or explain why not.
+ *
+ * A start miles from the territory plans an empty walk and looks like a bug, so
+ * a click outside the parcels' own bounds (plus a short walk's grace) is
+ * refused with a reason rather than planned from.
+ */
+function setStartPoint(point) {
+  const bounds = boundsOfDoors();
+  if (bounds) {
+    const grace = 0.02; // ~2 km, further than anyone parks from their territory
+    const [west, south] = [bounds.getWest() - grace, bounds.getSouth() - grace];
+    const [east, north] = [bounds.getEast() + grace, bounds.getNorth() + grace];
+    if (point[0] < west || point[0] > east || point[1] < south || point[1] > north) {
+      showToast('Start must be near the territory');
+      return;
+    }
+  }
+
+  startPoint = point;
+  pickingStart = false;
+  els.pickStart.textContent = 'Start ✓ (move)';
+  els.planGo.disabled = false;
+  openRoutePanel();
+  refreshMapData();
+}
+
+let planToken = 0;
+
+/**
+ * Ask the planner, and keep the panel honest about what it is doing.
+ *
+ * `planner.plan` remembers the inputs the rep did not touch, so this passes
+ * only what changed — and the token is what makes Cancel mean something: a
+ * superseded answer is dropped rather than rendered over a newer one.
+ */
+async function runPlan(changes) {
+  if (!startPoint) return;
+
+  const token = ++planToken;
+  planning = true;
+  els.routeError.hidden = true;
+  renderPlanButton();
+
+  try {
+    const view = await planner.plan(changes);
+    if (token !== planToken) return;
+    routeView = view;
+  } catch (error) {
+    if (token !== planToken) return;
+    els.routeError.textContent =
+      `Could not plan a route — ${error.message}. The doors are still on the map.`;
+    els.routeError.hidden = false;
+  } finally {
+    if (token === planToken) {
+      planning = false;
+      renderPlanButton();
+      renderRouteList();
+      refreshMapData();
+      renderRouteChrome();
+    }
+  }
+}
+
+function renderPlanButton() {
+  els.planGo.textContent = planning ? 'Routing 540 candidates…' : 'Plan';
+  els.planGo.disabled = planning || !startPoint;
+  els.cancelPlan.hidden = !planning;
+}
+
+els.planGo.addEventListener('click', () =>
+  runPlan({
+    hours: Number(hours),
+    start: startPoint,
+    maxDoors: Math.max(1, Math.min(60, Number(els.routeDoors.value) || 20)),
+  })
+);
+
+els.cancelPlan.addEventListener('click', () => {
+  // Abandon the answer, keep whatever route was already on screen.
+  planToken += 1;
+  planning = false;
+  renderPlanButton();
+});
+
+$('route-close').addEventListener('click', closeRoutePanel);
+$('reopen-route').addEventListener('click', openRoutePanel);
+$('clear-route').addEventListener('click', () => {
+  routeView = null;
+  startPoint = null;
+  els.pickStart.textContent = 'Set start on map';
+  els.planGo.disabled = true;
+  renderRouteList();
+  refreshMapData();
+  renderRouteChrome();
+});
+
+function renderRouteList() {
+  const list = els.routeList;
+  clear(list);
+
+  els.routeEmpty.hidden = true;
+  els.routeFoot.hidden = true;
+  if (!routeView) return;
+
+  if (routeView.isEmpty) {
+    // Frame 4b: never a blank panel — say what to change.
+    els.routeEmpty.textContent =
+      `No doors reachable in ${hours}h from this start — widen hours or move the start point.`;
+    els.routeEmpty.hidden = false;
+    return;
+  }
+
+  for (const row of routeView.rows) list.appendChild(routeRow(row));
+
+  const scores = routeView.rows.map((row) => row.score);
+  const average = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+  els.routeSummary.textContent =
+    routeView.totalMinutes === null
+      ? `doors ${routeView.rows.length} · shared route · avg score ${average}`
+      : `doors ${routeView.rows.length} · est total ${formatDuration(routeView.totalMinutes)}` +
+        ` (walking estimate) · avg score ${average}`;
+  els.routeDisclosure.textContent =
+    routeView.estimateDisclosure ||
+    'Shared link — plan from a start point for walking estimates.';
+  els.routeFoot.hidden = false;
+}
+
+function routeRow(row) {
+  const item = el('button', 'routerow');
+  item.type = 'button';
+
+  item.appendChild(el('div', 'routerow__n', row.n));
+
+  const body = el('div', 'routerow__body');
+  const title = el('div', 'routerow__title');
+  title.appendChild(el('span', 'routerow__addr', row.address));
+  const score = el('span', 'routerow__score', row.score);
+  score.style.color = scoreColor(Math.max(35, row.score));
+  title.appendChild(score);
+  body.appendChild(title);
+
+  const chip = chipFor(row.pin);
+  if (chip) body.appendChild(el('div', 'routerow__chip', chip));
+
+  if (row.talkTrack) body.appendChild(el('div', 'routerow__talk', row.talkTrack));
+
+  if (typeof row.cumulativeMinutes === 'number') {
+    body.appendChild(
+      el(
+        'div',
+        'routerow__timing',
+        `${row.elapsedLabel} into route · ${Math.max(1, Math.round(row.walkMinutes))} min walk from prev`
+      )
+    );
+  }
+  item.appendChild(body);
+
+  // Frame 4c: "the rep knows a house is vacant or hostile."
+  const exclude = el('button', 'routerow__exclude', '✕');
+  exclude.type = 'button';
+  exclude.title = 'Exclude this door and re-plan';
+  exclude.setAttribute('aria-label', `Exclude ${row.address} and re-plan`);
+  exclude.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    planning = true;
+    renderPlanButton();
+    try {
+      routeView = await planner.excludeStop(row.pin);
+    } finally {
+      planning = false;
+      renderPlanButton();
+      renderRouteList();
+      refreshMapData();
+    }
+  });
+  item.appendChild(exclude);
+
+  // Frame 4d: tapping a row opens the door's evidence without leaving the route.
+  item.addEventListener('click', () => selectDoor(row.pin));
+  return item;
+}
+
+$('copy-route').addEventListener('click', () => {
+  if (routeView) copyAsText(routeView.rows, emit);
+});
+$('share-route').addEventListener('click', () => {
+  if (routeView) copyShareLink(routeView.rows, location.href, emit);
+});
+
+/* ── Walk mode (wireframe frame 4d, R10.4) ───────────────────────────────── */
+
+function startWalk(rows, resume) {
+  walk = createWalk(rows, resume ? { resume } : {});
+  pendingResume = null;
+  els.routePanel.hidden = true;
+  closePanel();
+  els.walk.hidden = false;
+  refreshMapData();
+  renderWalk();
+  renderRouteChrome();
+}
+
+function leaveWalk() {
+  if (walk) walk.exit();
+  walk = null;
+  els.walk.hidden = true;
+  refreshMapData();
+  renderRouteChrome();
+}
+
+function renderWalk() {
+  if (!walk) return;
+
+  const rows = routeView ? routeView.rows : [];
+  els.walkProgress.textContent = walk.finished ? 'Route complete' : walk.progressLabel;
+  els.walkBar.style.width = `${rows.length ? Math.round((walk.index / rows.length) * 100) : 0}%`;
+
+  const finished = walk.finished;
+  els.walkStop.hidden = finished;
+  els.walkActions.hidden = finished;
+  els.walkUpcoming.hidden = finished;
+  els.walkFinished.hidden = !finished;
+
+  if (finished) {
+    els.walkLeft.textContent = '';
+    els.walkSummary.textContent = walk.summary;
+    return;
+  }
+
+  const current = walk.current;
+  // Minutes left is what remains of the plan from here, not a clock (R10.2).
+  const done = walk.index > 0 ? rows[walk.index - 1].cumulativeMinutes : 0;
+  const remaining =
+    typeof routeView?.totalMinutes === 'number' && typeof done === 'number'
+      ? Math.max(0, Math.round(routeView.totalMinutes - done))
+      : null;
+  els.walkLeft.textContent = remaining === null ? '' : `${remaining} min left`;
+
+  clear(els.walkMeta);
+  els.walkMeta.append(`STOP ${current.n} · score `);
+  const score = el('b', null, current.score);
+  score.style.color = scoreColor(Math.max(35, current.score));
+  els.walkMeta.appendChild(score);
+  if (typeof current.walkMinutes === 'number') {
+    els.walkMeta.append(` · ${Math.max(1, Math.round(current.walkMinutes))} min walk`);
+  }
+
+  els.walkAddr.textContent = current.address;
+
+  const chip = chipFor(current.pin);
+  els.walkChip.hidden = !chip;
+  els.walkChip.textContent = chip ?? '';
+
+  els.walkTalk.textContent = current.talkTrack ? `“${current.talkTrack}”` : '';
+
+  clear(els.walkUpcoming);
+  const upcoming = rows.slice(walk.index + 1, walk.index + 6);
+  if (upcoming.length) {
+    els.walkUpcoming.appendChild(el('div', 'walk__upcoming-head', 'Up next'));
+    for (const row of upcoming) {
+      const next = el('div', 'walk__next');
+      next.appendChild(el('span', 'walk__next-n', row.n));
+      next.appendChild(el('span', 'walk__next-addr', row.address));
+      const score = el('span', 'walk__next-score', row.score);
+      score.style.color = scoreColor(Math.max(35, row.score));
+      next.appendChild(score);
+      els.walkUpcoming.appendChild(next);
+    }
+  }
+}
+
+$('start-walk').addEventListener('click', () => {
+  if (routeView && !routeView.isEmpty) startWalk(routeView.rows);
+});
+$('walk-done').addEventListener('click', () => {
+  walk.done();
+  refreshMapData();
+  renderWalk();
+});
+$('walk-skip').addEventListener('click', () => {
+  walk.skip();
+  refreshMapData();
+  renderWalk();
+});
+$('walk-exit').addEventListener('click', leaveWalk);
+$('walk-back').addEventListener('click', leaveWalk);
+
+/* ── Resuming an interrupted walk (R10.4) ────────────────────────────────── */
+
+/**
+ * Offer to pick a walk back up — with Discard beside Resume, because a rep who
+ * finished yesterday must not be trapped in yesterday's route.
+ */
+function offerResume() {
+  const saved = readWalk();
+  pendingResume = resumeOffer(saved);
+  if (!pendingResume) return;
+
+  els.resumeLabel.textContent = pendingResume.label;
+  renderRouteChrome();
+
+  $('resume-walk').onclick = () => {
+    // The stored rows are the route: a resumed walk must not depend on the
+    // planner still being able to reproduce it from the same start.
+    routeView = {
+      rows: saved.rows,
+      totalMinutes: saved.rows.at(-1)?.cumulativeMinutes ?? null,
+      estimateDisclosure: '',
+      isEmpty: saved.rows.length === 0,
+    };
+    startWalk(saved.rows, saved);
+  };
+  $('discard-walk').onclick = () => {
+    clearWalk();
+    pendingResume = null;
+    renderRouteChrome();
+  };
+}
+
+/* ── A shared route, opened from the URL (R10.4) ─────────────────────────── */
+
+/**
+ * Rebuild the route a share link names.
+ *
+ * The link carries the order and nothing else, so the walking estimates are
+ * genuinely unknown until someone plans from a start point — and the panel says
+ * so rather than inventing legs. Talk tracks come from the door endpoint, which
+ * is the only thing entitled to write them (R7.2).
+ */
+async function openSharedRoute() {
+  const pins = (await readShare(location.hash)).slice(0, 60);
+  if (pins.length === 0) return;
+
+  const details = await Promise.all(
+    pins.map(async (pin) => {
+      try {
+        const response = await fetch(`${API_BASE}/door/${encodeURIComponent(pin)}`);
+        return response.ok ? await response.json() : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const rows = details
+    .map((detail, index) =>
+      detail
+        ? {
+            n: index + 1,
+            pin: detail.PAMS_PIN,
+            address: detail.situs,
+            score: detail.score ?? 0,
+            walkMinutes: null,
+            cumulativeMinutes: null,
+            elapsedLabel: null,
+            talkTrack: detail.talk_track ?? null,
+          }
+        : null
+    )
+    .filter(Boolean)
+    .map((row, index) => ({ ...row, n: index + 1 }));
+
+  if (rows.length === 0) return;
+
+  routeView = { rows, totalMinutes: null, estimateDisclosure: '', isEmpty: false };
+  renderRouteList();
+  refreshMapData();
+  openRoutePanel();
+  showToast('Shared route opened');
+}
+
+/* ── Header actions ──────────────────────────────────────────────────────── */
+
+$('plan-route').addEventListener('click', () => {
+  if (els.routePanel.hidden) openRoutePanel();
+  else closeRoutePanel();
+});
 $('open-about').addEventListener('click', () =>
   showToast('Data & Ethics page arrives in the next build')
 );

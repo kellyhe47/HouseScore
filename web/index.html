@@ -68,8 +68,23 @@
     <div class="maparea">
       <div id="map" class="maparea__canvas"></div>
       <div id="labels" class="maparea__labels" aria-hidden="true"></div>
+      <div id="route-pins" class="maparea__labels" aria-hidden="true"></div>
 
       <div id="coverage" class="readout">0 of 0 scored</div>
+
+      <!-- ── Route chrome over the map (frames 4–4c, R10.4) ────────────────── -->
+      <div id="pick-hint" class="pickhint" hidden>Tap the map where you'll park</div>
+
+      <div id="route-bar" class="floatbar" hidden>
+        <button id="reopen-route" class="btn btn--primary btn--small" type="button">Route list</button>
+        <button id="clear-route" class="btn btn--ghost btn--small" type="button">Clear route</button>
+      </div>
+
+      <div id="resume-banner" class="resumebar" hidden>
+        <span class="resumebar__text">Walk in progress — <span id="resume-label"></span></span>
+        <button id="resume-walk" class="btn btn--primary btn--small" type="button">Resume</button>
+        <button id="discard-walk" class="linkbtn" type="button">Discard</button>
+      </div>
 
       <div class="maparea__bottomleft">
         <div class="legend">
@@ -105,8 +120,79 @@
         <div class="panel__body" id="panel-body"></div>
         <div class="panel__foot" id="panel-foot">
           <button id="copy-address" class="btn btn--ghost btn--block" type="button">Copy address</button>
+          <button id="toggle-math" class="btn btn--inset btn--block" type="button" hidden>Show math</button>
         </div>
       </aside>
+
+      <!-- ── Route planner (wireframe frames 4–4c, R10.1–R10.3) ───────────── -->
+      <aside id="route-panel" class="routepanel" aria-label="Route planner" hidden>
+        <div class="panel__grip" aria-hidden="true"></div>
+        <div class="routepanel__head">
+          <div class="routepanel__title">Plan route</div>
+          <button id="route-close" class="iconbtn" type="button" aria-label="Close route planner">✕</button>
+        </div>
+
+        <div class="routepanel__controls">
+          <div class="field">
+            <span class="field__label">HOURS</span>
+            <div class="segmented" id="hours-options" role="group" aria-label="Hours available"></div>
+          </div>
+          <label class="field">
+            <span class="field__label">DOORS</span>
+            <input id="route-doors" class="field__input" type="number" min="1" max="60" value="20">
+          </label>
+          <button id="pick-start" class="btn btn--ghost btn--strong" type="button">Set start on map</button>
+          <button id="plan-route-go" class="btn btn--primary" type="button" disabled>Plan</button>
+          <button id="cancel-plan" class="btn btn--ghost" type="button" hidden>Cancel</button>
+        </div>
+
+        <div id="route-empty" class="notice notice--inset" hidden></div>
+        <div id="route-error" class="notice notice--error" hidden></div>
+
+        <div class="routepanel__list" id="route-list"></div>
+
+        <div class="routepanel__foot" id="route-foot" hidden>
+          <div class="routepanel__summary" id="route-summary"></div>
+          <div class="routepanel__disclosure" id="route-disclosure"></div>
+          <div class="routepanel__actions">
+            <button id="copy-route" class="btn btn--ghost btn--block" type="button">Copy as text</button>
+            <button id="share-route" class="btn btn--ghost btn--block" type="button">Share link</button>
+            <button id="start-walk" class="btn btn--walk" type="button">Start walk mode</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ── Walk mode (wireframe frame 4d, R10.4) ──────────────────────────── -->
+    <div id="walk" class="walk" hidden>
+      <div class="walk__frame">
+        <div class="walk__head">
+          <div class="walk__progress" id="walk-progress"></div>
+          <div class="walk__left" id="walk-left"></div>
+          <button id="walk-exit" class="walk__exit" type="button">Exit</button>
+        </div>
+        <div class="walk__bar"><div class="walk__bar-fill" id="walk-bar"></div></div>
+
+        <div id="walk-stop" class="walk__stop" hidden>
+          <div class="walk__meta" id="walk-meta"></div>
+          <div class="walk__addr" id="walk-addr"></div>
+          <div class="walk__chip" id="walk-chip" hidden></div>
+          <div class="walk__talk" id="walk-talk"></div>
+        </div>
+
+        <div id="walk-actions" class="walk__actions" hidden>
+          <button id="walk-skip" class="walk__skip" type="button">Skip</button>
+          <button id="walk-done" class="walk__done" type="button">Done — next stop</button>
+        </div>
+
+        <div id="walk-upcoming" class="walk__upcoming" hidden></div>
+
+        <div id="walk-finished" class="walk__finished" hidden>
+          <div class="walk__finished-title">Route complete</div>
+          <div class="walk__finished-sub" id="walk-summary"></div>
+          <button id="walk-back" class="btn btn--primary" type="button">Back to map</button>
+        </div>
+      </div>
     </div>
 
     <!-- ── Imagery lightbox (R7.1) ─────────────────────────────────────────── -->

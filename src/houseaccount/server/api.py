@@ -10,10 +10,13 @@ an LLM says about a door are the same numbers by construction.
 * `GET /api/doors.geojson` — the published collection, byte for byte. The map
   renders the artifact the pipeline wrote; anything reshaped in flight is a
   place the map and the artifact can disagree, so nothing is.
-* `GET /api/door/{pams_pin}` — one door's published properties, for the evidence
-  panel (R9.1). Unknown PIN is a 404 with a body, not a stack trace.
+* `GET /api/door/{pams_pin}` — one door's published properties *plus* its group
+  math and talk track, for the evidence panel (R9.1/R8.1/R7.2). The extra three
+  fields live here rather than in the artifact because 540 doors' worth of
+  arithmetic is a download the map would never draw. Unknown PIN is a 404 with a
+  body, not a stack trace.
 * `POST /api/route` — the map's route request, delegated to the same planner the
-  MCP tool uses (R10.3).
+  MCP tool uses (R10.3), including the `exclude` re-plan behind frame 4c's ✕.
 
 **Errors are shapes.** Every failure carries `error` (a stable machine-readable
 slug) and `message` (something to show a person), so the UI's one error banner
@@ -35,7 +38,7 @@ from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from houseaccount.server.published import Territory, route_payload
+from houseaccount.server.published import Territory, door_payload, route_payload
 
 #: `doors.geojson` is GeoJSON, and saying so lets a client that cares (QGIS, a
 #: fetch that branches on type) treat it as such. It is still `+json`, so
@@ -58,6 +61,13 @@ class RouteRequest(BaseModel):
     )
     max_doors: int | None = Field(
         default=None, description="Optional cap on how many doors to plan."
+    )
+    exclude: list[str] | None = Field(
+        default=None,
+        description=(
+            "PAMS PINs to leave out and re-plan around — the ✕ on a route row. "
+            "Unknown PINs are ignored."
+        ),
     )
 
 
@@ -87,7 +97,12 @@ def build_router(territory: Territory) -> APIRouter:
 
     @router.get("/api/door/{pams_pin}")
     def door(pams_pin: str) -> Response:
-        """One door's published properties, for the evidence panel (R9.1)."""
+        """One door in full, for the evidence panel (R9.1).
+
+        Wider than the published allowlist: this is where the panel gets the
+        group math its breakdown draws (R8.1) and the rep's opener (R7.2),
+        neither of which belongs in a 540-door download.
+        """
         found = territory.door(pams_pin)
         if found is None:
             return JSONResponse(
@@ -97,7 +112,7 @@ def build_router(territory: Territory) -> APIRouter:
                     "message": f"No door published with PAMS PIN {pams_pin!r}.",
                 },
             )
-        return JSONResponse(content=dict(found.properties))
+        return JSONResponse(content=door_payload(found))
 
     @router.post("/api/route")
     def route(request: RouteRequest) -> dict[str, Any]:
@@ -107,6 +122,7 @@ def build_router(territory: Territory) -> APIRouter:
             hours=request.hours,
             start_point=request.start_point,
             max_doors=request.max_doors,
+            exclude=request.exclude,
         )
 
     return router

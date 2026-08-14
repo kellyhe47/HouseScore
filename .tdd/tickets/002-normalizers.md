@@ -1,11 +1,11 @@
 ---
 id: 002
 title: "Normalizers: deed YYMMDD parse, address normalization, parcel/permit join keys"
-status: pending
+status: tests-written
 depends_on: [001]
 touches: [src/houseaccount/normalize.py, tests/test_normalize.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_normalize.py]
 branch: ""
 ---
 

@@ -1,11 +1,11 @@
 ---
 id: 003
 title: "House Score engine + evidence (R6/R7) — all 12 golden fixtures"
-status: pending
+status: tests-written
 depends_on: [001, 002]
 touches: [src/houseaccount/scoring/engine.py, src/houseaccount/scoring/evidence.py, src/houseaccount/scoring/weights.py, tests/test_scoring_fixtures.py, tests/test_evidence.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_scoring_fixtures.py, tests/test_evidence.py]
 branch: ""
 ---
 

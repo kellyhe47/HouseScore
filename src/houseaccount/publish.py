@@ -334,7 +334,14 @@ def _resolve_block(report: ResolveReport) -> dict[str, Any]:
         "permits_in_territory": report.permits_in_territory,
         "permits_matched": report.permits_matched,
         "permits_unmatched": len(report.unmatched),
+        "permits_in_window": report.permits_in_window,
+        "permits_matched_municipal": report.permits_matched_municipal,
+        # Both rates ship, labelled: `permit_match_rate` is territory-scoped and
+        # `municipal_match_rate` is the one R3.2's floor grades (see
+        # `ResolveReport`). A manifest carrying one unlabelled number is how a
+        # reader ends up grading the wrong denominator.
         "permit_match_rate": report.permit_match_rate,
+        "municipal_match_rate": report.municipal_match_rate,
         "block_lot_match_rate": report.block_lot_match_rate,
         "address_match_rate": report.address_match_rate,
         "doors_with_block_group": report.doors_with_block_group,

@@ -15,14 +15,33 @@ an `address` attribute rather than on a type, and a record without one simply
 skips it. An address shared by two doors matches neither: picking one would be a
 fabrication dressed as a join.
 
-**What the match rate divides by.** R3.2 grades the match rate on records whose
-address falls in the territory. Taking that denominator as exact block+lot
-containment would make the number identically 1.0 — a permit whose block+lot is
-a territory parcel matches by construction — and an ungradeable metric is worse
-than none. The denominator here is the honest one: permits inside the rolling
-window whose *block* is a block the territory occupies. Those are the records
-that plausibly belong to us, and the graded question is how many of them landed
-on a door.
+**Two denominators, and which one R3.2 grades.** The report carries both,
+because the question "did the join work" and the question "did this door get its
+permits" are not the same question:
+
+* `permit_match_rate` — permits landed on a *door* over permits inside the
+  rolling window whose **block** the territory occupies. Territory-scoped. A
+  block holds many parcels the territory does not, so permits on those parcels
+  sit in this denominator and can never match: the first live run read 0.62 on a
+  join that was in fact fine.
+* `municipal_match_rate` — in-window permits joining **any** municipal parcel by
+  block/lot, over **all** in-window permits. Municipality-wide, and the rate
+  R3.2's >=95% floor is graded against; the live run reads 1696/1741 = 0.9742.
+
+Neither denominator may be made trivially 1.0. Exact block+lot containment as a
+denominator would match by construction — a permit whose block+lot is a
+territory parcel matches definitionally — so the territory rate's denominator is
+block-level and the municipal rate's is every in-window permit.
+
+The municipal join is block/lot only: it answers "did this permit resolve to a
+*parcel*", where the address fallback exists to place a record on a *door* and
+is reported by `matched_by_address`. The residual misses stay visible and stay
+apart: a permit carrying a placeholder block or lot (`0000`/`00`) is counted in
+`permits_placeholder_block_lot` — inside the denominator, never in the numerator
+— and a permit naming a lot no parcel has is counted in
+`permits_unmatched_municipal`. Lot-suffix variants (`4.2` vs `4.02`) are
+*distinct* lots under NJ MOD-IV convention and are kept distinct here;
+collapsing them would invent matches to flatter the rate.
 
 **Nothing is silently dropped.** An in-territory permit that joins nowhere is
 named in `report.unmatched` with the reason; permits on other blocks and permits
@@ -73,6 +92,16 @@ REASON_ADDRESS_UNKNOWN = "block/lot matched no territory parcel, and its address
 REASON_ADDRESS_AMBIGUOUS = (
     "block/lot matched no territory parcel, and its address matches more than one door"
 )
+
+#: A block or lot component that carries no parcel identity. MOD-IV and the
+#: permit feed both write "not recorded" as zeros, and `parcel_key` reduces
+#: every spelling of that ("0000", "00", "0", "") to one of these two.
+PLACEHOLDER_COMPONENTS = frozenset({"", "0"})
+
+#: Which municipal bucket an in-window permit fell into. One permit, one bucket.
+MUNICIPAL_MATCHED = "permits_matched_municipal"
+MUNICIPAL_PLACEHOLDER = "permits_placeholder_block_lot"
+MUNICIPAL_UNMATCHED = "permits_unmatched_municipal"
 
 
 @dataclass(frozen=True)
@@ -159,7 +188,23 @@ class DoorFacts:
 
 @dataclass(frozen=True)
 class ResolveReport:
-    """The match-rate and coverage numbers the rubric grades (R3.2)."""
+    """The match-rate and coverage numbers the rubric grades (R3.2).
+
+    Two match rates, on two different denominators, and they are different
+    numbers on purpose:
+
+    * `permit_match_rate` — permits landed on a door / in-window permits whose
+      *block* the territory occupies. Territory-scoped, and depressed by the
+      many parcels on those blocks that the territory does not hold.
+    * `municipal_match_rate` — in-window permits joining any municipal parcel by
+      block/lot / *all* in-window permits. R3.2's >=95% floor grades this one.
+
+    The municipal buckets partition the window exactly:
+    `permits_matched_municipal + permits_placeholder_block_lot +
+    permits_unmatched_municipal == permits_in_window`. Placeholder block/lot
+    values stay in that denominator and out of the numerator, because a permit
+    the county filed as `0000`/`00` is a real miss, not an absent record.
+    """
 
     as_of: date
     doors_total: int = 0
@@ -175,6 +220,11 @@ class ResolveReport:
     permit_match_rate: float = 0.0
     block_lot_match_rate: float = 0.0
     address_match_rate: float = 0.0
+    permits_in_window: int = 0
+    permits_matched_municipal: int = 0
+    permits_placeholder_block_lot: int = 0
+    permits_unmatched_municipal: int = 0
+    municipal_match_rate: float = 0.0
     unmatched: tuple[UnmatchedPermit, ...] = ()
     doors_with_block_group: int = 0
     acs_available: bool = False
@@ -198,6 +248,7 @@ def resolve(
     as_of: date,
     *,
     block_group_index: Any | None = None,
+    municipal_parcels: Sequence[Parcel] | None = None,
     mun: str = DEFAULT_MUN,
     permit_window_days: int = PERMIT_WINDOW_DAYS,
     retrieved_at: Mapping[str, date] | None = None,
@@ -206,9 +257,18 @@ def resolve(
 
     `doors` comes back in the order `parcels` were given — territory order is
     nearest-first and meaningful, so resolution must not reshuffle it.
+
+    `parcels` is the territory: the doors this run publishes, and the only
+    parcels a permit can land on. `municipal_parcels` is every parcel the
+    municipality has, and is used for nothing but the R3.2 denominator — it
+    changes no door and no territory-scoped number. Omitting it measures the
+    join against the territory alone, which is a smaller universe and a smaller
+    rate; the harvest already holds the full municipal extract, so the pipeline
+    passes it.
     """
     parcels = list(parcels)
     retrieved = dict(retrieved_at or {})
+    municipal = parcels if municipal_parcels is None else list(municipal_parcels)
 
     keys = [parcel_key(mun, parcel.pclblock, parcel.pcllot) for parcel in parcels]
     addresses = [normalize_address(parcel.prop_loc) for parcel in parcels]
@@ -221,6 +281,9 @@ def resolve(
         pin_by_parcel_key=_first_wins(keys, parcels),
         pins_by_address=_all_pins(addresses, parcels),
         territory_blocks={parcel_key(mun, parcel.pclblock, "") for parcel in parcels},
+        municipal_keys=frozenset(
+            parcel_key(mun, parcel.pclblock, parcel.pcllot) for parcel in municipal
+        ),
     )
 
     doors: dict[str, DoorFacts] = {}
@@ -290,11 +353,18 @@ def _route_permits(
     pin_by_parcel_key: Mapping[str, str],
     pins_by_address: Mapping[str, list[str]],
     territory_blocks: frozenset[str] | set[str],
+    municipal_keys: frozenset[str],
 ) -> tuple[dict[str, list[Any]], dict[str, int], list[UnmatchedPermit]]:
     """Send each permit to a door, to a counter, or to the unmatched list.
 
     Every record leaves this function through exactly one of those three exits,
     which is what the accounting invariant in `ResolveReport` is asserting.
+
+    Each in-window record is *also* filed into exactly one municipal bucket on
+    the way past. That pass is deliberately independent of the territory routing
+    above it — it asks whether the permit resolves to any parcel in the town, a
+    question the door routing cannot answer — so the two accountings partition
+    the same records twice without either disturbing the other.
     """
     records = list(permits)
     in_window = permits_within(records, as_of, window_days)
@@ -305,12 +375,18 @@ def _route_permits(
         "permits_total": len(records),
         # An undated permit falls out of the window rather than being guessed at.
         "permits_out_of_window": len(records) - len(in_window),
+        "permits_in_window": len(in_window),
         "permits_out_of_territory": 0,
         "matched_by_block_lot": 0,
         "matched_by_address": 0,
+        MUNICIPAL_MATCHED: 0,
+        MUNICIPAL_PLACEHOLDER: 0,
+        MUNICIPAL_UNMATCHED: 0,
     }
 
     for record in in_window:
+        counts[_municipal_bucket(record, mun=mun, municipal_keys=municipal_keys)] += 1
+
         if parcel_key(mun, record.block, "") not in territory_blocks:
             counts["permits_out_of_territory"] += 1
             continue
@@ -341,6 +417,32 @@ def _route_permits(
     # Sorted by record_id so the order of the input feed cannot move the report.
     unmatched.sort(key=lambda item: item.record_id)
     return landed, counts, unmatched
+
+
+def _municipal_bucket(record: Any, *, mun: str, municipal_keys: frozenset[str]) -> str:
+    """Which of the three municipal counters this in-window permit belongs to.
+
+    Block/lot only — the address fallback places a record on a *door*, and this
+    number answers whether the record resolves to a *parcel*. Placeholders are
+    tested first so a town that happens to hold a `0`-blocked parcel could never
+    turn "not recorded" into a match; a placeholder is a miss with a known cause,
+    which is worth more to whoever fixes the feed than a flattering rate.
+    """
+    if _is_placeholder(record.block, record.lot):
+        return MUNICIPAL_PLACEHOLDER
+    key = parcel_key(mun, record.block, record.lot)
+    return MUNICIPAL_MATCHED if key in municipal_keys else MUNICIPAL_UNMATCHED
+
+
+def _is_placeholder(block: Any, lot: Any) -> bool:
+    """True when block or lot carries no parcel identity once canonicalized.
+
+    Routed through `parcel_key` rather than string-matched here, so "0000", "00",
+    "0" and "" are recognized by the same normalizer that does the joining — a
+    second spelling table would be a second thing to keep in step.
+    """
+    _, *components = parcel_key("", block, lot).split("/")
+    return any(component in PLACEHOLDER_COMPONENTS for component in components)
 
 
 def _by_address(record: Any, pins_by_address: Mapping[str, list[str]]) -> tuple[str | None, str]:
@@ -438,6 +540,8 @@ def _report(
     matched_by_address = permit_counts["matched_by_address"]
     matched = matched_by_block_lot + matched_by_address
     in_territory = matched + len(unmatched)
+    in_window = permit_counts["permits_in_window"]
+    matched_municipal = permit_counts[MUNICIPAL_MATCHED]
 
     with_signal = sum(
         1
@@ -460,6 +564,11 @@ def _report(
         permit_match_rate=_rate(matched, in_territory),
         block_lot_match_rate=_rate(matched_by_block_lot, in_territory),
         address_match_rate=_rate(matched_by_address, in_territory),
+        permits_in_window=in_window,
+        permits_matched_municipal=matched_municipal,
+        permits_placeholder_block_lot=permit_counts[MUNICIPAL_PLACEHOLDER],
+        permits_unmatched_municipal=permit_counts[MUNICIPAL_UNMATCHED],
+        municipal_match_rate=_rate(matched_municipal, in_window),
         unmatched=tuple(unmatched),
         doors_with_block_group=sum(1 for f in doors.values() if f.block_group is not None),
         acs_available=acs.available,

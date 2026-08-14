@@ -173,6 +173,11 @@ def run_pipeline(
         rental_provider if rental_provider is not None else NullRentalProvider(),
         as_of,
         block_group_index=block_groups,
+        # R3.2 is a municipality-wide question and the harvest already holds
+        # every municipal parcel, so the graded denominator is measured against
+        # all of them rather than only the doors the territory selected. This
+        # changes no door and no territory-scoped number.
+        municipal_parcels=parcels,
         mun=mun,
         retrieved_at=retrieved,
     )

@@ -20,7 +20,12 @@ What it reports, and why each number is in the report:
 * **cost per door** — "cheap enough to run on a whole town" is a claim this
   project makes out loud, so it is measured rather than asserted.
 * **entity-resolution match rate** — R3.2 grades it, and a run whose permits
-  stopped landing on doors is producing scores from missing signals.
+  stopped landing on doors is producing scores from missing signals. The rate
+  read here is `municipal_match_rate`: in-window permits joining any municipal
+  parcel over all in-window permits. `ResolveReport`'s other rate,
+  `permit_match_rate`, is territory-scoped, so its denominator holds permits on
+  parcels the territory does not own and can never match — grading the floor on
+  it reported 0.62 for a join that was in fact 0.9742.
 
 **The honest gap.** The hand labels (~40 pool parcels plus 20 verified
 negatives) have not been collected yet. Rather than invent model predictions to
@@ -193,8 +198,11 @@ class EvalReport:
         lines += [
             "",
             "ENTITY RESOLUTION (R3.2)",
-            _row("match rate", rate),
+            _row("municipal match rate", rate),
             _row("required floor", f"{MATCH_RATE_FLOOR:.3f}"),
+            # Named on the page, because the run also computes a territory-scoped
+            # rate and the two disagree by design.
+            "  denominator: every in-window permit, against every municipal parcel",
         ]
 
         if self.fixture_failures:
@@ -549,17 +557,24 @@ def _no_metrics() -> VisionMetrics:
 
 
 def _match_rate(resolve_report: Any) -> float | None:
-    """`permit_match_rate` off a `ResolveReport`, a mapping, or nothing.
+    """`municipal_match_rate` off a `ResolveReport`, a mapping, or nothing.
 
     A mapping as well as the dataclass because the pipeline writes its resolve
     report to JSON and `make eval` runs later, from the file.
+
+    Only the municipal rate is read. `ResolveReport` also carries
+    `permit_match_rate`, whose denominator is territory-scoped and therefore
+    contains permits on municipal parcels the territory does not hold — grading
+    R3.2 on it is what made a healthy 0.9742 join report 0.62. A report carrying
+    only that number is treated as carrying no rate at all: no gate is a knowable
+    gap, a gate on the wrong denominator is a wrong answer stated confidently.
     """
     if resolve_report is None:
         return None
     if isinstance(resolve_report, Mapping):
-        rate = resolve_report.get("permit_match_rate")
+        rate = resolve_report.get("municipal_match_rate")
     else:
-        rate = getattr(resolve_report, "permit_match_rate", None)
+        rate = getattr(resolve_report, "municipal_match_rate", None)
     return None if rate is None else float(rate)
 
 

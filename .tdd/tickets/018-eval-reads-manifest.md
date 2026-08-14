@@ -1,11 +1,11 @@
 ---
 id: 018
 title: "make eval reads the published run manifest (match rate, cost, doors scored)"
-status: pending
+status: tests-written
 depends_on: [009, 017]
 touches: [Makefile, eval/harness.py, tests/test_harness.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_harness.py]
 branch: ""
 ---
 

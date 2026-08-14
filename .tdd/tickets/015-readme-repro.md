@@ -1,11 +1,11 @@
 ---
 id: 015
 title: "README, reproducibility guarantees, cost report (R13, R14)"
-status: pending
+status: tests-written
 depends_on: [009, 011]
 touches: [README.md, .env.example, tests/test_repro.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_repro.py]
 branch: ""
 ---
 

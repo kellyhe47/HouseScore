@@ -650,3 +650,325 @@ def test_python_dash_m_eval_harness_exits_non_zero_on_a_broken_fixture(tmp_path,
     proc = run_module("--golden-dir", str(golden), "--report", str(report_path))
     assert proc.returncode != 0
     assert "absentee_modifier" in proc.stdout + proc.stderr
+
+
+# --- T018: bare `make eval` reads the published run manifest -----------------
+#
+# The definition of done says `make eval` reports the entity-resolution match
+# rate and the cost per door. Until this ticket, bare `make eval` passed no
+# --resolve-report / --ledger / --doors-scored, so it printed
+# `n/a (no resolve report for this run)` and `doors scored: 0` while
+# `data/run_manifest.json` sat next to it holding the real numbers. A wiring
+# gap, not a logic gap: the flags below all worked already.
+#
+# Pinned seams (in addition to the ones at the top of this module):
+#
+#     eval.harness.DEFAULT_MANIFEST_PATH : Path
+#         Where a bare run looks for the published manifest. Read at call time
+#         (these tests monkeypatch it), so it is <repo>/data/run_manifest.json
+#         for a real run and a tmp_path for a test.
+#
+#     eval.harness.NO_MANIFEST_NOTE : str
+#         The one line a bare run prints when nothing has been published yet.
+#         Its wording is the implementer's; that it appears, and that the run
+#         still exits 0, is not.
+#
+# Discovery lives in `main`, never in `run_eval`: `run_eval` stays pure, and
+# `run_eval(resolve_report=None)` keeps meaning "no report" (pinned above at
+# test_an_absent_resolve_report_is_null_and_does_not_fail_the_run) rather than
+# quietly meaning "go and find one".
+#
+# The manifest's rate lives in a nested `resolve` block, so the reader that
+# already accepts a ResolveReport dataclass or a flat mapping must also accept
+# a whole run manifest -- wherever `--resolve-report` is accepted today.
+
+REAL_MANIFEST = REPO / "data" / "run_manifest.json"
+
+#: The municipal rate the real published manifest carries. Used only as a
+#: realistic value; no test depends on the real file except the one that skips
+#: when it is absent.
+MANIFEST_MUNICIPAL_RATE = 0.974152785755313
+
+
+def run_manifest(
+    rate=MANIFEST_MUNICIPAL_RATE, *, cost_usd=0.0, doors_scored=540, resolve=True
+):
+    """A run manifest in the shape `publish` writes: cost and doors at the top
+    level, the entity-resolution numbers in a nested `resolve` block."""
+    payload = {
+        "run_at": "2026-08-14T08:38:26.522178+00:00",
+        "as_of": "2026-08-14",
+        "code_version": "125f61e",
+        "cost_usd": cost_usd,
+        "cost_per_door": (cost_usd / doors_scored) if doors_scored else 0.0,
+        "doors_total": doors_scored,
+        "doors_scored": doors_scored,
+        "coverage": 1.0,
+    }
+    if resolve is True:
+        payload["resolve"] = {
+            "municipal_match_rate": rate,
+            "permit_match_rate": TERRITORY_RATE,
+            "permits_in_window": 1741,
+            "permits_matched_municipal": 1696,
+        }
+    elif isinstance(resolve, dict):
+        payload["resolve"] = resolve
+    return payload
+
+
+@pytest.fixture
+def published(tmp_path, monkeypatch):
+    """Publish a manifest under tmp_path and point auto-discovery at it.
+
+    Never the repo's real data/run_manifest.json: a fresh clone has none, and a
+    test that passes only because the pipeline happens to have been run is not
+    a test.
+    """
+
+    def _publish(payload=None, *, raw=None):
+        path = tmp_path / "data" / "run_manifest.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = raw if raw is not None else json.dumps(run_manifest() if payload is None else payload)
+        path.write_text(body, encoding="utf-8")
+        monkeypatch.setattr("eval.harness.DEFAULT_MANIFEST_PATH", path)
+        return path
+
+    return _publish
+
+
+@pytest.fixture
+def unpublished(tmp_path, monkeypatch):
+    """A fresh clone: the manifest path exists as a path and not as a file."""
+    path = tmp_path / "data" / "run_manifest.json"
+    monkeypatch.setattr("eval.harness.DEFAULT_MANIFEST_PATH", path)
+    return path
+
+
+def written(report_path):
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+# --- AC1: a bare run reports the manifest's numbers, with no flags -----------
+
+
+def test_bare_eval_reports_the_manifests_match_rate_cost_and_doors(
+    published, report_path, capsys
+):
+    published(run_manifest(cost_usd=2.70, doors_scored=540))
+
+    assert main(["--report", str(report_path)]) == 0
+
+    payload = written(report_path)
+    assert payload["resolve_match_rate"] == pytest.approx(MANIFEST_MUNICIPAL_RATE)
+    assert payload["doors_scored"] == 540
+    assert payload["cost_total_usd"] == pytest.approx(2.70)
+    assert payload["cost_per_door"] == pytest.approx(2.70 / 540)
+
+    printed = capsys.readouterr().out
+    assert rendered_value(printed, "match rate") == pytest.approx(0.974, abs=0.001)
+    assert rendered_value(printed, "doors scored") == 540
+    assert rendered_value(printed, "cost per door") == pytest.approx(2.70 / 540, abs=0.0001)
+
+
+def test_a_bare_run_with_a_manifest_never_prints_the_no_report_placeholder(
+    published, report_path, capsys
+):
+    """The exact symptom this ticket exists to kill."""
+    published()
+    main(["--report", str(report_path)])
+
+    printed = capsys.readouterr().out
+    assert "no resolve report for this run" not in printed.lower()
+    assert rendered_value(printed, "doors scored") == 540
+
+
+@pytest.mark.skipif(not REAL_MANIFEST.is_file(), reason="pipeline has not been run here")
+def test_the_real_published_manifest_is_reported_by_a_bare_run(report_path):
+    """`make eval` as the Makefile invokes it, against whatever this repo has
+    actually published. Report redirected; no other flags, on purpose."""
+    manifest = json.loads(REAL_MANIFEST.read_text(encoding="utf-8"))
+    expected_rate = (manifest.get("resolve") or {}).get("municipal_match_rate")
+    assert expected_rate is not None, "the published manifest carries no municipal rate"
+
+    proc = run_module("--report", str(report_path))
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert rendered_value(proc.stdout, "match rate") == pytest.approx(
+        expected_rate, abs=0.001
+    )
+    assert rendered_value(proc.stdout, "doors scored") == manifest["doors_scored"]
+    assert written(report_path)["resolve_match_rate"] == pytest.approx(expected_rate)
+
+
+# --- AC2: the nested resolve block, wherever a resolve report is accepted ----
+
+
+def test_run_eval_reads_the_match_rate_out_of_the_nested_resolve_block():
+    report = run_eval(resolve_report=run_manifest())
+
+    assert report.resolve_match_rate == pytest.approx(MANIFEST_MUNICIPAL_RATE)
+    assert report.ok is True
+
+
+def test_the_resolve_report_flag_accepts_a_whole_run_manifest(tmp_path, report_path):
+    manifest_path = tmp_path / "run_manifest.json"
+    manifest_path.write_text(json.dumps(run_manifest()), encoding="utf-8")
+
+    code = main(["--resolve-report", str(manifest_path), "--report", str(report_path)])
+
+    assert code == 0
+    assert written(report_path)["resolve_match_rate"] == pytest.approx(
+        MANIFEST_MUNICIPAL_RATE
+    )
+
+
+@pytest.mark.parametrize(
+    "manifest, why",
+    [
+        (run_manifest(resolve=False), "a manifest with no resolve block"),
+        (run_manifest(resolve={"permit_match_rate": TERRITORY_RATE}), "territory rate only"),
+        ({}, "an empty manifest object"),
+    ],
+)
+def test_a_manifest_without_a_municipal_rate_grades_nothing(manifest, why):
+    """No gate is a knowable gap; a gate on the wrong denominator is a wrong
+    answer stated confidently. The nested block changes nothing about that."""
+    report = run_eval(resolve_report=manifest)
+
+    assert report.resolve_match_rate is None, why
+    assert report.ok is True, why
+
+
+def test_a_flat_resolve_report_still_works_alongside_the_nested_one():
+    """The pipeline's standalone resolve report predates the manifest; adding
+    the nested reader must not stop the flat one being read."""
+    assert run_eval(resolve_report=as_mapping(0.97)).resolve_match_rate == pytest.approx(0.97)
+
+
+# --- AC3: a fresh clone that has never run the pipeline ----------------------
+
+
+def test_no_manifest_on_disk_still_exits_zero(unpublished, report_path):
+    assert not unpublished.exists()
+
+    assert main(["--report", str(report_path)]) == 0
+
+    payload = written(report_path)
+    assert payload["resolve_match_rate"] is None
+    assert payload["doors_scored"] == 0
+    assert payload["ok"] is True
+
+
+def test_no_manifest_says_plainly_that_no_run_has_been_published(
+    unpublished, report_path, capsys
+):
+    import eval.harness as harness
+
+    note = getattr(harness, "NO_MANIFEST_NOTE", None)
+    assert isinstance(note, str) and note.strip(), "the harness must own this line"
+    assert "publish" in note.lower(), "it has to say a run has not been published"
+
+    main(["--report", str(report_path)])
+    assert note in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "raw, why",
+    [
+        ("{not json at all", "truncated garbage"),
+        ("", "an empty file"),
+        ("null", "valid JSON that is not an object"),
+        ("[]", "a list where an object belongs"),
+    ],
+)
+def test_a_malformed_manifest_never_fails_the_run(published, report_path, capsys, raw, why):
+    """`make eval` grades the engine. A manifest it cannot read is a missing
+    input, not a failing eval."""
+    published(raw=raw)
+
+    assert main(["--report", str(report_path)]) == 0, why
+    assert written(report_path)["resolve_match_rate"] is None, why
+    assert capsys.readouterr().out  # something was still printed
+
+
+# --- AC4: explicit flags override the discovered manifest --------------------
+
+
+def test_an_explicit_resolve_report_overrides_the_discovered_manifest(
+    published, tmp_path, report_path
+):
+    published(run_manifest(MANIFEST_MUNICIPAL_RATE))
+    explicit = tmp_path / "resolve_report.json"
+    explicit.write_text(json.dumps(as_mapping(0.80)), encoding="utf-8")
+
+    code = main(["--resolve-report", str(explicit), "--report", str(report_path)])
+
+    assert code != 0, "the explicit report is below the floor and must decide the run"
+    assert written(report_path)["resolve_match_rate"] == pytest.approx(0.80)
+
+
+def test_an_explicit_doors_scored_overrides_the_manifest(published, report_path):
+    published(run_manifest(cost_usd=5.0, doors_scored=540))
+
+    main(["--doors-scored", "100", "--report", str(report_path)])
+
+    payload = written(report_path)
+    assert payload["doors_scored"] == 100
+    assert payload["cost_per_door"] == pytest.approx(5.0 / 100)
+
+
+def test_an_explicit_ledger_overrides_the_manifest_cost(published, tmp_path, report_path):
+    published(run_manifest(cost_usd=9.99, doors_scored=540))
+    ledger = CostLedger()
+    ledger.record("vision", units=100, usd=2.50)
+    ledger_path = tmp_path / "cost_ledger.json"
+    ledger.save(ledger_path)
+
+    main(
+        [
+            "--ledger",
+            str(ledger_path),
+            "--doors-scored",
+            "500",
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    payload = written(report_path)
+    assert payload["cost_total_usd"] == pytest.approx(2.50)
+    assert payload["cost_per_door"] == pytest.approx(0.005)
+
+
+# --- AC5: the >=0.95 gate still decides the run ------------------------------
+
+
+@pytest.mark.parametrize(
+    "rate, expected_zero, why",
+    [
+        (1.0, True, "everything matched"),
+        (MANIFEST_MUNICIPAL_RATE, True, "the real run clears the floor"),
+        (0.95, True, "the floor is inclusive"),
+        (0.9499, False, "just below"),
+        (0.5, False, "well below"),
+    ],
+)
+def test_a_published_manifest_below_the_floor_fails_the_run(
+    published, report_path, rate, expected_zero, why
+):
+    published(run_manifest(rate))
+
+    assert (main(["--report", str(report_path)]) == 0) is expected_zero, why
+    assert written(report_path)["resolve_match_rate"] == pytest.approx(rate)
+
+
+def test_a_manifests_territory_rate_cannot_rescue_its_municipal_rate(published, report_path):
+    published(
+        run_manifest(
+            resolve={"municipal_match_rate": 0.80, "permit_match_rate": 0.99}
+        )
+    )
+
+    assert main(["--report", str(report_path)]) != 0
+    assert written(report_path)["resolve_match_rate"] == pytest.approx(0.80)

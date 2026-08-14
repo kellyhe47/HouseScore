@@ -39,6 +39,7 @@ in-module and every artifact is written under `tmp_path`.
 """
 
 import json
+import re
 from dataclasses import fields
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -472,6 +473,144 @@ def test_a_malformed_exclusion_list_is_rejected_too(client):
     )
 
     assert response.status_code == 422
+
+
+# --- the published artifacts the Data & Ethics page reads (T016, R12) ---------
+#
+# `web/ethics.html` fetches `${HOUSEACCOUNT_ARTIFACT_BASE}/eval/report.json` and
+# `${...}/data/run_manifest.json`. A static host serving `web/` as the site root
+# resolves neither, so the deployed page would show its honest-but-empty "no
+# published run" fallback instead of the real numbers. The API serves both, at
+# exactly the paths the page already asks for, so the deploy sets one base URL
+# and nothing in `web/` changes.
+#
+# `eval/report.json` lives outside `data/`, so it is a second argument to
+# `create_app` — defaulting to the repository's own `eval/report.json`, which is
+# what `uvicorn ... --factory` gets. It is deliberately *not* part of the boot
+# contract: `make pipeline` can have run without `make eval`, and a missing eval
+# report is an ordinary state the ethics page already degrades through. Only a
+# missing `data/` fails the boot.
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_EVAL_REPORT = REPO_ROOT / "eval" / "report.json"
+
+REPORT_ROUTE = "/api/eval/report.json"
+MANIFEST_ROUTE = "/api/data/run_manifest.json"
+
+REPORT = {"fixtures_total": 12, "precision": 0.8181818181818182, "ok": True}
+
+
+@pytest.fixture
+def eval_report(tmp_path):
+    path = tmp_path / "eval" / "report.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(REPORT), encoding="utf-8")
+    return path
+
+
+def test_the_report_endpoint_serves_the_eval_report(data_dir, eval_report):
+    client = TestClient(create_app(data_dir=data_dir, eval_report=eval_report))
+
+    response = client.get(REPORT_ROUTE)
+
+    assert response.status_code == 200
+    assert "json" in response.headers["content-type"]
+    assert response.json() == REPORT
+
+
+def test_the_report_endpoint_defaults_to_the_repositorys_eval_report(client):
+    """What `uvicorn ... --factory` serves: no second path to configure."""
+    assert REPO_EVAL_REPORT.is_file(), "the repo ships a published eval report"
+
+    response = client.get(REPORT_ROUTE)
+
+    assert response.status_code == 200
+    assert response.json() == json.loads(REPO_EVAL_REPORT.read_text(encoding="utf-8"))
+
+
+def test_the_manifest_endpoint_serves_the_published_run_manifest(client, data_dir):
+    response = client.get(MANIFEST_ROUTE)
+
+    assert response.status_code == 200
+    assert "json" in response.headers["content-type"]
+    assert response.json() == json.loads(
+        (Path(data_dir) / "run_manifest.json").read_text(encoding="utf-8")
+    )
+
+
+def test_the_artifact_routes_are_the_paths_the_ethics_page_fetches(data_dir):
+    """Anti-drift: the page's fetches and the server's routes are one decision.
+
+    The deploy points `HOUSEACCOUNT_ARTIFACT_BASE` at the API's `/api`, so
+    `artifact('eval/report.json')` has to land on a route that exists.
+    """
+    fetched = set(
+        re.findall(
+            r"artifact\(\s*['\"]([^'\"]+)['\"]",
+            (REPO_ROOT / "web" / "ethics.html").read_text(encoding="utf-8"),
+        )
+    )
+    assert fetched == {"eval/report.json", "data/run_manifest.json"}, sorted(fetched)
+
+    paths = {getattr(route, "path", "") for route in create_app(data_dir=data_dir).routes}
+    assert {f"/api/{name}" for name in fetched} <= paths, sorted(paths)
+
+
+def test_the_artifact_endpoints_are_readable_from_the_ui_origin(client):
+    """The ethics page is on Vercel and these bytes are on Fly (R12)."""
+    origin = UI_ORIGINS[0]
+
+    for route in (REPORT_ROUTE, MANIFEST_ROUTE):
+        response = client.get(route, headers={"Origin": origin})
+        assert response.headers["access-control-allow-origin"] in {origin, "*"}, route
+
+
+def test_a_missing_eval_report_does_not_fail_the_boot(data_dir, tmp_path):
+    """`make pipeline` without `make eval` is an ordinary state, not a crash."""
+    app = create_app(data_dir=data_dir, eval_report=tmp_path / "never-ran" / "report.json")
+
+    client = TestClient(app)
+    assert client.get("/health").status_code == 200
+    assert client.get("/api/doors.geojson").status_code == 200
+
+
+def test_a_missing_eval_report_is_a_structured_404(data_dir, tmp_path):
+    """The page's `fetch` treats a non-ok response as "no run" and says so."""
+    client = TestClient(create_app(data_dir=data_dir, eval_report=tmp_path / "gone.json"))
+
+    response = client.get(REPORT_ROUTE)
+
+    assert response.status_code == 404
+    body = response.json()
+    assert isinstance(body.get("error"), str) and body["error"]
+    assert isinstance(body.get("message"), str) and body["message"]
+
+
+def test_a_malformed_eval_report_degrades_rather_than_500ing(data_dir, tmp_path):
+    """Half a JSON file is the shape an interrupted `make eval` leaves behind."""
+    broken = tmp_path / "report.json"
+    broken.write_text('{"fixtures_total": 12, ', encoding="utf-8")
+
+    client = TestClient(
+        create_app(data_dir=data_dir, eval_report=broken), raise_server_exceptions=False
+    )
+
+    response = client.get(REPORT_ROUTE)
+    assert response.status_code == 404
+    assert isinstance(response.json().get("error"), str)
+
+
+def test_a_missing_run_manifest_is_a_structured_404(data_dir):
+    """`doors.geojson` and the database boot the server; the manifest does not."""
+    (Path(data_dir) / "run_manifest.json").unlink()
+
+    client = TestClient(create_app(data_dir=data_dir))
+
+    assert client.get("/health").status_code == 200
+    response = client.get(MANIFEST_ROUTE)
+    assert response.status_code == 404
+    assert isinstance(response.json().get("error"), str)
 
 
 # --- CORS ---------------------------------------------------------------------

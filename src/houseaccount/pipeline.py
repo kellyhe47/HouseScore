@@ -30,6 +30,15 @@ what was lost, and why.
 and it must do so *before* the tiles are fetched: downloading 1,080 ortho frames
 for a stage that will not look at them is exactly the waste the declination
 exists to avoid.
+
+**A stale extract is a degradation too.** The Mover group is the heaviest signal
+in the model, and whether it can fire at all depends on how old the county's deed
+data is, not on the rule. When the run measures that no door is inside the mover
+window, that is named in `degradations` in the same voice as a provider that
+refused — because a reviewer reading the map otherwise cannot tell "nobody moved
+here recently" from "the mover rule is broken". The measurement itself is
+published beside it, in the manifest's `deed_vintage` block. Neither reaches a
+door: this is disclosure, and the score engine is not told about it.
 """
 
 from __future__ import annotations
@@ -46,7 +55,14 @@ from houseaccount.cache import Cache
 from houseaccount.config import Config
 from houseaccount.cost import CostLedger
 from houseaccount.http import SourceError, Transport, requests_transport
-from houseaccount.publish import PublishResult, RunManifest, parcel_record_incomplete, publish
+from houseaccount.normalize import parse_deed_date
+from houseaccount.publish import (
+    MOVER_WINDOW_DAYS,
+    PublishResult,
+    RunManifest,
+    parcel_record_incomplete,
+    publish,
+)
 from houseaccount.resolve import (
     SIGNAL_ACS,
     SIGNAL_PARCEL,
@@ -95,6 +111,21 @@ class PipelineResult:
     published: PublishResult
     ledger: CostLedger
     degradations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DeedVintage:
+    """How old this extract's deeds are, and what that leaves the Mover group.
+
+    Two numbers with deliberately different scopes. `latest_deed_date` is a
+    statement about the *feed*, so it is measured over every municipal parcel the
+    harvest holds — a fresh deed across town still proves the extract is current.
+    `doors_in_mover_window` is a statement about the *territory*, because that is
+    the set the map draws and the set a rep would knock on.
+    """
+
+    latest_deed_date: date | None
+    doors_in_mover_window: int
 
 
 def code_version() -> str:
@@ -185,6 +216,7 @@ def run_pipeline(
         _degrade(degradations, resolved.report.rental_declination_reason)
 
     doors = list(resolved.doors.values())
+    vintage = _deed_vintage(parcels, doors, as_of=as_of, degradations=degradations)
 
     # --- vision -------------------------------------------------------------
     vision = _run_vision(
@@ -214,6 +246,8 @@ def run_pipeline(
         retrieved=retrieved,
         cost_usd=ledger.total_usd(),
         degradations=tuple(degradations),
+        latest_deed_date=vintage.latest_deed_date,
+        doors_in_mover_window=vintage.doors_in_mover_window,
     )
     published = publish(
         scored, report=resolved.report, manifest=manifest, data_dir=config.data_dir
@@ -389,6 +423,67 @@ def _fetch_tiles(
             "exterior-condition signals are missing for the doors they cover",
         )
     return tuple(tiles)
+
+
+# --- the deed vintage ---------------------------------------------------------
+
+
+def _deed_vintage(
+    parcels: Sequence[Parcel],
+    doors: Sequence[DoorFacts],
+    *,
+    as_of: date,
+    degradations: list[str],
+) -> DeedVintage:
+    """Measure the extract's deed vintage, and say so when it costs the Mover group.
+
+    The deed strings are read through `parse_deed_date` — the same normalizer
+    `resolve` already ran over them — so the vintage cannot disagree with the
+    dates the doors were scored from. Territory doors are counted off the parsed
+    `DoorFacts.deed_date` for the same reason: a second parse here would be a
+    second answer waiting to drift.
+
+    Nothing measured here is returned to the score engine. The count exists to
+    answer one question — could the model's heaviest group fire on this data? —
+    and when the answer is no, that is recorded once, as a degradation, in the
+    same list an operator already reads for a refused provider.
+    """
+    parsed = [parse_deed_date(parcel.deed_date, as_of) for parcel in parcels]
+    latest = max((day for day in parsed if day is not None), default=None)
+
+    in_window = sum(
+        1
+        for door in doors
+        if door.deed_date is not None and (as_of - door.deed_date).days <= MOVER_WINDOW_DAYS
+    )
+    if in_window == 0:
+        _degrade(degradations, _mover_unearnable_note(latest))
+    return DeedVintage(latest_deed_date=latest, doors_in_mover_window=in_window)
+
+
+def _mover_unearnable_note(latest: date | None) -> str:
+    """Why no door earned a mover point, written for whoever is doubting the map.
+
+    Two shapes, because they are two different findings. A dated extract that is
+    simply old is the ordinary case and the date is the whole evidence, so it is
+    quoted. An extract with no readable deed at all has no date to quote — and a
+    placeholder standing in for one would read as a bug in this sentence rather
+    than as the absence it describes.
+    """
+    if latest is not None:
+        return (
+            f"no door in this territory has a deed dated inside the {MOVER_WINDOW_DAYS}-day "
+            f"mover window: the newest deed anywhere in the MOD-IV extract is "
+            f"{latest.isoformat()}. The Mover group — the heaviest signal in the model — "
+            "therefore scored zero everywhere on this run. That is the vintage of the county "
+            "extract, not a rule that failed to fire."
+        )
+    return (
+        "the MOD-IV extract carries no readable deed date, so no door could be placed inside "
+        f"the {MOVER_WINDOW_DAYS}-day mover window and the Mover group — the heaviest signal "
+        "in the model — scored zero everywhere on this run. That is the state of the county "
+        "extract, not a rule that failed to fire."
+    )
 
 
 # --- scoring ------------------------------------------------------------------

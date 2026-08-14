@@ -363,6 +363,12 @@ const PROVIDERS = [
   },
 ];
 
+/** The deed-vintage row's identity, kept beside the providers it is listed with. */
+const MOVER_VINTAGE = {
+  key: 'mover_deed_vintage',
+  label: 'MOD-IV deed dates (Mover signal)',
+};
+
 /**
  * Which signal sources answered on the published run, and why the others did not.
  *
@@ -371,13 +377,19 @@ const PROVIDERS = [
  * than buried in a log. A missing key and an unanswered records request are
  * ordinary states here, not failures to hide.
  *
+ * The deed vintage is listed last and in the same shape, because it answers that
+ * same question about the heaviest signal in the model: a county extract whose
+ * newest deed predates the mover window makes the Mover group unearnable, and a
+ * reader looking at a map of zeroes cannot otherwise tell that from a broken
+ * rule. It is a limit of the data, reported where the other limits are.
+ *
  * @param {object|null} manifest parsed `data/run_manifest.json`
  */
 export function signalAvailability(manifest) {
   const degradations = (manifest && manifest.degradations) || [];
   const resolve = (manifest && manifest.resolve) || {};
 
-  return PROVIDERS.map(({ key, label, pattern, reasonField, availableField }) => {
+  const providers = PROVIDERS.map(({ key, label, pattern, reasonField, availableField }) => {
     if (!manifest) {
       return {
         key,
@@ -400,6 +412,66 @@ export function signalAvailability(manifest) {
 
     return { key, label, live, reason: reason || null };
   });
+
+  return [...providers, moverVintageRow(manifest, degradations)];
+}
+
+/**
+ * The deed-vintage row: whether any door was inside the mover window, and why not.
+ *
+ * The reason is the run's *own* note whenever it recorded one, quoted rather
+ * than paraphrased — the pipeline measured this and wrote a sentence about it,
+ * and a second sentence written here could drift from the numbers beside it. The
+ * fallback exists only for a run that recorded the block without the note.
+ *
+ * A manifest with no `deed_vintage` at all — anything published before this was
+ * measured — is reported as not live with a reason that claims nothing. Calling
+ * it live would assert a measurement nobody took.
+ *
+ * @param {object|null} manifest
+ * @param {string[]} degradations the run's recorded degradations
+ */
+function moverVintageRow(manifest, degradations) {
+  const vintage = (manifest && manifest.deed_vintage) || null;
+
+  if (!vintage) {
+    return {
+      ...MOVER_VINTAGE,
+      live: false,
+      reason: manifest
+        ? 'This run did not record how old the deed data behind the Mover signal was, '
+          + 'so this page cannot say whether any door was inside the mover window.'
+        : 'There is no published run to report on, so this page cannot say whether any '
+          + 'door was inside the mover window.',
+    };
+  }
+
+  if (isNumber(vintage.doors_in_mover_window) && vintage.doors_in_mover_window > 0) {
+    return { ...MOVER_VINTAGE, live: true, reason: null };
+  }
+
+  const recorded = degradations.find((note) => /mover/i.test(note)) || null;
+  return { ...MOVER_VINTAGE, live: false, reason: recorded || describeVintage(vintage) };
+}
+
+/**
+ * A sentence for a recorded vintage the run left uncommented, built only from
+ * what the block actually holds — never from a date written into this page.
+ *
+ * @param {object} vintage the manifest's `deed_vintage` block
+ */
+function describeVintage(vintage) {
+  const days = isNumber(vintage.mover_window_days)
+    ? vintage.mover_window_days
+    : THRESHOLDS.mover_90d_days;
+
+  return vintage.latest_deed_date
+    ? `No door in this territory has a deed dated inside the ${days}-day mover window: the `
+      + `newest deed anywhere in the county extract is ${vintage.latest_deed_date}, so the `
+      + 'Mover group could not fire on this run. That is the vintage of the extract, not a '
+      + 'rule that failed.'
+    : `This run found no readable deed date, so no door could be placed inside the ${days}-day `
+      + 'mover window and the Mover group could not fire on this run.';
 }
 
 /* ── Absentee detection (R11.3) ──────────────────────────────────────────── */

@@ -57,6 +57,7 @@ from typing import Any, Iterator, Mapping, Sequence
 from houseaccount.resolve import DoorFacts, ResolveReport
 from houseaccount.scoring.engine import ScoreResult
 from houseaccount.scoring.evidence import EvidenceItem
+from houseaccount.scoring.weights import THRESHOLDS
 
 #: The three artifacts a run publishes. `SQLITE_NAME` is already pinned by the
 #: `clean` target in the Makefile.
@@ -66,6 +67,12 @@ RUN_MANIFEST_NAME = "run_manifest.json"
 
 #: Published on a door the county record cannot support a score for (R9.4).
 EXCLUSION_REASON = "parcel record incomplete in county data"
+
+#: The mover window the disclosure below describes, read from the rule the engine
+#: scores on rather than re-typed here. A manifest carrying its own copy would go
+#: on saying "90-day window" the day the threshold moved, and the whole point of
+#: the `deed_vintage` block is that a reader can trust it against the map.
+MOVER_WINDOW_DAYS = int(THRESHOLDS["mover_90d_days"])
 
 #: Two tables, created on first publish. `seq` is explicit because `explain_score`
 #: replays the trail in the order the engine built it, and rows in a table have
@@ -104,7 +111,15 @@ CREATE TABLE IF NOT EXISTS evidence (
 
 @dataclass(frozen=True)
 class RunManifest:
-    """The once-per-run inputs a reader needs to reproduce the run (R13)."""
+    """The once-per-run inputs a reader needs to reproduce the run (R13).
+
+    `latest_deed_date` and `doors_in_mover_window` are the run's measurement of
+    how old the MOD-IV extract is — the newest deed anywhere in the municipal
+    feed, and how many territory doors that leaves inside the mover window. They
+    default because they are a disclosure about the source rather than an input
+    the score is computed against: an older caller that never measured them still
+    constructs, and publishes a block that claims nothing.
+    """
 
     run_at: datetime
     as_of: date
@@ -114,6 +129,8 @@ class RunManifest:
     retrieved: Mapping[str, date]
     cost_usd: float
     degradations: Sequence[str] = ()
+    latest_deed_date: date | None = None
+    doors_in_mover_window: int = 0
 
 
 @dataclass(frozen=True)
@@ -341,11 +358,38 @@ def _write_manifest(
         "doors_scored": doors_scored,
         "doors_unscored": doors_total - doors_scored,
         "coverage": _ratio(doors_scored, doors_total),
+        "deed_vintage": _deed_vintage_block(manifest),
         "degradations": list(manifest.degradations),
         "resolve": _resolve_block(report),
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
+
+
+def _deed_vintage_block(manifest: RunManifest) -> dict[str, Any]:
+    """How old the deed data is, and what that costs the heaviest signal (R13).
+
+    The Mover group is worth more than any other group in the model, and whether
+    it fired at all is a property of the extract rather than of the code: if the
+    newest deed in the county feed predates the window, no door can earn a mover
+    point however correct the rule is. Publishing the vintage beside the run is
+    what lets a reader tell "nobody moved here recently" from "the mover rule is
+    broken" — a distinction the map alone cannot make.
+
+    `null` is the honest answer for `latest_deed_date` when nothing in the feed
+    parsed: a date invented to fill the slot would be worse than the gap.
+
+    This block only *reports* the measurement. The sentence that says the group
+    could not fire is recorded by the run, in `degradations`, where every other
+    lost signal is named — see `_write_manifest`, which copies that list through
+    verbatim rather than adding to it.
+    """
+    latest = manifest.latest_deed_date
+    return {
+        "latest_deed_date": latest.isoformat() if latest is not None else None,
+        "mover_window_days": MOVER_WINDOW_DAYS,
+        "doors_in_mover_window": manifest.doors_in_mover_window,
+    }
 
 
 def _resolve_block(report: ResolveReport) -> dict[str, Any]:

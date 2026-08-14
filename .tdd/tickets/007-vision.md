@@ -1,12 +1,12 @@
 ---
 id: 007
 title: "Vision: R3.3 detection schema, provider seam, ortho tiling (R4)"
-status: pending
+status: green
 depends_on: [001]
 touches: [src/houseaccount/vision/schema.py, src/houseaccount/vision/provider.py, src/houseaccount/vision/tiles.py, src/houseaccount/vision/run.py, tests/test_vision_schema.py, tests/test_vision_provider.py, tests/test_vision_tiles.py]
-iterations: 0
-test_files: []
-branch: ""
+iterations: 1
+test_files: [tests/test_vision_schema.py, tests/test_vision_tiles.py, tests/test_vision_provider.py]
+branch: "tdd/007" (merged, removed)
 ---
 
 ## Scope
@@ -41,3 +41,10 @@ and the 2015 sibling service, EPSG:3857, `size=640,640`, `f=image`.
       documented confidence floor — this is the only path from vision into scoring.
 - [ ] With no API key configured, the vision stage yields an empty-but-valid result plus a logged
       declination, and the pipeline can still score every door.
+
+## Attempt log
+
+- iter 1: green. CONFIDENCE_FLOOR=0.60, TILE_SPAN_METERS=120, DEFAULT_BATCH_SIZE=4,
+  VISION_MODEL='claude-haiku-4-5'. Ledger is written before parsing so an unparseable answer
+  still bills. PROMPT_VERSION rides in the cache key so a prompt change misses stale entries.
+  `anthropic` imported lazily inside run._build_client (import-time test enforces it).

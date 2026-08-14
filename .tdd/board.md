@@ -34,10 +34,10 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 001 | Foundation: config, cache, HTTP, cost ledger, redaction guard | green | 1 | — | W1 seq |
 | 002 | Normalizers: deed YYMMDD, address, join keys | green | 1 | 001 | W2 batch |
 | 003 | Score engine + evidence (R6/R7) — 12 fixtures | green | 1 | 001,002 | W2 batch |
-| 004 | Harvest: parcels + territory bootstrap (R1) | pending | 0 | 001 | W3 par |
-| 005 | Harvest: permits + ACS + rental seam (R2.1/R11.3) | pending | 0 | 001 | W3 par |
+| 004 | Harvest: parcels + territory bootstrap (R1) | green | 1 | 001 | W3 par |
+| 005 | Harvest: permits + ACS + rental seam (R2.1/R11.3) | green | 1 | 001 | W3 par |
 | 006 | Entity resolution + match rate (R3) | pending | 0 | 002,004,005 | W4 seq |
-| 007 | Vision: schema, provider seam, ortho tiles (R4) | pending | 0 | 001 | W3 par |
+| 007 | Vision: schema, provider seam, ortho tiles (R4) | green | 1 | 001 | W3 par |
 | 008 | Eval harness (R5/R14) | pending | 0 | 003,007 | W5 par |
 | 009 | Publish + pipeline orchestrator (R2.2) | pending | 0 | 003,004,005,006,007 | W6 seq |
 | 010 | Route planner module (R10.1–10.3) | pending | 0 | 003 | W5 par |

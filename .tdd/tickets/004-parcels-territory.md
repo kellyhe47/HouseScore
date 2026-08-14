@@ -1,12 +1,12 @@
 ---
 id: 004
 title: "Harvest: NJ parcels + territory bootstrap (R1.1, R1.2, R2.1)"
-status: pending
+status: green
 depends_on: [001]
 touches: [src/houseaccount/sources/parcels.py, src/houseaccount/territory.py, tests/test_parcels.py, tests/test_territory.py, data/territory.geojson]
-iterations: 0
-test_files: []
-branch: ""
+iterations: 1
+test_files: [tests/test_parcels.py, tests/test_territory.py]
+branch: "tdd/004" (merged, removed)
 ---
 
 ## Scope
@@ -41,3 +41,9 @@ Tests use a fixture-backed fake transport. No network in the test suite.
 - [ ] Idempotent: running the bootstrap twice over the same input produces byte-identical output.
 - [ ] `territory_median_value(parcels)` = median `NET_VALUE` over territory class-2 parcels with
       `NET_VALUE > 0` (this is the number the run manifest persists, R6 Capacity).
+
+## Attempt log
+
+- iter 1: green. Terminates on short page (not exceededTransferLimit); `orderByFields=OBJECTID`
+  added because ArcGIS resultOffset paging without a stable sort skips/duplicates records.
+  `outFields` is a 21-field allowlist so identity fields are absent by construction.

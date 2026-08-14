@@ -1,12 +1,12 @@
 ---
 id: 005
 title: "Harvest: construction permits + Census ACS + rental-registration seam"
-status: pending
+status: green
 depends_on: [001]
 touches: [src/houseaccount/sources/permits.py, src/houseaccount/sources/acs.py, src/houseaccount/sources/rental.py, tests/test_permits.py, tests/test_acs.py, tests/test_rental.py]
-iterations: 0
-test_files: []
-branch: ""
+iterations: 1
+test_files: [tests/test_permits.py, tests/test_acs.py, tests/test_rental.py]
+branch: "tdd/005" (merged, removed)
 ---
 
 ## Scope
@@ -43,3 +43,9 @@ Ground truth verified live in Phase 0 (see `.tdd/config.md`):
       returns `True` for seeded PINs. Nothing else about a household is ever returned.
 - [ ] No source module references owner names or mailing-address fields (guard test from T001
       covers this repo-wide; do not reintroduce them).
+
+## Attempt log
+
+- iter 1: green. `$order=:id` on the Socrata walk for the same offset-stability reason.
+  `permits.Permit` re-exports the engine's type — no second Permit definition.
+  ACS declination path is the one that runs today (no CENSUS_API_KEY in this environment).

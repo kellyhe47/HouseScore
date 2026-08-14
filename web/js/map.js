@@ -175,6 +175,21 @@ let walk = null;
 /** A `resumeOffer` waiting on the map, or null. */
 let pendingResume = null;
 
+/**
+ * The Data & Ethics page's demo-only trigger links here with `#demo-error`, so
+ * the degraded state it describes is one click from the description.
+ *
+ * Read and cleared at boot rather than checked on each load: leaving it in the
+ * URL would make every Retry re-fail, which is the opposite of a demo. Clearing
+ * it here is also why `openSharedRoute` below never sees it — and a share token
+ * is never this fragment, so nothing is lost.
+ */
+let demoErrorRequested =
+  typeof location !== 'undefined' && location.hash === '#demo-error';
+if (demoErrorRequested) {
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
 /* ── Small DOM helpers ───────────────────────────────────────────────────── */
 
 /** Build an element. Text always goes in as text — never as markup. */
@@ -237,6 +252,14 @@ async function loadDoors() {
     // share link has to resolve its PINs to doors that exist.
     offerResume();
     openSharedRoute();
+
+    if (demoErrorRequested) {
+      // One-shot: the flag was consumed at boot, so Retry recovers instead of
+      // re-reading the fragment and failing the same load forever.
+      demoErrorRequested = false;
+      machine.fail();
+      renderMachine();
+    }
   } catch (error) {
     console.error('[houseaccount] doors layer failed to load:', error);
     machine.fail();
@@ -1371,14 +1394,24 @@ $('plan-route').addEventListener('click', () => {
   if (els.routePanel.hidden) openRoutePanel();
   else closeRoutePanel();
 });
-$('open-about').addEventListener('click', () =>
-  showToast('Data & Ethics page arrives in the next build')
-);
+// "Data & Ethics" is a plain link to ethics.html — no handler needed.
 
 /* ── Boot ────────────────────────────────────────────────────────────────── */
 
 window.addEventListener('resize', () => {
   if (selectedPin) els.panel.dataset.layout = panelLayout(window.innerWidth);
+
+  // `fitBounds` runs once on load, so a desktop↔mobile resize used to leave the
+  // territory small and off-centre until a reload. Re-measure and re-fit — but
+  // only while the rep is looking at the whole territory: refitting under a
+  // planned route or an open door would throw away the view they chose.
+  if (map) {
+    map.resize();
+    if (!routeView && !selectedPin) {
+      const bounds = boundsOfDoors();
+      if (bounds) map.fitBounds(bounds, { padding: 48, duration: 0 });
+    }
+  }
   scheduleLabels();
 });
 

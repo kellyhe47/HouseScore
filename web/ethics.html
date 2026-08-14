@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data &amp; Ethics — how the House Score works</title>
+<meta name="description" content="The House Score's one-page rationale: what it predicts, which signals it uses, the exact weights, what the pipeline deliberately does not do, and how it was evaluated.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="doc">
+  <div class="doc__inner">
+    <a class="btn btn--ghost doc__back" href="index.html">← Back to map</a>
+
+    <div class="doc__eyebrow">HOUSEACCOUNT · RAMSEY TERRITORY</div>
+    <h1 class="doc__title">Data &amp; Ethics — how the House Score works</h1>
+    <p class="doc__lede">
+      This page is the score's one-page rationale: who it is looking for, which signals it
+      uses and why each one earns its place, the exact weights, what this pipeline
+      deliberately does not do, what actually ran on the published run, and how any of it
+      would be validated.
+    </p>
+
+    <noscript>
+      <p class="doc__lede">This page renders its tables from the published run, which needs
+      JavaScript. The same numbers are in <code>eval/report.json</code> and
+      <code>data/run_manifest.json</code>.</p>
+    </noscript>
+
+    <main id="page"></main>
+  </div>
+</div>
+
+<script type="module">
+import { buildEthicsPage } from './js/ethics.js';
+
+/**
+ * Where the published artifacts sit relative to this page.
+ *
+ * The default assumes the site is served from the repository, with the page at
+ * `web/ethics.html` and the artifacts at `eval/` and `data/`. A deployment that
+ * copies the two JSON files next to the page sets the override to '.' — the
+ * same single-constant pattern `map.js` uses for the API base, and for the same
+ * reason: R12 puts these surfaces on different hosts.
+ */
+const ARTIFACT_BASE = String(window.HOUSEACCOUNT_ARTIFACT_BASE ?? '..').replace(/\/$/, '');
+
+/**
+ * Read one artifact, or report that it is missing.
+ *
+ * A missing file is an ordinary state — a fresh clone has neither — and the
+ * view model is built to render without them. Falling back to `null` is what
+ * keeps this page from inventing numbers when there is no run to describe.
+ */
+async function artifact(pathname) {
+  try {
+    const response = await fetch(`${ARTIFACT_BASE}/${pathname}`, {
+      headers: { accept: 'application/json' },
+    });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ── Tiny DOM helpers. Text goes in as text, never as markup. ─────────────── */
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+}
+
+function section(title, ...children) {
+  const block = el('section', 'doc__section');
+  block.appendChild(el('h2', 'doc__h2', title));
+  for (const child of children) if (child) block.appendChild(child);
+  return block;
+}
+
+/** A bordered card with hairline-separated rows — the prototype's table shape. */
+function card(...rows) {
+  const box = el('div', 'card');
+  for (const row of rows) if (row) box.appendChild(row);
+  return box;
+}
+
+/** A claim rendered as a labelled commitment. */
+function claimList(claims) {
+  const list = el('ul', 'claims');
+  for (const claim of claims) {
+    list.appendChild(el('li', 'claims__item', claim.text));
+  }
+  return list;
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+
+function icpSection(page) {
+  const traits = card(
+    ...page.icp.traits.map((trait) => {
+      const row = el('div', 'card__row card__row--trait');
+      row.appendChild(el('span', 'card__key', trait.label));
+      row.appendChild(el('span', 'card__body', trait.body));
+      return row;
+    })
+  );
+  return section(
+    'Who the score finds (ICP)',
+    el('p', 'doc__p', page.icp.definition),
+    traits
+  );
+}
+
+function traceSection(page) {
+  const groups = page.trace.map((group) => {
+    const block = el('div', 'trace');
+
+    const head = el('div', 'trace__head');
+    head.appendChild(el('span', 'trace__name', group.label));
+    head.appendChild(el('span', 'trace__max', `max ${group.max}`));
+    head.appendChild(el('span', 'trace__trait', group.icpTrait));
+    block.appendChild(head);
+
+    for (const signal of group.signals) {
+      const row = el('div', 'trace__row');
+      const points = el('span', 'trace__points', signal.points > 0 ? `+${signal.points}` : signal.points);
+      points.classList.add(signal.points < 0 ? 'is-neg' : 'is-pos');
+      row.appendChild(points);
+      row.appendChild(el('span', 'trace__desc', signal.description));
+      block.appendChild(row);
+    }
+    return block;
+  });
+
+  return section(
+    'Every signal, and the ICP trait it serves',
+    el(
+      'p',
+      'doc__p',
+      'Each group below points at exactly one of the four traits above, and every '
+        + 'point value is read from the scoring engine’s own weight table rather than '
+        + 'restated here — a published weight that disagreed with the engine would make '
+        + 'this page a lie about the map next to it.'
+    ),
+    ...groups
+  );
+}
+
+function weightsSection(page) {
+  const rows = card(
+    ...page.weights.rows.map((row) => {
+      const item = el('div', 'card__row card__row--weight');
+      item.appendChild(el('code', 'card__code', row.key));
+      item.appendChild(el('span', 'card__body', row.label));
+      item.appendChild(el('span', 'card__num', row.points > 0 ? `+${row.points}` : row.points));
+      return item;
+    })
+  );
+
+  const thresholds = card(
+    ...page.weights.thresholds.map((row) => {
+      const item = el('div', 'card__row card__row--weight');
+      item.appendChild(el('code', 'card__code', row.key));
+      item.appendChild(el('span', 'card__body', row.label));
+      item.appendChild(el('span', 'card__num', row.value));
+      return item;
+    })
+  );
+
+  return section(
+    'The exact weights',
+    el('div', 'formula', page.weights.formula),
+    el('p', 'doc__p', page.weights.note),
+    el('h3', 'doc__h3', 'Point values'),
+    rows,
+    el('h3', 'doc__h3', 'Thresholds the points hang on'),
+    thresholds,
+    el(
+      'p',
+      'doc__note',
+      `Exterior condition is an ordinal scale, worst first: ${page.weights.conditionScale.join(' → ')}.`
+    )
+  );
+}
+
+function ethicsSection(page) {
+  const { danielsLaw, census, streetView, absentee } = page.ethics;
+
+  const block = (heading, body, claims) => {
+    const wrap = el('div', 'stance');
+    wrap.appendChild(el('h3', 'doc__h3', heading));
+    wrap.appendChild(el('p', 'doc__p', body));
+    wrap.appendChild(claimList(claims));
+    return wrap;
+  };
+
+  return section(
+    'What we deliberately do not do',
+    block(danielsLaw.heading, danielsLaw.body, danielsLaw.claims),
+    block(census.heading, census.body, census.claims),
+    block(streetView.heading, streetView.body, streetView.claims),
+    block('Absentee detection', absentee.body, absentee.claims)
+  );
+}
+
+function availabilitySection(page) {
+  const rows = card(
+    ...page.availability.map((row) => {
+      const item = el('div', 'card__row card__row--status');
+      const badge = el('span', `badge ${row.live ? 'badge--live' : 'badge--declined'}`,
+        row.live ? 'live' : 'declined');
+      item.appendChild(badge);
+      item.appendChild(el('span', 'card__key', row.label));
+      item.appendChild(el('span', 'card__body', row.reason || 'Answered on this run.'));
+      return item;
+    })
+  );
+
+  return section(
+    'What ran, and what declined',
+    el(
+      'p',
+      'doc__p',
+      'A rationale that describes an ideal pipeline is worth nothing. This is what the '
+        + 'published run actually obtained — and where a provider refused, the refusal is '
+        + 'printed instead of the number it would have produced.'
+    ),
+    rows,
+    el('p', 'doc__note', page.coverage.text)
+  );
+}
+
+function sourcesSection(page) {
+  const rows = card(
+    ...page.sources.map((source) => {
+      const item = el('div', 'card__row card__row--source');
+      const text = el('span', 'card__body');
+      text.appendChild(el('strong', null, source.name));
+      text.appendChild(el('span', 'card__muted', ` — ${source.detail}`));
+      item.appendChild(text);
+      item.appendChild(el('span', 'card__date', source.retrieved));
+      return item;
+    })
+  );
+  return section('Data sources and retrieval dates', rows);
+}
+
+function evaluationSection(page) {
+  const view = page.evaluation;
+
+  const grid = el('div', 'metrics');
+  for (const row of view.metrics) {
+    const tile = el('div', 'metrics__tile');
+    tile.appendChild(el('div', `metrics__value${row.value === null ? ' is-unmeasured' : ''}`, row.display));
+    tile.appendChild(el('div', 'metrics__label', row.label));
+    grid.appendChild(tile);
+  }
+
+  const provenance = el('div', view.isProvisional ? 'notice notice--warn' : 'doc__note');
+  if (view.source) provenance.appendChild(el('div', 'provenance', `source: ${view.source}`));
+  provenance.appendChild(el('div', null, view.caveat));
+
+  const resolution = page.resolution.rows.length
+    ? card(
+        ...page.resolution.rows.map((row) => {
+          const item = el('div', 'card__row card__row--rate');
+          item.appendChild(el('span', 'card__key', row.label));
+          item.appendChild(el('span', 'card__num', row.display));
+          item.appendChild(el('span', 'card__body', row.body));
+          return item;
+        })
+      )
+    : null;
+
+  return section(
+    'Evaluation results',
+    grid,
+    provenance,
+    el('h3', 'doc__h3', 'Entity resolution'),
+    resolution || el('p', 'doc__p', page.resolution.note),
+    resolution ? el('p', 'doc__note', page.resolution.note) : null
+  );
+}
+
+function validationSection(page) {
+  return section(
+    page.validation.heading,
+    el('p', 'doc__p', page.validation.body),
+    claimList(page.validation.claims)
+  );
+}
+
+function mcpSection() {
+  const box = el('div', 'card card--plain');
+  box.appendChild(el('div', 'formula', 'https://houseaccount-mcp.fly.dev/mcp'));
+  for (const [tool, description] of [
+    ['get_door_score(address)', 'score, confidence and the full evidence trail'],
+    ['explain_score(address)', 'the same, plus the group-by-group arithmetic'],
+    ['plan_route(hours, start_point, max_doors?)', 'ordered stops with talk tracks'],
+  ]) {
+    const row = el('div', 'card__row card__row--tool');
+    row.appendChild(el('code', 'card__code', tool));
+    row.appendChild(el('span', 'card__body', description));
+    box.appendChild(row);
+  }
+  return section(
+    'MCP server',
+    el(
+      'p',
+      'doc__p',
+      'The same published run, exposed as tools. The map and an LLM answer from one '
+        + 'artifact, so they cannot describe a door differently.'
+    ),
+    box
+  );
+}
+
+function demoFooter(page) {
+  const footer = el('div', 'doc__demo');
+  footer.appendChild(el('span', 'demo__tag', 'demo only'));
+  const link = el('a', null, page.demo.label);
+  // The map honours this fragment by dropping straight into its error state, so
+  // the trigger actually demonstrates something rather than just linking back.
+  link.href = 'index.html#demo-error';
+  footer.appendChild(link);
+  footer.appendChild(el('span', 'card__muted', ` — ${page.demo.body}`));
+  return footer;
+}
+
+/* ── Render ──────────────────────────────────────────────────────────────── */
+
+const [report, manifest] = await Promise.all([
+  artifact('eval/report.json'),
+  artifact('data/run_manifest.json'),
+]);
+
+const page = buildEthicsPage({ report, manifest });
+const root = document.getElementById('page');
+
+root.append(
+  icpSection(page),
+  traceSection(page),
+  weightsSection(page),
+  ethicsSection(page),
+  availabilitySection(page),
+  sourcesSection(page),
+  evaluationSection(page),
+  validationSection(page),
+  mcpSection(),
+  demoFooter(page)
+);
+</script>
+</body>
+</html>

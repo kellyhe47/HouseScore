@@ -1,11 +1,11 @@
 ---
 id: 012
 title: "Map UI core: choropleth, filter, evidence panel, degraded states (R9)"
-status: pending
+status: tests-written
 depends_on: [009, 011]
 touches: [web/index.html, web/styles.css, web/js/ramp.js, web/js/panel.js, web/js/filter.js, web/js/state.js, web/js/map.js, web/js/ramp.test.js, web/js/panel.test.js, web/js/filter.test.js, web/js/state.test.js]
 iterations: 0
-test_files: []
+test_files: [web/js/ramp.test.js, web/js/filter.test.js, web/js/panel.test.js, web/js/state.test.js]
 branch: ""
 ---
 

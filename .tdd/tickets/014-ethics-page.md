@@ -1,11 +1,11 @@
 ---
 id: 014
 title: "Data & Ethics page — doubles as the one-page score rationale (R11.4)"
-status: pending
+status: tests-written
 depends_on: [008, 012]
 touches: [web/ethics.html, web/js/ethics.js, web/js/ethics.test.js]
 iterations: 0
-test_files: []
+test_files: [web/js/ethics.test.js]
 branch: ""
 ---
 

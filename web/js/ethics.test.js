@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -13,7 +13,15 @@ import {
   absenteeStatement,
   buildEthicsPage,
 } from './ethics.js';
-import { evalReport, runManifest, healthyManifest } from './test-fixtures.js';
+import {
+  evalReport,
+  runManifest,
+  healthyManifest,
+  visionManifest,
+  visionRanClean,
+  visionDeclined,
+  VISION_NO_KEY_REASON,
+} from './test-fixtures.js';
 
 /* ── The anti-drift check ────────────────────────────────────────────────────
  *
@@ -436,6 +444,138 @@ test('a missing manifest does not crash', () => {
   assert.ok(Array.isArray(signalAvailability(null)));
 });
 
+/* ── The vision stage ran, and the page has to say so (T023) ─────────────────
+ *
+ * On the published run the vision stage answered 270 of 270 requests and put
+ * imagery evidence on 119 of 540 doors — and the page printed DECLINED beside
+ * it, because the only thing it had to go on was a degradation *string*, and any
+ * matching string read as a refusal. A reviewer two clicks away finds pool
+ * evidence on the map, which makes the section a lie about the product beside
+ * it.
+ *
+ * So there are three states here, not two, and they are read from the run's own
+ * `vision` block rather than inferred from prose:
+ *
+ *   ran clean          → live      (nothing to disclaim)
+ *   ran, lost answers  → partial   (a quantified loss: "31 of 270 answers")
+ *   never ran          → declined  (no key; the refusal is printed)
+ *
+ * `live` stays the boolean the rest of the page already reads, and is exactly
+ * "not declined": a stage that answered for 119 doors is live with a stated
+ * limit, the same shape the mover row below already uses.
+ */
+
+const visionRow = (manifest) => signalAvailability(manifest).find((row) => row.key === 'vision');
+
+test('a vision stage that ran with partial loss is not called a declination', () => {
+  const row = visionRow(visionManifest());
+
+  assert.equal(row.status, 'partial');
+  assert.notEqual(row.status, 'declined', '119 doors carry this stage’s evidence');
+  assert.equal(row.live, true);
+});
+
+test('the partial vision row quantifies the loss against the whole run', () => {
+  const row = visionRow(visionManifest());
+
+  assert.ok(row.reason.includes('31 of 270'), row.reason);
+  assert.ok(row.reason.includes('119 of 540'), row.reason);
+});
+
+test('a vision stage that ran clean is live and disclaims nothing', () => {
+  const row = visionRow(visionManifest({ vision: visionRanClean(), degradations: [] }));
+
+  assert.equal(row.status, 'live');
+  assert.equal(row.live, true);
+  assert.equal(row.reason, null);
+});
+
+test('a vision stage that never ran is still reported as declined', () => {
+  // The distinction the whole ticket rests on: no key configured is a refusal,
+  // and it has to keep reading as one.
+  const row = visionRow(
+    visionManifest({ vision: visionDeclined(), degradations: [VISION_NO_KEY_REASON] })
+  );
+
+  assert.equal(row.status, 'declined');
+  assert.equal(row.live, false);
+  assert.ok(row.reason.includes('OPENAI_API_KEY'), row.reason);
+});
+
+test('the vision state comes from the manifest, not from the degradation text', () => {
+  // The run recorded a refusal-shaped sentence *and* a block saying the stage
+  // ran. The block is the measurement; the sentence is prose.
+  const row = visionRow(
+    visionManifest({
+      vision: visionRanClean(),
+      degradations: ['the vision stage was skipped and no imagery was read'],
+    })
+  );
+
+  assert.equal(row.status, 'live');
+  assert.equal(row.live, true);
+});
+
+test('the quantified loss is read from the manifest, not written into the page', () => {
+  const row = visionRow(
+    visionManifest({
+      vision: {
+        available: true,
+        declination_reason: null,
+        answers_total: 100,
+        answers_lost: 4,
+        doors_with_imagery: 7,
+      },
+      doors_total: 200,
+    })
+  );
+
+  assert.equal(row.status, 'partial');
+  assert.ok(row.reason.includes('4 of 100'), row.reason);
+  assert.ok(row.reason.includes('7 of 200'), row.reason);
+  assert.doesNotMatch(row.reason, /31|270|119|540/, 'a count written into the page');
+});
+
+test('every availability row carries a status, and `live` agrees with it', () => {
+  for (const manifest of [runManifest(), healthyManifest(), visionManifest(), null]) {
+    for (const row of signalAvailability(manifest)) {
+      assert.ok(
+        ['live', 'partial', 'declined'].includes(row.status),
+        `${row.key} has status ${JSON.stringify(row.status)}`
+      );
+      assert.equal(row.live, row.status !== 'declined', `${row.key} disagrees with itself`);
+    }
+  }
+});
+
+test('a manifest with no vision block still reports what the run recorded', () => {
+  // Older publishes carry no `vision` block at all. A recorded skip still reads
+  // as a declination, and a clean run still reads as live — no page that reads
+  // an older artifact may start claiming a state nobody measured.
+  assert.equal(visionRow(runManifest()).status, 'declined');
+  assert.ok(visionRow(runManifest()).reason.trim());
+  assert.equal(visionRow(healthyManifest()).status, 'live');
+});
+
+test('the page carries the vision state into its what-ran section', () => {
+  const built = buildEthicsPage({ report: evalReport(), manifest: visionManifest() });
+  const vision = built.availability.find((row) => /vision|imagery/i.test(row.label));
+
+  assert.ok(vision, built.availability.map((row) => row.label));
+  assert.equal(vision.status, 'partial');
+  assert.ok(vision.reason.includes('119 of 540'), vision.reason);
+});
+
+test('the what-ran badge is rendered from the row’s status, not a two-state boolean', () => {
+  // The badge is the word a reviewer actually reads, and it is built in
+  // ethics.html. A two-state `row.live ? 'live' : 'declined'` cannot print the
+  // third state however correct the view model is.
+  const markup = readFileSync(ETHICS_HTML, 'utf8');
+
+  assert.match(markup, /row\.status/);
+  assert.match(markup, /partial/);
+});
+
 /* ── The MOD-IV deed vintage (T019) ──────────────────────────────────────────
  *
  * The Mover group is the heaviest signal in the model and it is unearnable on
@@ -616,6 +756,7 @@ test('the page is plain data', () => {
  */
 
 const INDEX_HTML = path.join(import.meta.dirname, '..', 'index.html');
+const ETHICS_HTML = path.join(import.meta.dirname, '..', 'ethics.html');
 
 test('the header buttons no longer advertise shipped features as upcoming', () => {
   const markup = readFileSync(INDEX_HTML, 'utf8');
@@ -627,4 +768,116 @@ test('the Data & Ethics button points at the ethics page', () => {
   const markup = readFileSync(INDEX_HTML, 'utf8');
 
   assert.match(markup, /ethics\.html/);
+});
+
+/* ── The golden-fixture count is a measurement, not prose (T025) ──────────────
+ *
+ * The weights table two paragraphs above sets this page's own standard: every
+ * point value is read from the engine's weight table rather than restated here,
+ * because a published weight that disagreed with the engine would make the page
+ * a lie about the map next to it. The fixture count was hardcoded prose — it
+ * said "twelve" while the harness reported thirteen — so it gets the same
+ * treatment: read from `eval/report.json`, which this page already fetches for
+ * the eval figures. That removes the class of drift rather than resetting the
+ * counter.
+ */
+
+const fixtureNote = (report) => buildEthicsPage({ report, manifest: runManifest() }).weights.note;
+
+test('the fixture count is the count the published report reports', () => {
+  const note = fixtureNote(evalReport({ fixtures_total: 13 }));
+
+  assert.ok(note.includes('13'), note);
+  assert.match(note, /golden fixtures/);
+});
+
+test('a different published count changes the sentence', () => {
+  const note = fixtureNote(evalReport({ fixtures_total: 7 }));
+
+  assert.ok(note.includes('7'), note);
+  assert.doesNotMatch(note, /\b12\b|\b13\b|twelve|thirteen/i);
+});
+
+test('no fixture count is spelled into the page as a word', () => {
+  for (const text of strings(page())) {
+    assert.doesNotMatch(text, /\b(twelve|thirteen)\s+golden\b/i, text);
+  }
+});
+
+test('with no published report the page states no fixture count', () => {
+  // The established sad path: an unmeasured number is reported as unmeasured
+  // rather than as a zero, or as a stale literal that survives the report going
+  // missing. The determinism claim is true regardless and stays.
+  const note = buildEthicsPage({ report: null, manifest: null }).weights.note;
+
+  assert.ok(note.trim());
+  assert.match(note, /deterministic/i);
+  assert.doesNotMatch(note, /undefined|NaN|null/);
+  assert.doesNotMatch(note, /\d+ golden fixtures|twelve|thirteen/i);
+});
+
+test('a report that published no fixture count claims none', () => {
+  const note = fixtureNote(evalReport({ fixtures_total: null }));
+
+  assert.doesNotMatch(note, /undefined|NaN|null/);
+  assert.doesNotMatch(note, /\d+ golden fixtures/);
+});
+
+/* ── The MCP endpoint the page publishes (T024) ──────────────────────────────
+ *
+ * The MCP surface is a graded deliverable and this page is where a reviewer
+ * finds its URL. The page advertised a `houseaccount-mcp` app that no step in
+ * `docs/DEPLOY.md` creates, while `fly.toml` declares one app — `houseaccount` —
+ * and the server mounts the MCP transport at `/mcp` on it. After a by-the-book
+ * deploy the published endpoint did not resolve.
+ *
+ * (The scan below reads every file under `web/`, this one included, so the
+ * wrong hostname is deliberately not spelled out above.)
+ *
+ * The host is read out of `fly.toml` rather than typed here, so this test says
+ * "the page advertises the app the deploy creates" rather than re-pinning a
+ * literal that can drift again. `tests/test_deploy_config.py` states the same
+ * contract from the Python side, where the rest of the deploy config is parsed.
+ */
+
+const REPO_ROOT = path.join(import.meta.dirname, '..', '..');
+const WEB_DIR = path.join(REPO_ROOT, 'web');
+
+/** The one app `fly.toml` declares. */
+function flyAppName() {
+  const toml = readFileSync(path.join(REPO_ROOT, 'fly.toml'), 'utf8');
+  const match = toml.match(/^\s*app\s*=\s*["']([^"']+)["']/m);
+  assert.ok(match, 'fly.toml declares no app name');
+  return match[1];
+}
+
+/** Every file `web/` ships, as `[relative path, text]`. */
+function webFiles(dir = WEB_DIR, trail = 'web') {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    const shown = `${trail}/${entry.name}`;
+    if (entry.isDirectory()) return webFiles(full, shown);
+    if (!/\.(html|js|css|json)$/.test(entry.name)) return [];
+    return [[shown, readFileSync(full, 'utf8')]];
+  });
+}
+
+test('the MCP section advertises the endpoint on the app the deploy creates', () => {
+  const markup = readFileSync(ETHICS_HTML, 'utf8');
+
+  assert.ok(
+    markup.includes(`https://${flyAppName()}.fly.dev/mcp`),
+    `the page must publish the MCP endpoint on ${flyAppName()}.fly.dev`
+  );
+});
+
+test('no file under web/ still names a Fly app the deploy never creates', () => {
+  const app = flyAppName();
+  const stray = webFiles().flatMap(([where, text]) =>
+    [...text.matchAll(/([A-Za-z0-9][A-Za-z0-9-]*)\.fly\.dev/g)]
+      .filter((match) => match[1] !== app)
+      .map((match) => `${where}: ${match[1]}.fly.dev`)
+  );
+
+  assert.deepEqual(stray, [], `fly.toml declares only "${app}"`);
 });

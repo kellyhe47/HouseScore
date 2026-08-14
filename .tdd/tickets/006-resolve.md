@@ -1,11 +1,11 @@
 ---
 id: 006
 title: "Entity resolution + match-rate reporting (R3)"
-status: pending
+status: tests-written
 depends_on: [002, 004, 005]
 touches: [src/houseaccount/resolve.py, src/houseaccount/sources/tiger.py, tests/test_resolve.py, tests/test_tiger.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_resolve.py, tests/test_tiger.py]
 branch: ""
 ---
 

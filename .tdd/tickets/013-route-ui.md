@@ -1,11 +1,11 @@
 ---
 id: 013
 title: "Route UI + walk mode (R10, wireframe frames 4–4d)"
-status: pending
+status: tests-written
 depends_on: [010, 011, 012]
 touches: [web/js/route-ui.js, web/js/walk.js, web/js/share.js, web/js/panel.js, web/js/route-ui.test.js, web/js/walk.test.js, web/js/share.test.js, web/js/panel.test.js, web/index.html, web/js/map.js, src/houseaccount/server/api.py, src/houseaccount/server/published.py, tests/test_server.py]
 iterations: 0
-test_files: []
+test_files: [web/js/route-ui.test.js, web/js/walk.test.js, web/js/share.test.js, web/js/panel.test.js, tests/test_server.py]
 branch: ""
 ---
 

@@ -1,11 +1,11 @@
 ---
 id: 017
 title: "Report the R3.2 match rate against the municipality, not the territory block set"
-status: pending
+status: tests-written
 depends_on: [006, 008, 009]
 touches: [src/houseaccount/resolve.py, src/houseaccount/pipeline.py, eval/harness.py, tests/test_resolve.py, tests/test_harness.py, tests/test_pipeline.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_resolve.py, tests/test_harness.py, tests/test_pipeline.py]
 branch: ""
 ---
 

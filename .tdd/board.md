@@ -46,7 +46,7 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 013 | Route UI + walk mode (R10 frames 4–4d) | green | 1 | 010,011,012 | W8 seq |
 | 014 | Data & Ethics page (R11.4) | green | 1 | 008,012 | W9 batch |
 | 015 | README + reproducibility + cost report (R13/R14) | green | 1 | 009,011 | W9 batch |
-| 016 | Deploy readiness (R12) — expected blocked-on-human | tests-written | 0 | 011,012 | W10 |
+| 016 | Deploy readiness (R12) — expected blocked-on-human | blocked | 1 | 011,012 | W10 |
 | 017 | R3.2 match rate: municipal denominator, not territory blocks | green | 1 | 006,008,009 | W6b seq |
 | 018 | make eval reads the published run manifest | green | 1 | 009,017 | W9 batch |
 

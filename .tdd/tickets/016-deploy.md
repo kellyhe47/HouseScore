@@ -1,10 +1,10 @@
 ---
 id: 016
 title: "Deploy readiness: Fly.io server + Vercel UI (R12) — expected blocked-on-human"
-status: tests-written
+status: blocked
 depends_on: [011, 012]
 touches: [Dockerfile, fly.toml, vercel.json, docs/DEPLOY.md, tests/test_deploy_config.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_deploy_config.py, tests/test_server.py]
 branch: ""
 ---
@@ -40,3 +40,42 @@ than its honest "no published run" fallback.
       values** appear in any of them.
 - [ ] Final status: `blocked` with the reason "requires Fly.io/Vercel credentials — human step",
       everything else green.
+
+## Attempt log
+
+- iter 1: all 68 tests green; everything buildable is built. Live-probed on a real boot:
+  `/health` 200 (540 doors), `/api/doors.geojson` 200, `/api/eval/report.json` 200,
+  `/api/data/run_manifest.json` 200, `POST /api/route` 200.
+- The artifact routes deliberately mirror the paths `web/ethics.html` already fetches, so the
+  deploy sets `HOUSEACCOUNT_ARTIFACT_BASE` and nothing in `web/` changes. A locked test parses
+  those `artifact('…')` calls out of the HTML, so either side drifting goes red.
+- `scripts/vercel-build.sh` is the real injection step: it writes `web/js/config.js` with both
+  `window.HOUSEACCOUNT_*` globals and links it from every `web/*.html` head.
+- Implementer switched `app.include_router(...)` to `app.routes.extend(router.routes)`: FastAPI
+  0.141 stores an opaque `_IncludedRouter` in `app.routes`, so `route.path` was `''` for every
+  REST route and the anti-drift test could not see them. Verified live that all routes still serve.
+
+## BLOCKED — requires human credentials
+
+**Reason: the actual deploy needs Fly.io and Vercel accounts. Per the run rules, no account
+creation was attempted.** Everything up to that boundary is done and tested.
+
+Commands for the human, in order (★ = needs your credentials):
+
+Prereqs, no credentials: `brew install flyctl` · `npm install --global vercel` ·
+`make pipeline && make eval` (artifacts are baked into the image).
+
+1. ★ `flyctl auth login`
+2. `flyctl apps create houseaccount` (if the name is taken, change `app` in `fly.toml`)
+3. ★ `flyctl secrets set ANTHROPIC_API_KEY=<key> CENSUS_API_KEY=<key>` — both optional; the
+   deployed server calls neither, they only matter if you re-run the pipeline in the cloud
+4. `flyctl deploy`
+5. `curl https://<fly-app>.fly.dev/health` → expect a non-zero door count
+6. ★ `vercel login`
+7. `vercel link` — name it `houseaccount`, or add its origin to `UI_ORIGINS` in
+   `src/houseaccount/server/app.py` and re-run `flyctl deploy`
+8. `vercel env add HOUSEACCOUNT_API_BASE production` → `https://<fly-app>.fly.dev/api`
+9. `vercel env add HOUSEACCOUNT_ARTIFACT_BASE production` → same value
+10. `vercel --prod`
+11. Open the site: map draws ~540 parcels, evidence panel works, Plan Route works, and
+    Data & Ethics shows real numbers rather than the "no published run" fallback.

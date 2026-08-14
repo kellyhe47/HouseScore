@@ -1,4 +1,4 @@
-PY := .venv/bin/python
+PY := PYTHONPATH=src .venv/bin/python
 UV := uv
 
 .PHONY: setup pipeline eval test test-py test-web serve clean

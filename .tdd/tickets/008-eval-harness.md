@@ -1,12 +1,12 @@
 ---
 id: 008
 title: "Eval harness: fixtures + vision P/R + hallucination + cost per door (R5, R14)"
-status: pending
+status: green
 depends_on: [003, 007]
 touches: [eval/harness.py, eval/labels/README.md, eval/report.json, tests/test_harness.py]
-iterations: 0
-test_files: []
-branch: ""
+iterations: 1
+test_files: [tests/test_harness.py]
+branch: "tdd/008" (merged)
 ---
 
 ## Scope
@@ -39,3 +39,14 @@ Do not modify `eval/verify_claims.py` or any fixture.
       the Data & Ethics page (T014) consumes that file.
 - [ ] Non-zero exit if any fixture fails, or if a real resolve report is present and its match rate
       is below 0.95.
+
+## Attempt log
+
+- iter 1: green. `make eval` prints PASS with 12/12 fixtures. Vision metrics come from
+  fixture 09's frozen set with a loud NOT-A-MEASUREMENT caveat block — no model outputs were
+  fabricated. Cost and match rate read `$0.0000` / `n/a` until the pipeline (009) passes
+  `--ledger` / `--doors-scored` / `--resolve-report`.
+- Fixtures dispatch by *shape*, not filename, so a 13th fixture is picked up free.
+- The comparative `assertion` string is deliberately NOT eval()'d — both `score` and
+  `baseline_score` are pinned against the engine instead, which pins the difference without
+  executing text from a data file.

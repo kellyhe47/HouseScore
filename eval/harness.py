@@ -37,6 +37,19 @@ the source line changing to say so. A malformed label file is an error, never a
 silent slide back to the frozen numbers: falling back quietly is exactly how a
 measurement turns into a decoration.
 
+**Where a bare run gets its numbers (T018).** `make eval` is invoked with no
+flags, but two of the numbers it must report — the entity-resolution match rate
+(R3.2) and the cost per door (R14) — are produced by `make pipeline`, not by the
+fixtures. They are already published, in `data/run_manifest.json`. So `main`
+discovers that manifest and feeds it in; before it did, a bare run printed
+`n/a (no resolve report for this run)` and `doors scored: 0` with the real
+numbers sitting on disk beside it. Discovery lives in `main` and never in
+`run_eval`: `run_eval` stays pure, and `run_eval(resolve_report=None)` keeps
+meaning "no report" rather than quietly meaning "go and find one". An explicit
+`--resolve-report` / `--ledger` / `--doors-scored` always wins over the
+manifest, and a manifest that is missing or unreadable is a missing input, not
+a failing eval — the run says so on one line and still exits 0.
+
 No network and no model calls: every number here is arithmetic over frozen
 counts and deterministic code.
 """
@@ -51,7 +64,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from houseaccount.cost import CostLedger
+from houseaccount.cost import CostLedger, SourceCost
 from houseaccount.normalize import parse_deed_date
 from houseaccount.scoring.engine import ScoreInput, score_door
 
@@ -75,6 +88,26 @@ EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_GOLDEN_DIR = EVAL_DIR / "golden"
 DEFAULT_LABELS_DIR = EVAL_DIR / "labels"
 DEFAULT_REPORT_PATH = EVAL_DIR / "report.json"
+
+#: What `make pipeline` publishes, and therefore where a bare `make eval` looks
+#: for the run it should be reporting on. Read through the module global at call
+#: time rather than being frozen into an argparse default, so a test (or a
+#: caller grading someone else's run) can point it somewhere else.
+DEFAULT_MANIFEST_PATH = EVAL_DIR.parent / "data" / "run_manifest.json"
+
+#: Printed by a run that found no manifest — a fresh clone, or a repo whose
+#: pipeline has not been run yet. Absence of an input, stated; never a silent
+#: "n/a" the reader has to explain to themselves.
+NO_MANIFEST_NOTE = (
+    "  note: no run manifest found, so the cost and entity-resolution numbers "
+    "above are from this invocation's flags alone -- `make pipeline` publishes "
+    "data/run_manifest.json and a later `make eval` reads them from it."
+)
+
+#: The single ledger source a discovered manifest reconstructs into. The
+#: manifest records what the run spent in total, not which API spent it, so the
+#: harness must not pretend to a per-source breakdown it was never given.
+MANIFEST_COST_SOURCE = "published run (data/run_manifest.json)"
 
 #: Every field one hand label must carry. `probe` is the only optional one
 #: (default False) because "this image is in the negative universe" is a claim
@@ -268,22 +301,40 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     The JSON is written even when the run fails — a failing eval is the run you
     most want a machine-readable record of.
+
+    Also where the published run manifest is discovered, so that `make eval`
+    with no flags reports the run that actually happened. Every flag beats the
+    manifest: whoever passed one is grading something specific on purpose.
     """
     args = _parse_args(argv)
+    manifest = _published_manifest(DEFAULT_MANIFEST_PATH)
 
     try:
         report = run_eval(
             golden_dir=args.golden_dir,
             labels_dir=args.labels_dir,
-            resolve_report=_load_json(args.resolve_report),
-            ledger=CostLedger.load(args.ledger) if args.ledger else None,
-            doors_scored=args.doors_scored,
+            resolve_report=(
+                _load_json(args.resolve_report) if args.resolve_report else manifest
+            ),
+            ledger=(
+                CostLedger.load(args.ledger)
+                if args.ledger
+                else _manifest_ledger(manifest)
+            ),
+            doors_scored=(
+                args.doors_scored
+                if args.doors_scored is not None
+                else _manifest_doors(manifest)
+            ),
         )
     except LabelFormatError as error:
         print(f"eval: refusing to run -- {error}")
         return 2
 
     print(report.render())
+    if manifest is None and args.resolve_report is None:
+        print(NO_MANIFEST_NOTE)
+        print()
 
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report.as_dict(), indent=2) + "\n", encoding="utf-8")
@@ -568,14 +619,65 @@ def _match_rate(resolve_report: Any) -> float | None:
     R3.2 on it is what made a healthy 0.9742 join report 0.62. A report carrying
     only that number is treated as carrying no rate at all: no gate is a knowable
     gap, a gate on the wrong denominator is a wrong answer stated confidently.
+
+    A whole run manifest is accepted too, because a bare `make eval` grades the
+    published run and `publish` files the resolve numbers in a nested `resolve`
+    block. Nesting changes nothing about which rate counts: a manifest whose
+    block carries only `permit_match_rate` grades nothing, exactly as a flat
+    report of the same shape does.
     """
     if resolve_report is None:
         return None
-    if isinstance(resolve_report, Mapping):
-        rate = resolve_report.get("municipal_match_rate")
-    else:
-        rate = getattr(resolve_report, "municipal_match_rate", None)
+
+    rate = _municipal_rate(resolve_report)
+    if rate is None and isinstance(resolve_report, Mapping):
+        rate = _municipal_rate(resolve_report.get("resolve"))
     return None if rate is None else float(rate)
+
+
+def _municipal_rate(report: Any) -> Any:
+    """`municipal_match_rate` off one level of a report — mapping or dataclass."""
+    if isinstance(report, Mapping):
+        return report.get("municipal_match_rate")
+    return getattr(report, "municipal_match_rate", None)
+
+
+def _published_manifest(path: Path) -> Mapping[str, Any] | None:
+    """The run manifest `publish` wrote, or None when there is not a readable one.
+
+    Unreadable is deliberately the same answer as absent. `make eval` grades the
+    scoring engine; a truncated or half-written manifest is an input this run did
+    not get, and failing the eval over it would report a problem the engine does
+    not have.
+    """
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _manifest_ledger(manifest: Mapping[str, Any] | None) -> CostLedger | None:
+    """The run's spend, rebuilt as a one-source ledger, or None if unknowable."""
+    if manifest is None:
+        return None
+    try:
+        usd = float(manifest.get("cost_usd") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    return CostLedger(
+        {MANIFEST_COST_SOURCE: SourceCost(units=_manifest_doors(manifest), usd=usd)}
+    )
+
+
+def _manifest_doors(manifest: Mapping[str, Any] | None) -> int:
+    """`doors_scored` off the manifest. Unknown is 0 — the same as no manifest."""
+    if manifest is None:
+        return 0
+    try:
+        return int(manifest.get("doors_scored") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _load_json(path: Path | None) -> Any:
@@ -636,14 +738,30 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--report", type=Path, default=DEFAULT_REPORT_PATH, help="where to write the JSON report"
     )
+    # All three default to None rather than to a value, so "not given" stays
+    # distinguishable from "given, and it happens to be zero" — that difference
+    # is what lets the published manifest fill the gaps without ever overriding
+    # a caller who asked for `--doors-scored 0`.
     parser.add_argument(
-        "--resolve-report", type=Path, default=None, help="a resolve report JSON to grade R3.2 on"
+        "--resolve-report",
+        type=Path,
+        default=None,
+        help="a resolve report or run manifest JSON to grade R3.2 on "
+        "(default: the published data/run_manifest.json)",
     )
     parser.add_argument(
-        "--ledger", type=Path, default=None, help="a saved CostLedger JSON from a run"
+        "--ledger",
+        type=Path,
+        default=None,
+        help="a saved CostLedger JSON from a run "
+        "(default: the published manifest's cost_usd)",
     )
     parser.add_argument(
-        "--doors-scored", type=int, default=0, help="doors the ledger's spend is amortised over"
+        "--doors-scored",
+        type=int,
+        default=None,
+        help="doors the ledger's spend is amortised over "
+        "(default: the published manifest's doors_scored)",
     )
     return parser.parse_args(list(argv) if argv is not None else None)
 

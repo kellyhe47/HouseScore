@@ -1,10 +1,10 @@
 ---
 id: 011
 title: "MCP server + HTTP API for the UI (R8)"
-status: tests-written
+status: green
 depends_on: [009, 010]
 touches: [src/houseaccount/server/app.py, src/houseaccount/server/mcp_tools.py, src/houseaccount/server/api.py, src/houseaccount/publish.py, tests/test_server.py, tests/test_mcp_tools.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_server.py, tests/test_mcp_tools.py]
 branch: ""
 ---
@@ -45,3 +45,17 @@ implementation (R10.3).
 - [ ] REST for the UI: `GET /api/doors.geojson`, `GET /api/door/{pin}`, `POST /api/route`,
       `GET /health`. CORS allows the UI origin.
 - [ ] The app boots under uvicorn and `/health` answers 200 (live probe as part of the gate).
+
+## Attempt log
+
+- iter 1: green (39 tests). Live probe against real data: `/health` → 540 doors,
+  `POST /api/route` returns ordered stops with talk tracks, MCP `tools/list` over streamable
+  HTTP returns exactly the three R8 names, `explain_score` returns real group math
+  (`{capacity, hires_out, modifier, mover, need}` + `raw_total`).
+- A fourth module `server/published.py` holds `DataUnavailable` + the artifact reader, because
+  both `app` and `mcp_tools` need them and `app` imports `mcp_tools` (cycle otherwise).
+  `app.py` re-exports `DataUnavailable`, so the pinned seam holds.
+- `/mcp` is adopted into the app's route table rather than `Mount`ed: a Mount answered
+  `POST /mcp` with a 307 to `/mcp/`, which a client that doesn't re-POST on redirect sees as an
+  empty body.
+- Fixed `make serve`, which pointed at `app:app` — a target that never existed.

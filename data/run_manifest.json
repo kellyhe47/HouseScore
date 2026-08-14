@@ -1,7 +1,7 @@
 {
-  "run_at": "2026-08-14T08:16:55.759958+00:00",
+  "run_at": "2026-08-14T08:38:26.522178+00:00",
   "as_of": "2026-08-14",
-  "code_version": "d87b9d7",
+  "code_version": "125f61e",
   "territory_median_value": 743350.0,
   "acs_dual_income_threshold": 0.35,
   "retrieved": {

@@ -49,6 +49,7 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 016 | Deploy readiness (R12) — expected blocked-on-human | blocked | 1 | 011,012 | W10 |
 | 017 | R3.2 match rate: municipal denominator, not territory blocks | green | 1 | 006,008,009 | W6b seq |
 | 018 | make eval reads the published run manifest | green | 1 | 009,017 | W9 batch |
+| 019 | Disclose the MOD-IV deed vintage (Mover cannot fire) | pending | 0 | 009,014 | W11 seq |
 
 ## Wave plan
 
@@ -66,4 +67,9 @@ run still published every door. The permit match-rate defect this surfaced becam
 
 ## Open questions raised during the run
 
-_(none yet — appended here when a ticket is marked blocked)_
+**Ticket 019 / open decision for the human.** The MOD-IV extract's newest deed anywhere in Ramsey
+is 2024-12-06, ~20 months before `as_of`, so **zero** parcels fall in the 90-day mover window and
+the 100-point Mover group cannot fire on this data vintage. The parser is correct (fixture 11
+passes; raw `'240920'` parses to 2024-09-20) — the source is stale. Ticket 019 discloses it.
+**The question the PRD does not pre-make: add NJ SR1A sales flat-files as a fresher deed source so
+Mover can fire, or ship with the vintage disclosed?**

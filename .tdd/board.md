@@ -39,7 +39,7 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 006 | Entity resolution + match rate (R3) | green | 1 | 002,004,005 | W4 seq |
 | 007 | Vision: schema, provider seam, ortho tiles (R4) | green | 1 | 001 | W3 par |
 | 008 | Eval harness (R5/R14) | green | 1 | 003,007 | W5 par |
-| 009 | Publish + pipeline orchestrator (R2.2) | pending | 0 | 003,004,005,006,007 | W6 seq |
+| 009 | Publish + pipeline orchestrator (R2.2) | tests-written | 0 | 003,004,005,006,007 | W6 seq |
 | 010 | Route planner module (R10.1–10.3) | pending | 0 | 003 | W5 par |
 | 011 | MCP server + HTTP API (R8) | pending | 0 | 009,010 | W7 seq |
 | 012 | Map UI core (R9) | pending | 0 | 009,011 | W8 seq |

@@ -1,11 +1,11 @@
 ---
 id: 009
 title: "Publish artifacts + end-to-end pipeline orchestrator (R2.2, R2.3)"
-status: pending
+status: tests-written
 depends_on: [003, 004, 005, 006, 007]
 touches: [src/houseaccount/publish.py, src/houseaccount/pipeline.py, tests/test_publish.py, tests/test_pipeline.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_publish.py, tests/test_pipeline.py]
 branch: ""
 ---
 

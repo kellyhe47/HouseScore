@@ -561,6 +561,15 @@ function fakeElement(tag = 'div', id = '') {
     attributes: {},
     children: [],
     listeners,
+    /**
+     * Where this element is on screen. Zero by default, which is what a hidden
+     * element reports in a browser too — set it in a test to put something in
+     * the way.
+     */
+    rect: { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 },
+    getBoundingClientRect() {
+      return node.rect;
+    },
 
     get firstChild() {
       return node.children[0] ?? null;
@@ -838,7 +847,11 @@ export function createMapHarness({ doors = doorsGeojson(), viewport = { width: 1
     harness.container = getElement('map');
     return {
       getElementById: (id) => getElement(id),
-      querySelector: () => fakeElement(),
+      // Selectors are kept as their own keys, so `#coverage` is the element the
+      // page also reaches by id and `.zoombar` is a stable element a test can
+      // position. A test that never touches one gets an element measuring zero,
+      // which reads as "not in the way".
+      querySelector: (selector) => getElement(String(selector).replace(/^#/, '')),
       createElement: (tag) => fakeElement(tag),
       createDocumentFragment: () => {
         const fragment = fakeElement();

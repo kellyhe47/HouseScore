@@ -540,6 +540,7 @@ function renderMap() {
   // Registered before the style can possibly be up, so whichever of the two
   // arrives second — the layout or the `load` — carries the fit.
   watchContainer(map.getContainer());
+  watchChrome();
 
   map.on('load', () => {
     map.addSource('doors', { type: 'geojson', data: sourceData() });
@@ -637,20 +638,26 @@ function scheduleLabels() {
  * symbol layer would need a glyph server, and this page has no external font or
  * tile dependency to lose (R12).
  *
- * Two labels are never allowed to overlap. `streetLabels` returns its
- * placements best-first, so the loop simply takes what fits and drops what does
- * not — which at territory zoom means one name per street, and as the rep zooms
- * in means the repeats along the longer streets come back as room appears.
+ * Nothing is ever allowed to overlap a street name: not another street name,
+ * and not the chrome floating over the map, which is read as being in front of
+ * the map rather than on it and so does not tolerate type sliding under it.
+ * `streetLabels` returns its placements best-first, so the loop simply takes
+ * what fits and drops what does not — which at territory zoom means one name per
+ * street, and as the rep zooms in means the repeats along the longer streets
+ * come back as room appears.
  */
 function renderStreets() {
   if (!map) return;
+
+  // Measured before the container is touched, so a frame is one read pass
+  // followed by one write pass rather than a layout per label.
+  const taken = chromeBoxes();
   clear(els.streets);
 
   const canvas = map.getCanvas();
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const fragment = document.createDocumentFragment();
-  const taken = [];
 
   for (const street of streets) {
     const point = map.project(street.position);
@@ -671,6 +678,84 @@ function renderStreets() {
   }
 
   els.streets.appendChild(fragment);
+}
+
+/**
+ * Where the map's own furniture is sitting right now, in canvas pixels.
+ *
+ * The readout, the legend, the zoom buttons, the evidence panel and the route
+ * chrome all float over the map, and every one of them can move or appear
+ * without the camera moving at all — the panel opens, a route bar arrives, the
+ * viewport narrows and the legend shifts. So they are measured on the frame
+ * rather than assumed, and handed to the same collision test the labels use on
+ * each other. Anything hidden measures zero and is dropped, which is exactly
+ * right: a hidden panel is not in the way.
+ */
+function chromeBoxes() {
+  const container = map.getContainer().getBoundingClientRect();
+  const boxes = [];
+
+  for (const node of chrome()) {
+    const rect = node.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+    boxes.push({
+      left: rect.left - container.left - STREET_LABEL_MARGIN,
+      right: rect.right - container.left + STREET_LABEL_MARGIN,
+      top: rect.top - container.top - STREET_LABEL_MARGIN,
+      bottom: rect.bottom - container.top + STREET_LABEL_MARGIN,
+      name: null,
+      x: NaN,
+      y: NaN,
+    });
+  }
+  return boxes;
+}
+
+/**
+ * The floating chrome, resolved once.
+ *
+ * Everything drawn over the canvas rather than in it — including walk mode's
+ * sheet, which lives outside `.maparea` but is measured in the same viewport
+ * coordinates as everything else and covers the bottom of the map while a rep is
+ * walking. The canvas and the three label layers are not in the list, because
+ * they are the map.
+ */
+const CHROME_SELECTORS = [
+  '#coverage',
+  '#pick-hint',
+  '#route-bar',
+  '#resume-banner',
+  '.maparea__bottomleft',
+  '.zoombar',
+  '#toast',
+  '#panel',
+  '#route-panel',
+  '#walk',
+];
+let chromeNodes = null;
+
+/**
+ * Re-lay the street names whenever the furniture over the map moves.
+ *
+ * The panel opens, the route bar arrives, a toast comes and goes — none of which
+ * is a camera move, so none of which would otherwise reach `scheduleLabels`, and
+ * the names underneath would sit there under the new panel until the next pan. A
+ * `ResizeObserver` catches all of it, including the appearing and disappearing:
+ * an element going `hidden` is a box collapsing to nothing, which is a resize.
+ */
+function watchChrome() {
+  if (typeof ResizeObserver !== 'function') return;
+  const observer = new ResizeObserver(() => scheduleLabels());
+  for (const node of chrome()) observer.observe(node);
+}
+
+function chrome() {
+  if (!chromeNodes) {
+    chromeNodes = CHROME_SELECTORS.map((selector) => document.querySelector(selector)).filter(
+      Boolean
+    );
+  }
+  return chromeNodes;
 }
 
 /** The screen box a rotated street name occupies, margin included. */

@@ -192,6 +192,47 @@ test('a long street says its name again further along, but not twice in a breath
   });
 });
 
+test('a street name never runs under the chrome floating over the map', async () => {
+  // Three parallel streets, so there are names spread down the map to get in
+  // the way of — and then the legend is put over the lower half of it.
+  const doors = {
+    type: 'FeatureCollection',
+    features: [
+      ...streetBlock({ name: 'FIRST ST', lots: 15, start: [-74.152, 41.048] }),
+      ...streetBlock({ name: 'SECOND ST', lots: 15, start: [-74.152, 41.0485] }),
+      ...streetBlock({ name: 'THIRD ST', lots: 15, start: [-74.152, 41.049] }),
+    ],
+  };
+
+  await withBrowser({ doors }, async (harness) => {
+    const map = await harness.boot();
+    await harness.layout();
+    await harness.loadStyle();
+
+    const before = harness.element('street-labels').children.length;
+    assert.ok(before > 1, 'the fixture drew too few names to be crowded out of anything');
+
+    // The legend, sitting bottom-left over the map, as the browser measures it.
+    const legend = harness.element('.maparea__bottomleft');
+    legend.rect = { left: 0, top: 300, right: 1280, bottom: 780, width: 1280, height: 480 };
+    map.fire('move');
+    await harness.flush();
+
+    const drawn = harness.element('street-labels').children;
+    assert.ok(drawn.length < before, 'the legend was drawn over but nothing moved out of its way');
+    for (const label of drawn) {
+      const top = Number.parseFloat(label.style.top);
+      assert.ok(top < 300, `a street name was written at y=${top}, under the legend`);
+    }
+
+    // Chrome that is not on screen is not in the way: hidden measures zero.
+    legend.rect = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+    map.fire('move');
+    await harness.flush();
+    assert.equal(harness.element('street-labels').children.length, before);
+  });
+});
+
 test('two street names are never written on top of each other', async () => {
   // Three parallel streets 55 metres apart. Close in, each name has its own
   // roadway to sit in; far enough out, all three want the same few pixels.

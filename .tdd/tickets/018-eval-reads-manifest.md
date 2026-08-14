@@ -1,10 +1,10 @@
 ---
 id: 018
 title: "make eval reads the published run manifest (match rate, cost, doors scored)"
-status: tests-written
+status: green
 depends_on: [009, 017]
 touches: [Makefile, eval/harness.py, tests/test_harness.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_harness.py]
 branch: ""
 ---
@@ -32,3 +32,11 @@ logic gap.
       auto-discovered manifest.
 - [ ] The ≥0.95 gate still reads `municipal_match_rate` (ticket 017) and still fails the run when
       a published manifest is below it.
+
+## Attempt log
+
+- iter 1: green. Discovery lives in `main`, not `run_eval` — a locked test from ticket 008 pins
+  `run_eval(resolve_report=None) -> resolve_match_rate is None`, so auto-discovery inside
+  `run_eval` would have been a locked-vs-locked contradiction.
+- argparse defaults moved to `None` so "flag not given" is distinguishable from "given as 0".
+- `make eval` now prints `doors scored: 540` and `municipal match rate: 0.974`.

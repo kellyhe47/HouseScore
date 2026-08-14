@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { requestRoute, createRoutePlanner } from './route-ui.js';
+import { requestRoute, createRoutePlanner, routeLine } from './route-ui.js';
 import { fakeFetch, routePayload } from './test-fixtures.js';
 
 const START = [-74.156, 41.0447];
@@ -264,4 +264,66 @@ test('a planner that has never planned has no view and no exclusions', () => {
 
   assert.equal(planner.view, null);
   assert.deepEqual(planner.excluded, []);
+});
+
+// ---------- the line the map draws (a rep can only walk along a street) ----------
+
+test('a row carries the leg the planner measured', async () => {
+  const view = await requestRoute(REQUEST, options());
+
+  assert.deepEqual(view.rows[1].path, routePayload().stops[1].path);
+});
+
+test('a stop that arrives without a leg leaves the row an empty path', async () => {
+  const payload = routePayload();
+  for (const item of payload.stops) delete item.path;
+
+  const view = await requestRoute(REQUEST, options(payload));
+
+  assert.deepEqual(view.rows[0].path, []);
+});
+
+test('the route line is the planner legs, end to end from the parking spot', async () => {
+  const view = await requestRoute(REQUEST, options());
+  const stops = routePayload().stops;
+
+  const line = routeLine(view.rows, START);
+
+  // Every vertex of every leg, in order, with the shared seams drawn once.
+  assert.deepEqual(line, [
+    START,
+    ...stops[1].path.slice(1),
+    ...stops[2].path.slice(1),
+  ]);
+});
+
+test('the route line follows the streets rather than joining the doors', async () => {
+  const view = await requestRoute(REQUEST, options());
+
+  const line = routeLine(view.rows, START);
+  const doors = view.rows.map((row) => row.path.at(-1));
+
+  // The corners are what make it a walk along streets; a line of only the
+  // doors' own points would be the diagonal the planner refused to measure.
+  assert.ok(line.length > doors.length + 1, 'the drawn walk has no corners in it');
+  for (const door of doors) {
+    assert.ok(
+      line.some((point) => point[0] === door[0] && point[1] === door[1]),
+      'the walk misses a door it is supposed to reach'
+    );
+  }
+});
+
+test('a leg with no path falls back to the door the map already has', () => {
+  const rows = [{ pin: 'A', path: [] }, { pin: 'B' }];
+  const centroids = { A: [-74.156, 41.0447], B: [-74.1551, 41.0452] };
+
+  const line = routeLine(rows, START, (pin) => centroids[pin]);
+
+  assert.deepEqual(line, [START, centroids.B]);
+});
+
+test('a route with nothing to draw draws nothing', () => {
+  assert.deepEqual(routeLine([], null), []);
+  assert.deepEqual(routeLine([], START), []);
 });

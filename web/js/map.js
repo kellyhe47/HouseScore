@@ -17,7 +17,7 @@ import { scoreColor, UNSCORED_COLOR, RAMP_CSS_GRADIENT } from './ramp.js';
 import { coverageText, filterDoors } from './filter.js';
 import { buildPanel, copyAddress, panelLayout } from './panel.js';
 import { createMapState } from './state.js';
-import { createRoutePlanner } from './route-ui.js';
+import { createRoutePlanner, routeLine } from './route-ui.js';
 import { createWalk, readWalk, clearWalk, resumeOffer } from './walk.js';
 import { streetLabels } from './streets.js';
 import { copyAsText, copyShareLink, readShare } from './share.js';
@@ -409,21 +409,24 @@ function sourceData() {
   };
 }
 
-/** The dashed walking path: the parking spot, then every stop in order. */
+/**
+ * The dashed walking path: the parking spot, then the walk the planner planned.
+ *
+ * `routeLine` assembles the legs; this only wraps them for the source. The
+ * vertices are the server's, because a rep walks along streets and the planner
+ * is the only thing here that knows where those are (R10.3).
+ */
 function routeLineData() {
-  const coordinates = [];
-  if (startPoint) coordinates.push(startPoint);
-  for (const row of routeView ? routeView.rows : []) {
-    const door = byPin(row.pin);
-    if (door && door.centroid) coordinates.push(door.centroid);
-  }
+  const coordinates = routeLine(routeView ? routeView.rows : [], startPoint, (pin) => {
+    const door = byPin(pin);
+    return door && door.centroid ? door.centroid : null;
+  });
 
   return {
     type: 'FeatureCollection',
-    features:
-      coordinates.length > 1
-        ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: {} }]
-        : [],
+    features: coordinates.length
+      ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: {} }]
+      : [],
   };
 }
 

@@ -148,7 +148,14 @@ export function detailedDoor(overrides = {}) {
   };
 }
 
-/** One stop exactly as the server serializes `houseaccount.route.Stop`. */
+/**
+ * One stop exactly as the server serializes `houseaccount.route.Stop`.
+ *
+ * `path` is the leg the planner measured — `[lon, lat]` from wherever the rep
+ * was to this door, along the streets. It is the map's route line: a browser
+ * joining centroids would draw a walk through the middle of a block and
+ * disagree with the minutes the server put beside it (R10.3).
+ */
 export function stop(overrides = {}) {
   return {
     pams_pin: '0248_01101_00012',
@@ -157,6 +164,10 @@ export function stop(overrides = {}) {
     walk_minutes: 0.0,
     cumulative_minutes: 0.0,
     talk_track: "Hi, I'm working OAK ST today. Is now a bad time?",
+    path: [
+      [-74.156, 41.0447],
+      [-74.156, 41.0447],
+    ],
     ...overrides,
   };
 }
@@ -167,6 +178,9 @@ export function stop(overrides = {}) {
  * The scores deliberately do NOT descend: the planner orders on score per
  * walking minute, and anything that re-sorts this list in the browser has
  * re-implemented the planner (R10.3).
+ *
+ * Every leg starts where the one before it ended, and the middle vertices are
+ * corners rather than a straight run — the shape a walk along streets has.
  */
 export function routePayload(overrides = {}) {
   return {
@@ -179,6 +193,12 @@ export function routePayload(overrides = {}) {
         walk_minutes: 4.4,
         cumulative_minutes: 4.4,
         talk_track: "Hi, I'm working MAPLE AVE today. Is now a bad time?",
+        path: [
+          [-74.156, 41.0447],
+          [-74.1558, 41.0448],
+          [-74.1551, 41.0452],
+          [-74.155, 41.0454],
+        ],
       }),
       stop({
         pams_pin: '0248_3502_8.01',
@@ -187,12 +207,17 @@ export function routePayload(overrides = {}) {
         walk_minutes: 37.9,
         cumulative_minutes: 42.3,
         talk_track: "Hi, I'm working FAWN HILL RD today. Is now a bad time?",
+        path: [
+          [-74.155, 41.0454],
+          [-74.1548, 41.0455],
+          [-74.1539, 41.0451],
+        ],
       }),
     ],
     total_minutes: 42.3,
     estimate_disclosure:
-      'Walking times are straight-line estimates (x1.3 detour at 3 mph), '
-      + 'not turn-by-turn directions.',
+      'Walking times follow the streets between the parcels, at 3 mph — '
+      + 'estimated from parcel geometry, not turn-by-turn directions.',
     ...overrides,
   };
 }
@@ -211,6 +236,7 @@ export function routeRows() {
     cumulativeMinutes: item.cumulative_minutes,
     elapsedLabel: `+${Math.round(item.cumulative_minutes)} min`,
     talkTrack: item.talk_track,
+    path: item.path,
   }));
 }
 

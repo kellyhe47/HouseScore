@@ -370,8 +370,16 @@ def test_plan_route_delegates_to_the_shared_planner(server, monkeypatch):
     """R10.3: one implementation. Patch the planner and the tool changes with it."""
     calls = []
 
-    def fake_plan_route(doors, hours, start_point, max_doors=None):
-        calls.append({"doors": doors, "hours": hours, "start_point": start_point, "max_doors": max_doors})
+    def fake_plan_route(doors, hours, start_point, max_doors=None, network=None):
+        calls.append(
+            {
+                "doors": doors,
+                "hours": hours,
+                "start_point": start_point,
+                "max_doors": max_doors,
+                "network": network,
+            }
+        )
         return Route(
             stops=(
                 Stop(

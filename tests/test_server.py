@@ -409,6 +409,28 @@ def test_route_endpoint_returns_ordered_stops_with_talk_tracks(client):
         assert isinstance(stop["talk_track"], str) and stop["talk_track"].strip()
 
 
+def test_every_stop_carries_the_line_the_rep_walks(client):
+    """The map draws the planner's walk rather than joining centroids itself.
+
+    Whether these legs are streets or straight lines depends on whether the
+    published parcels describe a street grid — this fixture's handful of squares
+    do not, and that is the fallback working. What the endpoint always owes the
+    map is a line per leg, starting where the last one ended.
+    """
+    response = client.post(
+        "/api/route", json={"hours": 2, "start_point": list(START), "max_doors": 20}
+    )
+
+    body = response.json()
+    position = list(START)
+    for stop in body["stops"]:
+        path = stop["path"]
+        assert len(path) >= 2
+        assert path[0] == position
+        assert all(len(point) == 2 for point in path)
+        position = path[-1]
+
+
 def test_route_endpoint_with_no_time_returns_an_empty_route(client):
     response = client.post("/api/route", json={"hours": 0, "start_point": list(START)})
 

@@ -26,6 +26,16 @@ scoring stack for a value it only ever renders. `talk_track_for(door)` generates
 the opener and the planner stamps it on every `Stop`. Tests assert its *shape*
 (non-empty, one line, door-specific, differs per door) — never its prose.
 
+**How a leg is measured.** A rep can only walk along a street, so `plan_route`
+takes a `network` — anything answering `metres_from(origin, destinations)` and
+`path(origin, destination)`, which is what `houseaccount.streets` derives from
+the parcels. It is duck-typed for the same reason the door adapter is: the
+planner sorts points and must not drag the geometry stack in to do it. Without
+one, a leg is the old straight-line estimate (haversine x1.3 at 3 mph), which is
+what every synthetic door in this module gets and what pins the fallback.
+`StubNetwork` below stands in for the real thing by walking two sides of a
+rectangle instead of the diagonal.
+
 **Where `exclude` lives.** On `Route`, as a method: the rep excludes a door from
 a route they are looking at ("that house is vacant"), and `Route.exclude(pins)`
 re-plans — it does not filter. `test_exclude_replans_rather_than_filtering` is
@@ -264,6 +274,180 @@ def test_a_door_at_the_rep_feet_costs_no_walking_time():
     planned = plan_route([door(pin(1), north_m=0)], hours=2.0, start_point=START)
 
     assert planned.stops[0].walk_minutes == pytest.approx(0.0, abs=1e-9)
+
+
+# --- walking along streets ----------------------------------------------------
+#
+# A rep can only walk along a street, so a leg is measured on a street network
+# when the caller has one. The planner is duck-typed against it — two questions,
+# `metres_from` and `path` — which is what lets `houseaccount.streets` build one
+# out of shapely and geometry while this module stays stdlib. `StubNetwork` is
+# that contract with the geometry taken out: legs go round a corner rather than
+# across the diagonal, which is exactly how a street grid differs from a
+# straight line, and it can be told to refuse a door outright.
+
+
+class StubNetwork:
+    """A network that walks two sides of the rectangle instead of the diagonal.
+
+    Its `disclosure` is deliberately not the real one: the route has to carry
+    the network's own words rather than a string this module knows.
+    """
+
+    disclosure = "walking times follow the stub network"
+
+    def __init__(self, unreachable=()):
+        self.unreachable = set(unreachable)
+        self.sweeps = []
+        self.paths = []
+
+    def corner(self, origin, destination):
+        """Where the two legs of the dogleg meet: east first, then north."""
+        return (destination[0], origin[1])
+
+    def metres(self, origin, destination):
+        corner = self.corner(origin, destination)
+        east = abs(destination[0] - origin[0]) * METRES_PER_DEGREE_LAT * math.cos(
+            math.radians(origin[1])
+        )
+        north = abs(destination[1] - corner[1]) * METRES_PER_DEGREE_LAT
+        return east + north
+
+    def metres_from(self, origin, destinations):
+        self.sweeps.append((origin, tuple(destinations)))
+        return tuple(
+            None if destination in self.unreachable else self.metres(origin, destination)
+            for destination in destinations
+        )
+
+    def path(self, origin, destination):
+        self.paths.append((origin, destination))
+        if destination in self.unreachable:
+            return ()
+        return (origin, self.corner(origin, destination), destination)
+
+
+def test_a_leg_is_measured_on_the_network_when_there_is_one():
+    """400 m east then 300 m north is a 700 m walk, not the 500 m diagonal."""
+    east_north = door(pin(1), east_m=400, north_m=300)
+
+    (stop,) = plan_route(
+        [east_north], hours=2.0, start_point=START, network=StubNetwork()
+    ).stops
+
+    assert stop.walk_minutes == pytest.approx(700 / (3.0 * 1609.344 / 60.0), rel=1e-3)
+
+
+def test_a_network_leg_carries_no_detour_factor():
+    """The 1.3 stands in for streets nobody measured. Measured, it goes."""
+    straight = door(pin(1), north_m=1000)
+
+    (stop,) = plan_route(
+        [straight], hours=2.0, start_point=START, network=StubNetwork()
+    ).stops
+
+    assert stop.walk_minutes == pytest.approx(1000 / (3.0 * 1609.344 / 60.0), rel=1e-3)
+
+
+def test_a_stop_carries_the_line_the_planner_measured():
+    """R10.3: the map draws the planner's walk, so the planner ships it."""
+    network = StubNetwork()
+    target = door(pin(1), east_m=400, north_m=300)
+
+    (stop,) = plan_route([target], hours=2.0, start_point=START, network=network).stops
+
+    assert stop.path == (START, network.corner(START, target.centroid), target.centroid)
+
+
+def test_without_a_network_the_line_is_the_straight_line_the_estimate_assumed():
+    target = door(pin(1), north_m=300)
+
+    (stop,) = plan_route([target], hours=2.0, start_point=START).stops
+
+    assert stop.path == (START, target.centroid)
+
+
+def test_every_leg_starts_where_the_previous_one_ended():
+    """The legs join up into one walk — the map draws them end to end."""
+    planned = plan_route(
+        WORKED_DOORS, hours=2.0, start_point=START, network=StubNetwork()
+    )
+
+    position = START
+    for stop in planned.stops:
+        assert stop.path[0] == position
+        position = stop.path[-1]
+
+
+def test_a_door_the_network_cannot_reach_falls_back_to_the_straight_line():
+    """A gap in the derived streets is not a house that stopped existing."""
+    stranded = door(pin(1), north_m=1000)
+    network = StubNetwork(unreachable={stranded.centroid})
+
+    (stop,) = plan_route([stranded], hours=2.0, start_point=START, network=network).stops
+
+    assert stop.walk_minutes == pytest.approx(1000 * 1.3 / (3.0 * 1609.344 / 60.0), rel=1e-3)
+    assert stop.path == (START, stranded.centroid)
+
+
+def test_the_network_decides_the_order_it_measured():
+    """The walk changes when the walking does.
+
+    `DIAGONAL` is the closer of the two on the map — 424 m against 500 — and the
+    further of the two on foot, because reaching it means 300 m along one street
+    and 300 m along another. Same scores, so score-per-minute is distance alone:
+    straight lines knock the diagonal first, streets knock it second.
+    """
+    up_the_road = door(pin(1), north_m=500, score=50)
+    diagonal = door(pin(2), north_m=300, east_m=300, score=50)
+    doors = [up_the_road, diagonal]
+
+    assert pins_of(plan_route(doors, hours=2.0, start_point=START)) == [pin(2), pin(1)]
+
+    on_streets = plan_route(doors, hours=2.0, start_point=START, network=StubNetwork())
+
+    assert pins_of(on_streets) == [pin(1), pin(2)]
+
+
+def test_the_route_carries_the_network_own_disclosure():
+    planned = plan_route(WORKED_DOORS, hours=2.0, start_point=START, network=StubNetwork())
+
+    assert planned.estimate_disclosure == StubNetwork.disclosure
+
+
+def test_a_route_planned_without_a_network_still_discloses_the_straight_line():
+    assert worked_route().estimate_disclosure == route_module.ESTIMATE_DISCLOSURE
+
+
+def test_the_network_is_asked_once_per_stop_not_once_per_candidate():
+    """Every candidate is measured from where the rep stands in one sweep — the
+    shape that keeps a 540-door territory inside the two-second budget."""
+    network = StubNetwork()
+
+    planned = plan_route(grid_doors(), hours=2.0, start_point=START, max_doors=20, network=network)
+
+    assert len(planned.stops) == 20
+    # One sweep per chosen stop, plus the sweep that found nothing affordable
+    # if the budget ran out first.
+    assert len(network.sweeps) <= len(planned.stops) + 1
+    assert network.sweeps[0][0] == START
+
+
+def test_excluding_a_door_replans_on_the_same_network():
+    network = StubNetwork()
+    planned = plan_route(WORKED_DOORS, hours=2.0, start_point=START, network=network)
+
+    replanned = planned.exclude([planned.stops[0].pams_pin])
+
+    assert replanned.estimate_disclosure == StubNetwork.disclosure
+    assert pins_of(replanned) == pins_of(
+        plan_route(
+            [candidate for candidate in WORKED_DOORS if candidate.pams_pin != planned.stops[0].pams_pin],
+            hours=2.0,
+            start_point=START,
+            network=network,
+        )
+    )
 
 
 # --- the hour budget ----------------------------------------------------------

@@ -12,10 +12,19 @@ a web process whose entire job is sorting points on a map, so the planner define
 duck-typed for the same reason: it reads `pams_pin` / `situs` / `centroid` off
 anything that has them. The only imports here are stdlib.
 
-**Why straight-line walking times.** No paid routing API, so a leg is the
-haversine distance times a fixed detour factor, walked at 3 mph. That is an
-estimate and the module says so itself — `estimate_disclosure` ships with the
-route rather than living in the UI, so both surfaces disclose the same thing.
+**Why a leg is measured on a street network.** A rep can only walk along
+streets, so a leg is the shortest way along them: down the driveway, along the
+road, up the next driveway. The network comes from `houseaccount.streets`, which
+derives it from the parcels themselves (no paid routing API, R12), and reaches
+the planner as an argument rather than an import — the planner never learns how
+it was made, and a caller that has no network still gets a route.
+
+**Why straight lines survive as the fallback.** Without a network — a caller
+with bare points, a door on an island of parcels the centrelines never reach —
+a leg is the haversine distance times a fixed detour factor, walked at 3 mph.
+Both models are estimates and the route says which one produced it:
+`estimate_disclosure` ships with the route rather than living in the UI, so both
+surfaces disclose the same thing.
 
 **Why greedy, not optimal.** The rep's question is "where do I go next", asked
 again at every door. Greedy on score-per-walking-minute answers exactly that,
@@ -56,8 +65,9 @@ EARTH_RADIUS_M = 6371008.8
 
 _METRES_PER_MINUTE = WALKING_SPEED_MPH * 1609.344 / 60.0
 
-#: Shipped with every route, empty ones included, so the UI never has to invent
-#: its own wording for the same caveat (R10.2).
+#: Shipped with every route planned without a network, empty ones included, so
+#: the UI never has to invent its own wording for the same caveat (R10.2). A
+#: route planned on one carries that network's own disclosure instead.
 ESTIMATE_DISCLOSURE = (
     "Walking times are straight-line estimates (x1.3 detour at 3 mph), "
     "not turn-by-turn directions."
@@ -98,7 +108,15 @@ class RouteDoor:
 
 @dataclass(frozen=True)
 class Stop:
-    """One door on the planned walk, with the leg that reached it."""
+    """One door on the planned walk, with the leg that reached it.
+
+    `path` is that leg as a line — where the rep actually walks, `(lon, lat)`
+    from the previous position to this door. Planned on a street network it
+    runs along the roads; planned without one it is the straight line the time
+    was estimated from. Either way it is the planner's answer rather than the
+    map's guess: a browser drawing its own line between two centroids would
+    draw a walk through the middle of a block (R10.3).
+    """
 
     pams_pin: str
     address: str
@@ -106,6 +124,7 @@ class Stop:
     walk_minutes: float
     cumulative_minutes: float
     talk_track: str
+    path: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -123,9 +142,10 @@ class Route:
     hours: float = 0.0
     start_point: tuple[float, float] = (0.0, 0.0)
     max_doors: int | None = field(default=None)
+    network: Any = None
 
     def exclude(self, pins: Iterable[str]) -> "Route":
-        """Re-plan without `pins`, from the same start, budget and cap.
+        """Re-plan without `pins`, from the same start, budget, cap and network.
 
         Dropping a door changes where the rep stands for every later decision,
         so the remaining doors are planned from scratch — a filtered route would
@@ -138,6 +158,7 @@ class Route:
             hours=self.hours,
             start_point=self.start_point,
             max_doors=self.max_doors,
+            network=self.network,
         )
 
 
@@ -146,6 +167,7 @@ def plan_route(
     hours: float,
     start_point: tuple[float, float],
     max_doors: int | None = None,
+    network: Any = None,
 ) -> Route:
     """The best walk greedy can find from `start_point` within `hours`.
 
@@ -154,6 +176,14 @@ def plan_route(
     minute — a door at the rep's feet is free, so it wins outright. Ties break on
     PAMS PIN so the same inputs always produce the same walk, whatever order they
     arrived in.
+
+    `network` is anything that can answer two questions about walking between
+    points — `metres_from(origin, destinations)` and `path(origin, destination)`
+    — which is what `houseaccount.streets.WalkNetwork` is. It is duck-typed for
+    the same reason `route_door_from_facts` is: the planner sorts points on a
+    map and has no business importing the geometry stack to do it. Passing
+    `None` measures every leg as a straight line, which is what a caller holding
+    nothing but coordinates has always got.
     """
     candidates = tuple(doors)
     budget_minutes = max(hours, 0.0) * 60.0
@@ -166,12 +196,16 @@ def plan_route(
     elapsed = 0.0
 
     while routable and len(stops) < cap:
+        # One question per step rather than one per candidate: a network answers
+        # for every door in a single sweep, and the straight-line fallback does
+        # not care either way.
+        legs = _leg_minutes(network, position, [door.centroid for door in routable])
+
         best: tuple[float, str] | None = None
         chosen: RouteDoor | None = None
         chosen_minutes = 0.0
 
-        for door in routable:
-            minutes = _walk_minutes(position, door.centroid)
+        for door, minutes in zip(routable, legs):
             if elapsed + minutes > budget_minutes:
                 continue
             ratio = math.inf if minutes == 0.0 else door.score / minutes
@@ -191,6 +225,7 @@ def plan_route(
                 walk_minutes=chosen_minutes,
                 cumulative_minutes=elapsed,
                 talk_track=talk_track_for(chosen),
+                path=_leg_path(network, position, chosen.centroid),
             )
         )
         position = chosen.centroid
@@ -199,11 +234,12 @@ def plan_route(
     return Route(
         stops=tuple(stops),
         total_minutes=stops[-1].cumulative_minutes if stops else 0.0,
-        estimate_disclosure=ESTIMATE_DISCLOSURE,
+        estimate_disclosure=_disclosure(network),
         candidates=candidates,
         hours=hours,
         start_point=start_point,
         max_doors=max_doors,
+        network=network,
     )
 
 
@@ -285,9 +321,53 @@ def decode_share(text: str) -> tuple[str, ...]:
 # --- internals ----------------------------------------------------------------
 
 
-def _walk_minutes(origin: tuple[float, float], destination: tuple[float, float]) -> float:
-    """Straight-line metres, detoured, at walking pace. Points are (lon, lat)."""
-    return _haversine_metres(origin, destination) * DETOUR_FACTOR / _METRES_PER_MINUTE
+def _disclosure(network: Any) -> str:
+    """What the route says about the model its minutes came from.
+
+    A network describes its own derivation — the planner would be guessing —
+    so it is asked, and only a planner working without one speaks for itself.
+    """
+    stated = getattr(network, "disclosure", None)
+    return stated if isinstance(stated, str) and stated else ESTIMATE_DISCLOSURE
+
+
+def _leg_minutes(
+    network: Any,
+    origin: tuple[float, float],
+    destinations: Sequence[tuple[float, float]],
+) -> tuple[float, ...]:
+    """Walking minutes from `origin` to each destination.
+
+    A destination the network cannot reach falls back to the straight-line
+    estimate rather than becoming unroutable: an unreachable door is a gap in
+    the derived streets, not a house that stopped existing (R10.1).
+    """
+    walked: Sequence[float | None] = (None,) * len(destinations)
+    if network is not None:
+        walked = network.metres_from(origin, list(destinations))
+
+    return tuple(
+        (metres if metres is not None else _straight_metres(origin, destination))
+        / _METRES_PER_MINUTE
+        for destination, metres in zip(destinations, walked)
+    )
+
+
+def _leg_path(
+    network: Any, origin: tuple[float, float], destination: tuple[float, float]
+) -> tuple[tuple[float, float], ...]:
+    """The line the rep walks for this leg — the network's, or the straight one
+    the fallback estimate measured."""
+    if network is not None:
+        drawn = tuple(tuple(point) for point in network.path(origin, destination))
+        if drawn:
+            return drawn
+    return (tuple(origin), tuple(destination))
+
+
+def _straight_metres(origin: tuple[float, float], destination: tuple[float, float]) -> float:
+    """The straight-line estimate of a walk: haversine metres, detoured."""
+    return _haversine_metres(origin, destination) * DETOUR_FACTOR
 
 
 def _haversine_metres(origin: tuple[float, float], destination: tuple[float, float]) -> float:

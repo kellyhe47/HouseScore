@@ -1,10 +1,10 @@
 ---
 id: 003
 title: "House Score engine + evidence (R6/R7) — all 12 golden fixtures"
-status: tests-written
+status: green
 depends_on: [001, 002]
 touches: [src/houseaccount/scoring/engine.py, src/houseaccount/scoring/evidence.py, src/houseaccount/scoring/weights.py, tests/test_scoring_fixtures.py, tests/test_evidence.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_scoring_fixtures.py, tests/test_evidence.py]
 branch: ""
 ---
@@ -47,3 +47,10 @@ exit 0 afterwards (fixtures are immutable here).
 - [ ] Weights live in one `weights.py` constant table that the ethics page (T014) will import —
       no magic numbers scattered through the engine.
 - [ ] `python3 eval/verify_claims.py` exits 0 (run it as part of the ticket's test set).
+
+## Attempt log
+
+- iter 1: green first run (batched dispatch with the other W2 ticket).
+- Judgment call recorded: the deferred-maintenance combo tests permits **inside the 730-day
+  window**, where `eval/verify_claims.py` uses the raw list. They agree on every fixture; the
+  windowed reading is what R6 specifies.

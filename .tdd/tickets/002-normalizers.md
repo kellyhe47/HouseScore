@@ -1,10 +1,10 @@
 ---
 id: 002
 title: "Normalizers: deed YYMMDD parse, address normalization, parcel/permit join keys"
-status: tests-written
+status: green
 depends_on: [001]
 touches: [src/houseaccount/normalize.py, tests/test_normalize.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_normalize.py]
 branch: ""
 ---
@@ -34,3 +34,7 @@ the tests must be driven from that file, not from copied literals.
       `parcel_key("0248", " 2702 ", "15")` == `parcel_key("248", "2702", "15.0")`.
 - [ ] `situs_display(prop_loc, zip5)` → `"12 OAK ST, Ramsey NJ 07446"` (the copy-address string,
       R9.1); missing zip degrades to `"12 OAK ST, Ramsey NJ"`.
+
+## Attempt log
+
+- iter 1: green first run (batched dispatch with the other W2 ticket).

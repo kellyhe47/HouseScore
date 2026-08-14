@@ -330,7 +330,9 @@ def test_a_capped_route_is_the_uncapped_route_truncated():
     ],
 )
 def test_an_unroutable_door_is_never_a_stop(reason, unroutable):
-    doors = WORKED_DOORS + [door(pin(9), north_m=50, score=100, **unroutable)]
+    # Nearest door in the set and top-scoring, so it would lead the route if it
+    # were routable at all. `unroutable` overrides that baseline, one field at a time.
+    doors = WORKED_DOORS + [door(pin(9), north_m=50, **{"score": 100, **unroutable})]
 
     planned = plan_route(doors, hours=2.0, start_point=START)
 

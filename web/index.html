@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HouseAccount — Ramsey Territory</title>
+<meta name="description" content="House Scores and their evidence for every door in the Ramsey, NJ territory.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<!-- MapLibre GL JS: no API key, no basemap tiles — the parcels are the map. -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app" class="app">
+
+  <!-- ── Loading (wireframe frame 6) ─────────────────────────────────────── -->
+  <div id="loading" class="loading" role="status" aria-live="polite">
+    <div class="loading__brand">HouseAccount</div>
+    <div class="loading__skeleton" aria-hidden="true"></div>
+    <div class="loading__progress" id="loading-progress">loading doors…</div>
+  </div>
+
+  <!-- ── Map screen ──────────────────────────────────────────────────────── -->
+  <div id="screen-map" class="screen" hidden>
+
+    <header class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__title">HouseAccount</span>
+        <span class="topbar__sub">Ramsey Territory · NJ</span>
+      </div>
+
+      <div class="topbar__spacer"></div>
+
+      <div class="topbar__controls">
+        <div class="rangechip">
+          <span class="rangechip__label" id="range-label">score 0–100</span>
+          <div class="rangechip__slider">
+            <div class="rangechip__track" id="range-track"></div>
+            <input class="rangechip__input" id="range-lo" type="range" min="0" max="100" value="0"
+                   step="1" aria-label="Minimum House Score">
+            <input class="rangechip__input" id="range-hi" type="range" min="0" max="100" value="100"
+                   step="1" aria-label="Maximum House Score">
+          </div>
+        </div>
+
+        <button id="plan-route" class="btn btn--primary" type="button"
+                title="Route planning ships in the next build">Plan Route</button>
+        <button id="open-about" class="btn btn--ghost" type="button"
+                title="Data &amp; Ethics page ships in the next build">
+          <span class="wide-only">Data &amp; Ethics</span><span class="narrow-only">About</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Data-fetch error (wireframe frame 6, R9.3) ─────────────────────── -->
+    <div id="error-banner" class="errorbar" role="alert" hidden>
+      <span class="errorbar__text">Score data unavailable — the doors layer failed to load.</span>
+      <button id="retry" class="errorbar__btn" type="button">Retry</button>
+    </div>
+
+    <div class="maparea">
+      <div id="map" class="maparea__canvas"></div>
+      <div id="labels" class="maparea__labels" aria-hidden="true"></div>
+
+      <div id="coverage" class="readout">0 of 0 scored</div>
+
+      <div class="maparea__bottomleft">
+        <div class="legend">
+          <div class="legend__ramp" id="legend-ramp"></div>
+          <div class="legend__scale"><span>0</span><span>House Score</span><span>100</span></div>
+          <div class="legend__unscored"><span class="legend__swatch"></span>not scored</div>
+        </div>
+        <div class="demo">
+          <span class="demo__tag">demo only</span>
+          <a href="#" id="simulate-error">simulate a data-fetch error</a>
+        </div>
+      </div>
+
+      <div class="zoombar">
+        <button id="zoom-in" class="zoombar__btn" type="button" aria-label="Zoom in">+</button>
+        <button id="zoom-out" class="zoombar__btn" type="button" aria-label="Zoom out">−</button>
+      </div>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+      <!-- ── Evidence panel (wireframe frames 2–3, R9.1–R9.5) ─────────────── -->
+      <!-- Inside the map area so its desktop offsets are measured from the map,
+           not the viewport: it must clear the coverage readout, not cover it. -->
+      <aside id="panel" class="panel" aria-label="Evidence panel" hidden>
+        <div class="panel__grip" aria-hidden="true"></div>
+        <div class="panel__head">
+          <div class="panel__ident">
+            <div class="panel__addr" id="panel-addr"></div>
+            <div class="panel__pin" id="panel-pin"></div>
+          </div>
+          <button id="panel-close" class="iconbtn" type="button" aria-label="Close evidence panel">✕</button>
+        </div>
+        <div class="panel__body" id="panel-body"></div>
+        <div class="panel__foot" id="panel-foot">
+          <button id="copy-address" class="btn btn--ghost btn--block" type="button">Copy address</button>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ── Imagery lightbox (R7.1) ─────────────────────────────────────────── -->
+    <div id="lightbox" class="lightbox" hidden>
+      <div class="lightbox__card" role="dialog" aria-label="Imagery evidence">
+        <div class="lightbox__frame" id="lightbox-frame"></div>
+        <div class="lightbox__meta">
+          <div>
+            <div class="lightbox__label" id="lightbox-label"></div>
+            <div class="lightbox__sub" id="lightbox-sub"></div>
+          </div>
+          <button id="lightbox-close" class="iconbtn" type="button" aria-label="Close imagery">✕</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module" src="js/map.js"></script>
+</body>
+</html>

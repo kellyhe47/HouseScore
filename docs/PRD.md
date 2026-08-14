@@ -26,7 +26,7 @@ R1 territory · R2 harvest · R3 entity resolution · R4 vision · R5 eval harne
 ## R4 — Vision pipeline
 - R4.1 `[decided]` Top signal = **pool detection from free NJ orthos**, run over all ~540 parcels (ToS-clean). Secondary ortho signals: solar, lot/lawn condition (2015 vs 2020 for trajectory, R6 Need).
 - R4.2 `[decided]` Street View signals (provider trucks, yard signs, door-level condition) demo-scale only (~50 doors), with ToS position disclosed (R11.2).
-- R4.3 `[proposal]` Model: Claude Haiku tier on 640px tiles; structured JSON output with per-detection confidence; batch + cache.
+- R4.3 `[proposal]` Model: OpenAI gpt-4o-mini tier on 640px tiles; structured JSON output with per-detection confidence; batch + cache.
 
 ## R5 — Eval harness (rubric non-negotiable)
 - R5.1 `[source]` Runnable code (not a spreadsheet): labeled samples, precision/recall on top signal, hallucination rate, cost per door. `[proposal]` Sizes: ~40 hand-labeled parcels (pool), 20-image verified-negative probe set. Arithmetic pinned by fixture 09 (P=0.818, R=0.9, H=0.05 on the frozen confusion set).
@@ -81,10 +81,10 @@ Single surfaced number 0–100 (no tiers). Deterministic, fixture-tested. `score
 Pipeline Python (GeoPandas). MCP server FastAPI on Fly.io. Map UI on Vercel. Both publicly reachable (rubric: local-only fails).
 
 ## R13 — Reproducibility `[source]`
-README with setup; env vars documented (`ANTHROPIC_API_KEY`, `CENSUS_API_KEY`, optional `GOOGLE_MAPS_KEY`); no hardcoded secrets; reviewer can re-run pipeline end-to-end.
+README with setup; env vars documented (`OPENAI_API_KEY`, `CENSUS_API_KEY`, optional `GOOGLE_MAPS_KEY`); no hardcoded secrets; reviewer can re-run pipeline end-to-end.
 
 ## R14 — Cost `[source]`
-≤$50 total; projected $0–5 (Street View free tier ≥ our volume; metadata endpoint free; Haiku vision ~$1–3). Cost per door computed and reported by the eval harness.
+≤$50 total; projected $0–5 (Street View free tier ≥ our volume; metadata endpoint free; gpt-4o-mini vision well under $1). Cost per door computed and reported by the eval harness.
 
 ## Risks
 - Rental-registration data may be request-only → R11.3 fallback.

@@ -46,7 +46,7 @@ published run in `data/` was produced by.
 
 | Variable | Unset means | Costs you |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | The vision stage declines before a single tile is fetched. | Pool, solar and exterior-condition signals. |
+| `OPENAI_API_KEY` | The vision stage declines before a single tile is fetched. | Pool, solar and exterior-condition signals. |
 | `CENSUS_API_KEY` | The ACS API refuses keyless callers, so no block groups are fetched. | The 5-point dual-income neighbourhood prior. |
 | `GOOGLE_MAPS_KEY` | Nothing. The pipeline never calls it today; it is reserved for the demo-scale Street View look-up. | Nothing. |
 
@@ -186,11 +186,11 @@ static.
 ## Cost
 
 The budget ceiling is **≤ $50** total; projected spend is **$0–5** (the Street
-View free tier exceeds our volume, the metadata endpoint is free, and Haiku
-vision over ~1,080 ortho tiles runs about $1–3). This is not asserted, it is
+View free tier exceeds our volume, the metadata endpoint is free, and
+gpt-4o-mini vision over ~1,080 ortho tiles runs well under $1). This is not asserted, it is
 measured: the ledger records what each source spends as it spends it, the
 manifest carries the total, and `make eval` prints the `cost per door` line
-above from it. The published run cost **$0.00** — with no `ANTHROPIC_API_KEY`
+above from it. The published run cost **$0.00** — with no `OPENAI_API_KEY`
 the vision stage declines, and every other source is free.
 
 ## Layout

@@ -9,7 +9,7 @@ dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.32",
   "mcp>=1.2",
-  "anthropic>=0.40",
+  "openai>=1.50",
   "pillow>=11.0",
 ]
 

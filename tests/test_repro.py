@@ -42,7 +42,7 @@ SCANNED_ROOTS = ("src", "eval", "web")
 #: table or a test vector far more often than it is a credential, and a guard
 #: that cries wolf on every sha256 in the tree gets muted within a week.
 SECRET_PATTERNS = {
-    "anthropic api key": r"sk-ant-[A-Za-z0-9_\-]{12,}",
+    "openai api key": r"sk-(?:proj-)?[A-Za-z0-9_\-]{20,}",
     "google api key": r"AIza[0-9A-Za-z_\-]{20,}",
     "hex secret assigned to a key-named variable": (
         r"(?i)[A-Za-z_][A-Za-z0-9_]*(?:key|token|secret|password)[A-Za-z0-9_]*"
@@ -52,7 +52,7 @@ SECRET_PATTERNS = {
 
 #: The three environment variables the system reads. Every one is optional --
 #: each declines gracefully -- which is itself a documented fact (R13).
-REQUIRED_ENV_VARS = ("ANTHROPIC_API_KEY", "CENSUS_API_KEY", "GOOGLE_MAPS_KEY")
+REQUIRED_ENV_VARS = ("OPENAI_API_KEY", "CENSUS_API_KEY", "GOOGLE_MAPS_KEY")
 
 #: The entry points a reviewer is told to run, in the order the README runs
 #: them. `test-py` / `test-web` / `clean` exist too but are not part of the
@@ -74,7 +74,7 @@ PUBLISHED_ARTIFACTS = (
 README_ORDER = (
     ("prerequisites", r"prerequisit|requirements"),
     ("make setup", r"make\s+setup"),
-    ("the environment variables", r"ANTHROPIC_API_KEY"),
+    ("the environment variables", r"OPENAI_API_KEY"),
     ("make pipeline", r"make\s+pipeline"),
     ("make eval", r"make\s+eval"),
     ("make serve", r"make\s+serve"),
@@ -241,7 +241,7 @@ def test_the_secret_scan_actually_reads_files():
 @pytest.mark.parametrize(
     "name, body",
     [
-        ("anthropic api key", 'CLIENT = Anthropic(api_key="sk-ant-api03-AbCd1234EfGh5678IjKl")\n'),
+        ("openai api key", 'CLIENT = OpenAI(api_key="sk-proj-AbCd1234EfGh5678IjKlMnOp")\n'),
         ("google api key", 'STREET_VIEW_KEY = "AIzaSyA1b2C3d4E5f6G7h8I9j0KlMnOpQrStUv"\n'),
         (
             "hex secret assigned to a key-named variable",
@@ -264,7 +264,7 @@ def test_the_secret_scan_does_not_bite_on_env_lookups_or_placeholders(tmp_path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "config.py").write_text(
         'import os\n'
-        'ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")\n'
+        'OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")\n'
         'CENSUS_API_KEY = ""\n'
         'CACHE_KEY = hashlib.sha256(raw).hexdigest()\n',
         encoding="utf-8",
@@ -277,15 +277,15 @@ def test_the_secret_scan_does_not_bite_on_env_lookups_or_placeholders(tmp_path):
 def test_the_secret_scan_covers_the_web_and_eval_trees(tmp_path):
     for root, name, body in [
         ("web", "config.js", 'const key = "AIzaSyA1b2C3d4E5f6G7h8I9j0KlMnOpQrStUv";\n'),
-        ("eval", "run.py", 'TOKEN = "sk-ant-api03-ZzYyXxWwVvUuTtSs"\n'),
+        ("eval", "run.py", 'TOKEN = "sk-proj-ZzYyXxWwVvUuTtSsRrQq"\n'),
     ]:
         (tmp_path / root).mkdir()
         (tmp_path / root / name).write_text(body, encoding="utf-8")
 
     hits, _ = scan_for_secrets([tmp_path / "web", tmp_path / "eval"])
     assert sorted(kind for _, _, kind in hits) == [
-        "anthropic api key",
         "google api key",
+        "openai api key",
     ]
 
 
@@ -378,17 +378,17 @@ def test_env_example_declares_exactly_the_three_known_variables(env_example_text
 
 def test_the_env_var_check_catches_a_readme_only_variable():
     """Meta: both directions of the consistency check must be able to bite."""
-    declared = env_example_vars("ANTHROPIC_API_KEY=\n")
+    declared = env_example_vars("OPENAI_API_KEY=\n")
     documented = readme_env_vars(
-        "Set `ANTHROPIC_API_KEY` and `MAPBOX_ACCESS_TOKEN`.\n", declared
+        "Set `OPENAI_API_KEY` and `MAPBOX_ACCESS_TOKEN`.\n", declared
     )
 
     assert documented - set(declared) == {"MAPBOX_ACCESS_TOKEN"}
 
 
 def test_the_env_var_check_catches_an_undocumented_declared_variable():
-    declared = env_example_vars("ANTHROPIC_API_KEY=\nCENSUS_API_KEY=\n")
-    readme = "Set `ANTHROPIC_API_KEY` before running the pipeline.\n"
+    declared = env_example_vars("OPENAI_API_KEY=\nCENSUS_API_KEY=\n")
+    readme = "Set `OPENAI_API_KEY` before running the pipeline.\n"
 
     assert [name for name in declared if name not in readme] == ["CENSUS_API_KEY"]
 
@@ -396,7 +396,7 @@ def test_the_env_var_check_catches_an_undocumented_declared_variable():
 def test_readme_says_the_env_vars_are_optional(readme_text):
     """All three decline gracefully; a reviewer who thinks a key is required
     stops at `make setup`."""
-    start = first_index(readme_text, r"ANTHROPIC_API_KEY", "the environment variables")
+    start = first_index(readme_text, r"OPENAI_API_KEY", "the environment variables")
     window = readme_text[start : start + 2000]
     assert re.search(r"optional", window, re.IGNORECASE), (
         "the env-var section must say which variables are optional"

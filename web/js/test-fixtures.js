@@ -309,7 +309,7 @@ export function runManifest(overrides = {}) {
       'CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so '
       + 'block-group statistics were not fetched',
       'municipal rental registration not obtained via OPRA',
-      'ANTHROPIC_API_KEY is not set, so the vision stage was skipped. Pool, solar '
+      'OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar '
       + 'and exterior-condition signals are unavailable; every door still scores, '
       + 'but without the R4 imagery terms.',
       'no door in this territory has a deed inside the 90-day mover window — the '

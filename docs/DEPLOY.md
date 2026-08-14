@@ -47,7 +47,7 @@ do them for you:
 1. **`flyctl auth login`** — authenticating to Fly.io.
 2. **`vercel login`** — authenticating to Vercel.
 3. **Setting the three application credentials as Fly secrets.** They are
-   `ANTHROPIC_API_KEY`, `CENSUS_API_KEY` and `GOOGLE_MAPS_KEY` — the same three
+   `OPENAI_API_KEY`, `CENSUS_API_KEY` and `GOOGLE_MAPS_KEY` — the same three
    `.env.example` declares, and all three are optional (see below).
 4. **Setting the two UI base variables in Vercel**, `HOUSEACCOUNT_API_BASE` and
    `HOUSEACCOUNT_ARTIFACT_BASE`. Not secrets, but they depend on the hostname
@@ -66,7 +66,7 @@ API later would need, and setting them now means the deployed app and
 
 | Variable | What it buys | Missing means |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | The vision stage (pool, solar, exterior condition). | The stage declines before any tile is fetched; R4 imagery terms are absent from scores. |
+| `OPENAI_API_KEY` | The vision stage (pool, solar, exterior condition). | The stage declines before any tile is fetched; R4 imagery terms are absent from scores. |
 | `CENSUS_API_KEY` | The ACS block-group dual-income prior, worth 5 points. | No block-group context; recorded in `degradations[]` in `data/run_manifest.json`. |
 | `GOOGLE_MAPS_KEY` | Reserved for the demo-scale Street View look-up. | Nothing — the pipeline does not call it today. |
 
@@ -89,7 +89,7 @@ Set the application credentials. Secrets are stored encrypted and injected as
 environment variables at boot; they never enter the image or this repository:
 
 ```sh
-flyctl secrets set ANTHROPIC_API_KEY=<your-key> CENSUS_API_KEY=<your-key>
+flyctl secrets set OPENAI_API_KEY=<your-key> CENSUS_API_KEY=<your-key>
 flyctl secrets set GOOGLE_MAPS_KEY=<your-key>
 ```
 

@@ -357,7 +357,7 @@ const PROVIDERS = [
   {
     key: 'vision',
     label: 'Aerial-imagery vision stage',
-    pattern: /vision|imagery|anthropic/i,
+    pattern: /vision|imagery|openai/i,
     reasonField: null,
     availableField: null,
   },

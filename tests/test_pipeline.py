@@ -19,7 +19,7 @@ assertion covers the cache-first contract across all five sources at once, and
 it is why the cache lives in `Config`, not in each stage.
 
 **Degradation is a completed run, not a failure.** No `CENSUS_API_KEY`, no
-`ANTHROPIC_API_KEY`, no rental register, an upstream that 404s — each one is
+`OPENAI_API_KEY`, no rental register, an upstream that 404s — each one is
 named in the manifest's `degradations`, logged once, and the run still publishes
 every door. Only the parcel harvest is load-bearing: a run with no parcels is
 not a degraded run, it is no run, and it raises.
@@ -86,7 +86,7 @@ PIN_COMMERCIAL = "0248_01101_00009"
 def no_ambient_credentials(monkeypatch):
     """`AcsSource` falls back to the environment, so the environment is cleared:
     a developer's real key must not change what this suite asserts."""
-    for name in ("ANTHROPIC_API_KEY", "CENSUS_API_KEY", "GOOGLE_MAPS_KEY"):
+    for name in ("OPENAI_API_KEY", "CENSUS_API_KEY", "GOOGLE_MAPS_KEY"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -284,24 +284,30 @@ class ExplodingTransport:
 # --- the scripted vision client -----------------------------------------------
 
 
-class _Block:
+class _Message:
     def __init__(self, text):
-        self.type = "text"
-        self.text = text
+        self.role = "assistant"
+        self.content = text
+
+
+class _Choice:
+    def __init__(self, text):
+        self.message = _Message(text)
+        self.finish_reason = "stop"
 
 
 class _Usage:
-    input_tokens = 1200
-    output_tokens = 180
+    prompt_tokens = 1200
+    completion_tokens = 180
 
 
 class _Reply:
     def __init__(self, text):
-        self.content = [_Block(text)]
+        self.choices = [_Choice(text)]
         self.usage = _Usage()
 
 
-class _Messages:
+class _Completions:
     def __init__(self, client):
         self._client = client
 
@@ -311,7 +317,11 @@ class _Messages:
         refs = [
             block["text"][len(label) :]
             for message in kwargs["messages"]
-            for block in message["content"]
+            # The system message carries a plain string; only the user turn is
+            # a block list, and only its text blocks label a tile.
+            for block in (
+                message["content"] if isinstance(message["content"], list) else ()
+            )
             if block.get("type") == "text" and block.get("text", "").startswith(label)
         ]
         return _Reply(
@@ -326,8 +336,14 @@ class _Messages:
         )
 
 
+class _Chat:
+    def __init__(self, client):
+        self.completions = _Completions(client)
+
+
 class FakeVisionClient:
-    """`client.messages.create(**kw)` — the whole surface the provider uses.
+    """`client.chat.completions.create(**kw)` — the whole surface the provider
+    uses.
 
     Claims a pool on every tile it is shown, which is only possible because the
     provider labels each image with its `image_ref`.
@@ -335,24 +351,28 @@ class FakeVisionClient:
 
     def __init__(self):
         self.calls = []
-        self.messages = _Messages(self)
+        self.chat = _Chat(self)
 
 
-class _ExplodingMessages:
+class _ExplodingCompletions:
     def create(self, **kwargs):
         raise AssertionError("the model was called — cached detections were not consulted")
 
 
+class _ExplodingChat:
+    completions = _ExplodingCompletions()
+
+
 class ExplodingVisionClient:
-    messages = _ExplodingMessages()
+    chat = _ExplodingChat()
 
 
 # --- running the pipeline -----------------------------------------------------
 
 
-def config_for(tmp_path, *, anthropic="sk-test", census="census-test"):
+def config_for(tmp_path, *, openai="sk-test", census="census-test"):
     return Config(
-        anthropic_api_key=anthropic,
+        openai_api_key=openai,
         census_api_key=census,
         google_maps_key=None,
         repo_root=tmp_path,
@@ -542,9 +562,9 @@ def test_a_missing_census_key_degrades_the_acs_term_and_the_run_completes(tmp_pa
     )
 
 
-def test_a_missing_anthropic_key_skips_vision_without_fetching_a_single_tile(tmp_path):
+def test_a_missing_openai_key_skips_vision_without_fetching_a_single_tile(tmp_path):
     """Declining costs nothing, so it must not download 1,080 ortho tiles first."""
-    config = config_for(tmp_path, anthropic=None)
+    config = config_for(tmp_path, openai=None)
     transport = RoutingTransport()
 
     result = go(config, transport, client=ExplodingVisionClient())

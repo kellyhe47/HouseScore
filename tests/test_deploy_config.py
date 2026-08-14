@@ -61,7 +61,7 @@ HEALTH_PATH = "/health"
 APP_FACTORY = "houseaccount.server.app:create_app"
 
 #: The application credentials, which are `flyctl secrets`, never `[env]` values.
-APP_CREDENTIALS = ("ANTHROPIC_API_KEY", "CENSUS_API_KEY", "GOOGLE_MAPS_KEY")
+APP_CREDENTIALS = ("OPENAI_API_KEY", "CENSUS_API_KEY", "GOOGLE_MAPS_KEY")
 
 #: The two build-time variables the UI reads through `window.*`. Both must be
 #: injected from the environment: `map.js` defaults to a same-origin `/api` and
@@ -72,7 +72,7 @@ UI_BASE_VARS = ("HOUSEACCOUNT_API_BASE", "HOUSEACCOUNT_ARTIFACT_BASE")
 #: `tests/test_repro.py` scans the source tree for; duplicated rather than
 #: imported so this guard stands on its own.
 SECRET_PATTERNS = {
-    "anthropic api key": r"sk-ant-[A-Za-z0-9_\-]{12,}",
+    "openai api key": r"sk-(?:proj-)?[A-Za-z0-9_\-]{20,}",
     "google api key": r"AIza[0-9A-Za-z_\-]{20,}",
     "hex secret assigned to a key-named variable": (
         r"(?i)[A-Za-z_][A-Za-z0-9_]*(?:key|token|secret|password)[A-Za-z0-9_]*"
@@ -243,7 +243,7 @@ def test_the_container_does_not_run_as_root(dockerfile):
 
 
 def test_the_image_bakes_in_no_credential_defaults(dockerfile):
-    """`ENV ANTHROPIC_API_KEY=...` would ship a key inside the layer."""
+    """`ENV OPENAI_API_KEY=...` would ship a key inside the layer."""
     declared = " ".join(arguments(dockerfile, "ENV", "ARG"))
     for name in APP_CREDENTIALS:
         assert not re.search(rf"\b{name}\s*=\s*\S", declared), f"{name} has a baked-in value"
@@ -437,7 +437,7 @@ def test_the_deploy_secret_scan_reads_every_deploy_file():
 @pytest.mark.parametrize(
     "name, body",
     [
-        ("anthropic api key", 'ENV ANTHROPIC_API_KEY="sk-ant-api03-AbCd1234EfGh5678IjKl"\n'),
+        ("openai api key", 'ENV OPENAI_API_KEY="sk-proj-AbCd1234EfGh5678IjKlMnOp"\n'),
         ("google api key", 'GOOGLE_MAPS_KEY = "AIzaSyA1b2C3d4E5f6G7h8I9j0KlMnOpQrStUv"\n'),
         (
             "hex secret assigned to a key-named variable",
@@ -460,7 +460,7 @@ def test_the_deploy_secret_scan_does_not_bite_on_named_secrets(tmp_path):
     """Naming a secret is the correct pattern; only values are forbidden."""
     clean = tmp_path / "fly.toml"
     clean.write_text(
-        "# flyctl secrets set ANTHROPIC_API_KEY=... CENSUS_API_KEY=...\n"
+        "# flyctl secrets set OPENAI_API_KEY=... CENSUS_API_KEY=...\n"
         "[env]\n"
         'HOUSEACCOUNT_API_BASE = "$HOUSEACCOUNT_API_BASE"\n',
         encoding="utf-8",

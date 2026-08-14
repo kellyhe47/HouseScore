@@ -7,7 +7,7 @@ default (the territory anchor, the ~540 target, the ACS threshold) or a seam
 passed in.
 
 **Every seam is injected.** `transport` is the T001 HTTP callable every source
-fetches through and `client` is the Anthropic client the vision provider calls,
+fetches through and `client` is the OpenAI client the vision provider calls,
 so the entire five-stage run is exercisable against scripted responses without
 opening a socket. `run_pipeline` builds no clients of its own; `main` builds a
 `Config.from_env()` and nothing else.
@@ -26,7 +26,7 @@ copied into the manifest, and the run still publishes every door. That list is
 what the Data & Ethics page reads, so the strings are written for an operator —
 what was lost, and why.
 
-**Declining is free.** With no `ANTHROPIC_API_KEY` the vision stage sits out,
+**Declining is free.** With no `OPENAI_API_KEY` the vision stage sits out,
 and it must do so *before* the tiles are fetched: downloading 1,080 ortho frames
 for a stage that will not look at them is exactly the waste the declination
 exists to avoid.
@@ -364,7 +364,7 @@ def _run_vision(
     """
     tiles = (
         _fetch_tiles(doors, cache=cache, transport=transport, degradations=degradations)
-        if config.anthropic_api_key
+        if config.openai_api_key
         else ()
     )
     result = run_vision(tiles, config=config, ledger=ledger, cache=cache, client=client)

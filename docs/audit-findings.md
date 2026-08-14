@@ -46,7 +46,7 @@ Rubric territory is a ~540-home polygon subset of this.
 
 **Zillow/Redfin: excluded** — no public API, ToS bans scraping (both). Cite in ethics section.
 
-**Cost:** total ≈ $0–5 of $50 (Street View free tier + ~$1–3 Haiku-tier vision). Cost is not the constraint; Street View ToS is.
+**Cost:** total ≈ $0–5 of $50 (Street View free tier + sub-$1 mini-tier vision). Cost is not the constraint; Street View ToS is.
 
 ## Open items
 - Territory GeoJSON polygon NOT in repo — awaiting from user, else derive from parcel data.

@@ -17,7 +17,7 @@ No identity data, ever: no owner names, no mailing addresses, no deed-book name 
 - Hand-label sets (~40 pool labels, 20 negatives) are produced during build; the eval harness runs against fixture 09's frozen arithmetic until they exist.
 
 ## Definition of done
-- `make pipeline` runs harvest→resolve→vision→score→publish from a fresh clone with only documented env vars (`ANTHROPIC_API_KEY`, `CENSUS_API_KEY`; optional `GOOGLE_MAPS_KEY`), zero manual steps (R2.2).
+- `make pipeline` runs harvest→resolve→vision→score→publish from a fresh clone with only documented env vars (`OPENAI_API_KEY`, `CENSUS_API_KEY`; optional `GOOGLE_MAPS_KEY`), zero manual steps (R2.2).
 - `make eval` runs: all 12 golden fixtures green via the real score engine; vision P/R + hallucination + cost-per-door computed from labeled sets; entity-resolution match rate ≥95% reported (R3.2).
 - Map UI and MCP server (tools exactly: `get_door_score`, `explain_score`, `plan_route`) deployed and publicly reachable (R8, R9, R12); Data & Ethics page live per R11.4.
 - Total API spend ≤ $50 (projected $0–5); caching/batching visible in code (R14, R2.3).

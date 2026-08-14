@@ -12,7 +12,7 @@ import pytest
 from houseaccount.config import Config
 
 KEY_ENV_VARS = [
-    ("ANTHROPIC_API_KEY", "anthropic_api_key"),
+    ("OPENAI_API_KEY", "openai_api_key"),
     ("CENSUS_API_KEY", "census_api_key"),
     ("GOOGLE_MAPS_KEY", "google_maps_key"),
 ]
@@ -50,7 +50,7 @@ def test_keys_are_independent(clean_env):
     clean_env.setenv("CENSUS_API_KEY", "census-only")
     config = Config.from_env()
     assert config.census_api_key == "census-only"
-    assert config.anthropic_api_key is None
+    assert config.openai_api_key is None
     assert config.google_maps_key is None
 
 
@@ -101,7 +101,7 @@ def test_config_reads_keys_only_from_the_environment(clean_env):
 
 
 # Shapes that a real credential takes; none may be hardcoded anywhere in src/.
-SECRET_LITERAL_MARKERS = ["sk-ant-", "sk_live_", "AIzaSy", "ghp_", "xoxb-"]
+SECRET_LITERAL_MARKERS = ["sk-proj-", "sk-ant-", "sk_live_", "AIzaSy", "ghp_", "xoxb-"]
 
 
 def test_no_credential_literals_anywhere_in_src():

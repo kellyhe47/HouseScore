@@ -1,12 +1,12 @@
 """The vision provider seam (T007) — batching, cost, caching, declination.
 
-`ANTHROPIC_API_KEY` is unset on this machine and no test may reach the network,
-so the Anthropic client is an *injected seam*, exactly like the T001 transport.
+`OPENAI_API_KEY` is unset on this machine and no test may reach the network,
+so the OpenAI client is an *injected seam*, exactly like the T001 transport.
 The fake below is the whole contract the provider may rely on:
 
-    client.messages.create(**kwargs) -> response
-    response.content -> [block, ...]   with block.text carrying the JSON
-    response.usage   -> .input_tokens / .output_tokens
+    client.chat.completions.create(**kwargs) -> response
+    response.choices -> [choice, ...]   with choice.message.content carrying JSON
+    response.usage   -> .prompt_tokens / .completion_tokens
 
 It records every request it received, which is what makes batch size and call
 counts assertable rather than inferred.
@@ -43,7 +43,7 @@ from houseaccount.vision.provider import (
     DEFAULT_BATCH_SIZE,
     LEDGER_SOURCE,
     CachedVisionProvider,
-    ClaudeVisionProvider,
+    OpenAIVisionProvider,
     VisionProvider,
 )
 from houseaccount.vision.run import VisionRun, run_vision
@@ -70,30 +70,36 @@ def tiles(count, year=2020):
     return [tile(index, year) for index in range(1, count + 1)]
 
 
-# --- the fake Anthropic client ----------------------------------------------
+# --- the fake OpenAI client -------------------------------------------------
 
 
-class FakeBlock:
+class FakeMessage:
     def __init__(self, text):
-        self.type = "text"
-        self.text = text
+        self.role = "assistant"
+        self.content = text
+
+
+class FakeChoice:
+    def __init__(self, text):
+        self.index = 0
+        self.message = FakeMessage(text)
+        self.finish_reason = "stop"
 
 
 class FakeUsage:
-    def __init__(self, input_tokens=1200, output_tokens=180):
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
+    def __init__(self, prompt_tokens=1200, completion_tokens=180):
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
 
 
 class FakeReply:
     def __init__(self, text):
-        self.content = [FakeBlock(text)]
+        self.choices = [FakeChoice(text)]
         self.usage = FakeUsage()
-        self.stop_reason = "end_turn"
-        self.model = "fake-haiku"
+        self.model = "fake-mini"
 
 
-class FakeMessages:
+class FakeCompletions:
     def __init__(self, client):
         self._client = client
 
@@ -102,7 +108,12 @@ class FakeMessages:
         return FakeReply(self._client.responder(kwargs))
 
 
-class FakeAnthropic:
+class FakeChat:
+    def __init__(self, client):
+        self.completions = FakeCompletions(client)
+
+
+class FakeOpenAI:
     """Records every request; answers with whatever `responder` returns.
 
     The default responder claims a pool on every tile whose `image_ref` it can
@@ -115,7 +126,7 @@ class FakeAnthropic:
         self.confidence = confidence
         self.known_refs = [item.image_ref for item in known_tiles]
         self.responder = responder or self._default_responder
-        self.messages = FakeMessages(self)
+        self.chat = FakeChat(self)
 
     def _default_responder(self, kwargs):
         seen = [ref for ref in self.known_refs if ref in serialise(kwargs)]
@@ -146,15 +157,15 @@ def serialise(value):
 def count_image_blocks(value):
     """How many image content blocks a request carries, wherever they sit."""
     if isinstance(value, Mapping):
-        here = 1 if value.get("type") == "image" else 0
+        here = 1 if value.get("type") == "image_url" else 0
         return here + sum(count_image_blocks(item) for item in value.values())
     if isinstance(value, (list, tuple)):
         return sum(count_image_blocks(item) for item in value)
     return 0
 
 
-def claude(client, ledger=None, **kwargs):
-    return ClaudeVisionProvider(client=client, ledger=ledger or CostLedger(), **kwargs)
+def openai_provider(client, ledger=None, **kwargs):
+    return OpenAIVisionProvider(client=client, ledger=ledger or CostLedger(), **kwargs)
 
 
 # --- the protocol -----------------------------------------------------------
@@ -192,7 +203,7 @@ def test_an_object_without_detect_is_not_a_vision_provider():
 
 
 def test_both_shipped_providers_satisfy_the_protocol(tmp_path):
-    assert isinstance(claude(FakeAnthropic()), VisionProvider)
+    assert isinstance(openai_provider(FakeOpenAI()), VisionProvider)
     assert isinstance(
         CachedVisionProvider(RecordingProvider(), cache=Cache(tmp_path / "cache")), VisionProvider
     )
@@ -200,7 +211,7 @@ def test_both_shipped_providers_satisfy_the_protocol(tmp_path):
 
 def test_detect_returns_r33_detections():
     batch = tiles(2)
-    found = claude(FakeAnthropic(batch)).detect(batch)
+    found = openai_provider(FakeOpenAI(batch)).detect(batch)
     assert len(found) == 2
     assert all(isinstance(item, Detection) for item in found)
     assert {item.image_ref for item in found} == {item.image_ref for item in batch}
@@ -209,7 +220,7 @@ def test_detect_returns_r33_detections():
 def test_provenance_comes_from_the_tile_not_the_model():
     """The model may not name the parcel or date its own evidence."""
     batch = tiles(1)
-    client = FakeAnthropic(
+    client = FakeOpenAI(
         batch,
         responder=responding(
             json.dumps(
@@ -228,7 +239,7 @@ def test_provenance_comes_from_the_tile_not_the_model():
             )
         ),
     )
-    found = claude(client).detect(batch)
+    found = openai_provider(client).detect(batch)
     assert [item.pams_pin for item in found] == [batch[0].pams_pin]
     assert [item.capture_date for item in found] == [batch[0].capture_date]
 
@@ -253,15 +264,15 @@ def test_the_default_batch_size_actually_batches():
 )
 def test_tiles_are_sent_in_batches(tile_count, batch_size, expected_calls):
     batch = tiles(tile_count)
-    client = FakeAnthropic(batch)
-    claude(client, batch_size=batch_size).detect(batch)
+    client = FakeOpenAI(batch)
+    openai_provider(client, batch_size=batch_size).detect(batch)
     assert len(client.calls) == expected_calls
 
 
 def test_no_request_exceeds_the_batch_size():
     batch = tiles(7)
-    client = FakeAnthropic(batch)
-    claude(client, batch_size=3).detect(batch)
+    client = FakeOpenAI(batch)
+    openai_provider(client, batch_size=3).detect(batch)
     counts = [count_image_blocks(call) for call in client.calls]
     assert max(counts) <= 3
     assert sum(counts) == 7
@@ -269,14 +280,14 @@ def test_no_request_exceeds_the_batch_size():
 
 def test_every_tile_is_detected_once_across_the_batches():
     batch = tiles(7)
-    found = claude(FakeAnthropic(batch), batch_size=3).detect(batch)
+    found = openai_provider(FakeOpenAI(batch), batch_size=3).detect(batch)
     assert sorted(item.image_ref for item in found) == sorted(item.image_ref for item in batch)
 
 
 def test_an_empty_tile_list_costs_nothing_and_calls_nothing():
-    client = FakeAnthropic()
+    client = FakeOpenAI()
     ledger = CostLedger()
-    assert list(claude(client, ledger=ledger).detect([])) == []
+    assert list(openai_provider(client, ledger=ledger).detect([])) == []
     assert client.calls == []
     assert ledger.total_usd() == 0.0
 
@@ -286,16 +297,16 @@ def test_an_empty_tile_list_costs_nothing_and_calls_nothing():
 
 def test_the_request_asks_for_structured_json():
     batch = tiles(2)
-    client = FakeAnthropic(batch)
-    claude(client).detect(batch)
+    client = FakeOpenAI(batch)
+    openai_provider(client).detect(batch)
     assert "json" in serialise(client.calls[0]).lower()
 
 
 def test_the_request_labels_every_tile_it_carries():
     """Without a per-image label the model's answers cannot be attributed."""
     batch = tiles(3)
-    client = FakeAnthropic(batch)
-    claude(client, batch_size=3).detect(batch)
+    client = FakeOpenAI(batch)
+    openai_provider(client, batch_size=3).detect(batch)
     request = serialise(client.calls[0])
     for item in batch:
         assert item.image_ref in request
@@ -303,8 +314,8 @@ def test_the_request_labels_every_tile_it_carries():
 
 def test_the_request_carries_the_tile_pixels():
     batch = tiles(2)
-    client = FakeAnthropic(batch)
-    claude(client).detect(batch)
+    client = FakeOpenAI(batch)
+    openai_provider(client).detect(batch)
     assert count_image_blocks(client.calls[0]) == 2
 
 
@@ -314,7 +325,7 @@ def test_the_request_carries_the_tile_pixels():
 def test_spend_is_recorded_against_the_vision_source():
     batch = tiles(4)
     ledger = CostLedger()
-    claude(FakeAnthropic(batch), ledger=ledger, batch_size=2).detect(batch)
+    openai_provider(FakeOpenAI(batch), ledger=ledger, batch_size=2).detect(batch)
     assert LEDGER_SOURCE in ledger.as_dict()["sources"]
     assert ledger.total_usd() > 0
 
@@ -322,14 +333,14 @@ def test_spend_is_recorded_against_the_vision_source():
 def test_billed_units_are_the_tiles_looked_at():
     batch = tiles(7)
     ledger = CostLedger()
-    claude(FakeAnthropic(batch), ledger=ledger, batch_size=3).detect(batch)
+    openai_provider(FakeOpenAI(batch), ledger=ledger, batch_size=3).detect(batch)
     assert ledger.as_dict()["sources"][LEDGER_SOURCE]["units"] == 7
 
 
 def test_a_second_run_accumulates_rather_than_replaces():
     batch = tiles(2)
     ledger = CostLedger()
-    provider = claude(FakeAnthropic(batch), ledger=ledger)
+    provider = openai_provider(FakeOpenAI(batch), ledger=ledger)
     provider.detect(batch)
     first = ledger.total_usd()
     provider.detect(batch)
@@ -340,8 +351,8 @@ def test_an_unparseable_answer_is_still_billed():
     """The money left the account whatever the model said."""
     batch = tiles(2)
     ledger = CostLedger()
-    client = FakeAnthropic(batch, responder=responding("I'm afraid I can't help with that."))
-    claude(client, ledger=ledger).detect(batch)
+    client = FakeOpenAI(batch, responder=responding("I'm afraid I can't help with that."))
+    openai_provider(client, ledger=ledger).detect(batch)
     assert ledger.total_usd() > 0
 
 
@@ -350,7 +361,7 @@ def test_an_unparseable_answer_is_still_billed():
 
 def test_a_clean_run_records_no_parse_failures():
     batch = tiles(3)
-    provider = claude(FakeAnthropic(batch))
+    provider = openai_provider(FakeOpenAI(batch))
     provider.detect(batch)
     assert list(provider.parse_failures) == []
 
@@ -369,7 +380,7 @@ def test_a_clean_run_records_no_parse_failures():
 )
 def test_unparseable_output_is_recorded_and_excluded(answer):
     batch = tiles(2)
-    provider = claude(FakeAnthropic(batch, responder=responding(answer)))
+    provider = openai_provider(FakeOpenAI(batch, responder=responding(answer)))
     assert list(provider.detect(batch)) == []
     assert len(provider.parse_failures) >= 1
 
@@ -403,7 +414,7 @@ def test_a_bad_row_is_dropped_without_taking_the_batch_with_it(bad_entry):
             entry,
         ]
     }
-    provider = claude(FakeAnthropic(batch, responder=responding(json.dumps(payload))))
+    provider = openai_provider(FakeOpenAI(batch, responder=responding(json.dumps(payload))))
     found = list(provider.detect(batch))
     assert [item.image_ref for item in found] == [good.image_ref]
     assert len(provider.parse_failures) >= 1
@@ -423,7 +434,7 @@ def test_a_detection_for_an_image_we_never_sent_is_a_parse_failure():
             }
         ]
     }
-    provider = claude(FakeAnthropic(batch, responder=responding(json.dumps(payload))))
+    provider = openai_provider(FakeOpenAI(batch, responder=responding(json.dumps(payload))))
     assert list(provider.detect(batch)) == []
     assert len(provider.parse_failures) >= 1
 
@@ -450,7 +461,7 @@ def test_one_bad_batch_does_not_stop_the_later_ones():
             }
         )
 
-    provider = claude(FakeAnthropic(batch, responder=responder), batch_size=2)
+    provider = openai_provider(FakeOpenAI(batch, responder=responder), batch_size=2)
     found = list(provider.detect(batch))
     assert sorted(item.image_ref for item in found) == sorted(
         item.image_ref for item in batch[2:]
@@ -517,10 +528,10 @@ def test_caching_nothing_calls_nothing(cache):
 
 
 def test_the_cache_wraps_the_real_provider_too(cache):
-    """The composition the pipeline actually uses: cache in front of Claude."""
+    """The composition the pipeline actually uses: cache in front of the model."""
     batch = tiles(2)
-    client = FakeAnthropic(batch)
-    provider = CachedVisionProvider(claude(client), cache=cache)
+    client = FakeOpenAI(batch)
+    provider = CachedVisionProvider(openai_provider(client), cache=cache)
     provider.detect(batch)
     provider.detect(batch)
     assert len(client.calls) == 1
@@ -531,14 +542,14 @@ def test_the_cache_wraps_the_real_provider_too(cache):
 
 @pytest.fixture
 def no_key(monkeypatch):
-    """The real state of this machine: no ANTHROPIC_API_KEY at all."""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    """The real state of this machine: no OPENAI_API_KEY at all."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     return Config.from_env()
 
 
 @pytest.fixture
 def with_key(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-a-real-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key")
     return Config.from_env()
 
 
@@ -560,7 +571,7 @@ def test_the_declination_is_logged(no_key, caplog):
 
 
 def test_declining_spends_nothing_and_touches_no_client(no_key):
-    client = FakeAnthropic(tiles(3))
+    client = FakeOpenAI(tiles(3))
     ledger = CostLedger()
     run_vision(tiles(3), config=no_key, ledger=ledger, client=client)
     assert client.calls == []
@@ -603,7 +614,7 @@ def test_every_door_still_scores_when_vision_declines(no_key, fixture):
 
 def test_with_a_key_the_injected_client_does_the_work(with_key):
     batch = tiles(2)
-    client = FakeAnthropic(batch)
+    client = FakeOpenAI(batch)
     ledger = CostLedger()
     result = run_vision(batch, config=with_key, ledger=ledger, client=client)
     assert result.declined is False
@@ -612,7 +623,7 @@ def test_with_a_key_the_injected_client_does_the_work(with_key):
 
 
 def test_a_configured_run_with_no_tiles_is_not_a_declination(with_key):
-    client = FakeAnthropic()
+    client = FakeOpenAI()
     result = run_vision([], config=with_key, client=client)
     assert result.declined is False
     assert list(result.detections) == []
@@ -621,7 +632,7 @@ def test_a_configured_run_with_no_tiles_is_not_a_declination(with_key):
 
 def test_parse_failures_surface_on_the_run(with_key):
     batch = tiles(2)
-    client = FakeAnthropic(batch, responder=responding("not json"))
+    client = FakeOpenAI(batch, responder=responding("not json"))
     result = run_vision(batch, config=with_key, client=client)
     assert list(result.detections) == []
     assert len(result.parse_failures) >= 1
@@ -629,14 +640,14 @@ def test_parse_failures_surface_on_the_run(with_key):
 
 def test_a_configured_run_feeds_the_score_engine(with_key):
     batch = tiles(2)
-    result = run_vision(batch, config=with_key, client=FakeAnthropic(batch))
+    result = run_vision(batch, config=with_key, client=FakeOpenAI(batch))
     assert to_score_vision(result.detections)["pool"] is True
 
 
 def test_the_run_caches_across_two_invocations(with_key, tmp_path):
     """`make pipeline` twice in a row must cost money once."""
     batch = tiles(2)
-    client = FakeAnthropic(batch)
+    client = FakeOpenAI(batch)
     cache = Cache(tmp_path / "vision-cache")
     run_vision(batch, config=with_key, client=client, cache=cache)
     run_vision(batch, config=with_key, client=client, cache=cache)
@@ -646,21 +657,21 @@ def test_the_run_caches_across_two_invocations(with_key, tmp_path):
 # --- the SDK stays out of import time ---------------------------------------
 
 
-def test_importing_the_provider_does_not_import_the_anthropic_sdk(monkeypatch):
+def test_importing_the_provider_does_not_import_the_openai_sdk(monkeypatch):
     """No key here, so a module-level SDK import would break every other module
     that touches vision."""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     saved = {
         name: module
         for name, module in sys.modules.items()
-        if name == "anthropic" or name.startswith(("anthropic.", "houseaccount.vision"))
+        if name == "openai" or name.startswith(("openai.", "houseaccount.vision"))
     }
     for name in saved:
         sys.modules.pop(name, None)
     try:
         importlib.import_module("houseaccount.vision.provider")
         importlib.import_module("houseaccount.vision.run")
-        assert "anthropic" not in sys.modules
+        assert "openai" not in sys.modules
     finally:
         for name in [n for n in sys.modules if n.startswith("houseaccount.vision")]:
             sys.modules.pop(name, None)

@@ -10,7 +10,7 @@
 # the machine's config where anyone with read access to the app can print it.
 # The three application credentials are Fly secrets, set out of band:
 #
-#   flyctl secrets set ANTHROPIC_API_KEY=... CENSUS_API_KEY=... GOOGLE_MAPS_KEY=...
+#   flyctl secrets set OPENAI_API_KEY=... CENSUS_API_KEY=... GOOGLE_MAPS_KEY=...
 #
 # The server itself needs none of them — it reads artifacts and calls nothing —
 # so they are named here for the day a stage moves behind the API, and so the

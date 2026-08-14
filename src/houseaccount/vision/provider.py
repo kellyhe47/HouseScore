@@ -1,8 +1,8 @@
-"""The vision provider seam: protocol, Claude implementation, cache wrapper.
+"""The vision provider seam: protocol, OpenAI implementation, cache wrapper.
 
-The Anthropic client is *injected*, never constructed here. That is what lets
+The OpenAI client is *injected*, never constructed here. That is what lets
 the whole batching / cost / parse-failure contract be exercised against a fake
-on a machine with no `ANTHROPIC_API_KEY`, exactly like the T001 transport seam.
+on a machine with no `OPENAI_API_KEY`, exactly like the T001 transport seam.
 The SDK is not imported at module scope for the same reason — see
 `houseaccount.vision.run`, which imports it lazily inside the one function that
 needs a real client.
@@ -38,16 +38,16 @@ from houseaccount.vision.tiles import TILE_SPAN_METERS, Tile
 
 #: The `CostLedger` source name vision spends under. One string, so the eval
 #: harness's cost-per-door line and this module cannot disagree.
-LEDGER_SOURCE = "anthropic_vision"
+LEDGER_SOURCE = "openai_vision"
 
-#: Haiku tier per PRD R4.3: pool/solar presence on a 640px tile is a
+#: Mini tier per PRD R4.3: pool/solar presence on a 640px tile is a
 #: recognition task, not a reasoning one. A module constant so re-tiering is a
 #: one-line change rather than a search.
-VISION_MODEL = "claude-haiku-4-5"
+VISION_MODEL = "gpt-4o-mini"
 
-#: USD per token, Haiku 4.5 list price ($1 / $5 per million).
-INPUT_USD_PER_TOKEN = 1.00 / 1_000_000
-OUTPUT_USD_PER_TOKEN = 5.00 / 1_000_000
+#: USD per token, gpt-4o-mini list price ($0.15 / $0.60 per million).
+INPUT_USD_PER_TOKEN = 0.15 / 1_000_000
+OUTPUT_USD_PER_TOKEN = 0.60 / 1_000_000
 
 #: Tiles per request. Big enough that prompt overhead amortises, small enough
 #: that one unparseable answer costs four tiles rather than forty.
@@ -60,7 +60,7 @@ MAX_OUTPUT_TOKENS = 2048
 #: Bumped whenever the prompt or schema changes in a way that would make a
 #: cached answer wrong. Part of the cache address, so old entries are simply
 #: missed rather than silently reused against a new contract.
-PROMPT_VERSION = "2026-08-r33-v1"
+PROMPT_VERSION = "2026-08-r33-v2-openai"
 
 _CACHE_NAMESPACE = "vision:detections"
 
@@ -137,13 +137,14 @@ class ParseFailure:
     raw: str
 
 
-class ClaudeVisionProvider:
-    """Detect R4 signals on ortho tiles via an injected Anthropic client.
+class OpenAIVisionProvider:
+    """Detect R4 signals on ortho tiles via an injected OpenAI client.
 
-    The client is used through exactly one call — `client.messages.create(**kw)`
-    returning an object with `.content` (blocks carrying `.text`) and `.usage`
-    (`.input_tokens` / `.output_tokens`). That narrow surface is the whole
-    contract, which is why a fake satisfies it in full.
+    The client is used through exactly one call —
+    `client.chat.completions.create(**kw)` returning an object with `.choices`
+    (each carrying `.message.content`) and `.usage` (`.prompt_tokens` /
+    `.completion_tokens`). That narrow surface is the whole contract, which is
+    why a fake satisfies it in full.
     """
 
     def __init__(
@@ -174,7 +175,7 @@ class ClaudeVisionProvider:
         if not batch:
             return []
 
-        response = self._client.messages.create(**self._request(batch))
+        response = self._client.chat.completions.create(**self._request(batch))
 
         # Bill first. The money left the account whatever the model said, and a
         # run that under-reports its own spend is worse than one that overspends.
@@ -237,7 +238,7 @@ class ClaudeVisionProvider:
         return None
 
     def _request(self, batch: Sequence[Tile]) -> dict[str, Any]:
-        """The `messages.create` kwargs for one batch.
+        """The `chat.completions.create` kwargs for one batch.
 
         Each image is preceded by its `image_ref` label — without it the model's
         answers cannot be attributed, and the whole batching saving evaporates.
@@ -245,14 +246,11 @@ class ClaudeVisionProvider:
         content: list[dict[str, Any]] = []
         for tile in batch:
             content.append({"type": "text", "text": f"Tile image_ref: {tile.image_ref}"})
+            encoded = base64.b64encode(tile.image_bytes).decode("ascii")
             content.append(
                 {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": base64.b64encode(tile.image_bytes).decode("ascii"),
-                    },
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{encoded}"},
                 }
             )
         content.append({"type": "text", "text": _TASK_PROMPT})
@@ -260,8 +258,14 @@ class ClaudeVisionProvider:
         return {
             "model": self._model,
             "max_tokens": MAX_OUTPUT_TOKENS,
-            "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": content}],
+            # Server-side JSON mode. The prompt still spells out the envelope —
+            # JSON mode guarantees syntax, not the `detections` key — so a wrong
+            # shape stays a recorded parse failure rather than a crash.
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": content},
+            ],
         }
 
 
@@ -320,18 +324,20 @@ class CachedVisionProvider:
 
 
 def _response_text(response: Any) -> str:
-    """Concatenate the text blocks of a reply. Missing/odd blocks yield ''."""
-    blocks = getattr(response, "content", None) or ()
+    """Concatenate the message text of a reply. Missing/odd choices yield ''."""
+    choices = getattr(response, "choices", None) or ()
     return "".join(
-        text for block in blocks if isinstance(text := getattr(block, "text", None), str)
+        text
+        for choice in choices
+        if isinstance(text := getattr(getattr(choice, "message", None), "content", None), str)
     )
 
 
 def _usd_for(response: Any) -> float:
-    """Token spend for one request, at the Haiku-tier list price."""
+    """Token spend for one request, at the mini-tier list price."""
     usage = getattr(response, "usage", None)
-    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+    input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
     return input_tokens * INPUT_USD_PER_TOKEN + output_tokens * OUTPUT_USD_PER_TOKEN
 
 

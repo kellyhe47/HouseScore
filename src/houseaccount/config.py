@@ -52,7 +52,7 @@ def _env(name: str) -> str | None:
 class Config:
     """Immutable snapshot of the environment, taken once at startup."""
 
-    anthropic_api_key: str | None
+    openai_api_key: str | None
     census_api_key: str | None
     google_maps_key: str | None
     repo_root: Path
@@ -63,7 +63,7 @@ class Config:
     def from_env(cls) -> "Config":
         repo_root = _find_repo_root(Path(__file__).resolve().parent)
         return cls(
-            anthropic_api_key=_env("ANTHROPIC_API_KEY"),
+            openai_api_key=_env("OPENAI_API_KEY"),
             census_api_key=_env("CENSUS_API_KEY"),
             google_maps_key=_env("GOOGLE_MAPS_KEY"),
             repo_root=repo_root,

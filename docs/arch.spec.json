@@ -15,7 +15,7 @@
     { "id": "labels", "label": "Hand labels\n40 parcels + 20 negatives", "layer": 2, "group": "pipeline" },
     { "id": "harvest", "label": "Harvest agents\ndiscover + fetch + cache", "layer": 1, "group": "pipeline" },
     { "id": "resolve", "label": "Entity resolution\naddress normalize, PAMS_PIN join", "layer": 2, "group": "pipeline" },
-    { "id": "vision", "label": "Vision extraction\nClaude Haiku on image tiles", "layer": 2, "group": "pipeline" },
+    { "id": "vision", "label": "Vision extraction\ngpt-4o-mini on image tiles", "layer": 2, "group": "pipeline" },
     { "id": "evals", "label": "Eval harness\nP/R, hallucination, cost", "layer": 3, "group": "pipeline" },
     { "id": "score", "label": "House Score engine\ndeterministic, fixture-tested", "layer": 3, "group": "pipeline" },
     { "id": "db", "label": "doors.geojson + SQLite\nscores + evidence", "layer": 4, "group": "pipeline" },

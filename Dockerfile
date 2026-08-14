@@ -14,7 +14,7 @@
 #
 # Why no credentials: the pipeline needs keys, this server does not. It reads
 # `doors.geojson` and `houseaccount.sqlite` and calls nothing. There is
-# therefore no `ENV ANTHROPIC_API_KEY` here and there must never be one — see
+# therefore no `ENV OPENAI_API_KEY` here and there must never be one — see
 # `docs/DEPLOY.md` for `flyctl secrets set`, which is where credentials belong.
 
 FROM python:3.12-slim

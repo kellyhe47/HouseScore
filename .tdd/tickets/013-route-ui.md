@@ -1,10 +1,10 @@
 ---
 id: 013
 title: "Route UI + walk mode (R10, wireframe frames 4–4d)"
-status: tests-written
+status: green
 depends_on: [010, 011, 012]
 touches: [web/js/route-ui.js, web/js/walk.js, web/js/share.js, web/js/panel.js, web/js/route-ui.test.js, web/js/walk.test.js, web/js/share.test.js, web/js/panel.test.js, web/index.html, web/js/map.js, src/houseaccount/server/api.py, src/houseaccount/server/published.py, tests/test_server.py]
-iterations: 0
+iterations: 1
 test_files: [web/js/route-ui.test.js, web/js/walk.test.js, web/js/share.test.js, web/js/panel.test.js, tests/test_server.py]
 branch: ""
 ---
@@ -40,3 +40,23 @@ The server already has both ingredients — group math in SQLite (ticket 011 ame
 - [ ] `copyAsText(stops)` emits one line per stop with address + talk track, and fires a toast.
 - [ ] Live probe: plan a route in the browser against the running server, enter walk mode, mark a
       stop done, reload, and confirm the resume banner appears — zero console errors.
+
+## Attempt log
+
+- iter 1: green (154 JS tests, 1145 python). Orchestrator live probe drove the whole flow against
+  real data: Plan Route → set start on map → 20 numbered stops with scores, reason chips, talk
+  tracks and `+N min` offsets → walk mode (done/skip) → reload → resume banner
+  "Walk in progress — stop 3 of 20" with BOTH Resume and Discard → localStorage held
+  `{schema:1, index:2, knocked:1, skipped:1, rows:20}`.
+- Share format is mirrored in JS via `CompressionStream('deflate')`. It emits a different zlib
+  compression level than Python's (`eJw` vs `eNo`), so the bytes differ while both sides decode
+  each other; two golden-token tests pin that in both directions.
+- `POST /api/route` gained `exclude`, so excluding a stop re-plans server-side through
+  `Route.exclude` rather than filtering in JS — R10.3 holds.
+
+## Cosmetic defects found in the live probe (carried to the final polish pass)
+
+1. The header buttons still carry stale `title` tooltips reading "…ships in the next build" —
+   both features now ship. User-visible misinformation; fix.
+2. The map does not refit its bounds on viewport resize, so a desktop↔mobile resize leaves the
+   territory small and off-centre until reload. Initial load at any size is correct.

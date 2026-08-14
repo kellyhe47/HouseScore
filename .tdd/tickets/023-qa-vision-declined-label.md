@@ -1,11 +1,11 @@
 ---
 id: 023
 title: "Data & Ethics calls the vision stage DECLINED on a run where it produced 119 doors of imagery"
-status: in-progress
+status: green
 source: qa
 depends_on: []
 touches: [web/js/ethics.js, src/houseaccount/publish.py]
-iterations: 0
+iterations: 1
 test_files: []
 branch: ""
 ---
@@ -47,3 +47,48 @@ sitting.
   from DECLINED.
 - The line quantifies the loss against the whole: 31 of 270 answers, 119 of 540 doors with imagery.
 - The status is derived from the run manifest, not from the presence of a degradation string.
+
+## Resolution
+
+Green in 1 iteration — **code complete and tested, but the live page still reads DECLINED until the
+run manifest is regenerated.** See the artifact note below; that part is the human's call.
+
+The vision stage now publishes its own state instead of being inferred. `OpenAIVisionProvider` counts
+the requests it issues, `VisionRun.answers_lost` is derived from the parse failures it already holds
+(so it cannot drift), and `publish` emits a `vision` block:
+
+    "vision": {"available": true, "declination_reason": null,
+               "answers_total": 270, "answers_lost": 31, "doors_with_imagery": 119}
+
+`doors_with_imagery` is counted off the features being written — doors with >=1 evidence line carrying
+an `imagery` attachment — exactly as `doors_scored` is, so it cannot be passed a number nobody checked.
+An absent block still means "this run never measured the stage", so older publishes keep rendering.
+
+The page gains a third state: `status` in {live, partial, declined} on every availability row, with
+`live === (status !== 'declined')` preserved for existing callers, and the partial row quantifying the
+loss from the manifest's own numbers rather than prose.
+
+- tests locked: `a729f1e` · implementation: `731d604` · merged (conflict in test-fixtures.js resolved
+  by keeping both additive sections)
+- full suite on merged branch: 1373 Python, 236 JS
+
+### The artifact gap — decision required
+
+`data/run_manifest.json` was published before the `vision` block existed, so the live page falls
+through to the legacy degradation-string path and still prints DECLINED. Verified in a browser after
+the merge.
+
+**Regenerating is not straightforward, and the obvious move is wrong.** With a WARM vision cache the
+provider issues no requests, so a re-run would publish `answers_total: 0, answers_lost: 0` and the page
+would render the vision row as `live` — truthful about *that* run, but it would NOT reproduce the
+31-of-270 partial state this ticket exists to display. Reproducing that needs a COLD vision cache, i.e.
+paying for ~270 vision requests again (~$0.52 at the measured low-detail rate).
+
+The scope in `touches` was wrong, recorded per the deviation rule: it named `web/js/ethics.js` and
+`publish.py` only. The wiring the pipeline tests drive also required `pipeline.py`, `vision/run.py`,
+`vision/provider.py`, `web/ethics.html` and `web/styles.css`.
+
+### Noticed, not fixed (no ticket filed)
+
+The `mover_deed_vintage` row is a third-state candidate too: it renders `live` while carrying a
+recording-lag disclaimer — the same shape `partial` was introduced for. Left exactly as it was.

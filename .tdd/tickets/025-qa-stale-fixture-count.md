@@ -1,11 +1,11 @@
 ---
 id: 025
 title: "Ethics page hardcodes 'twelve golden fixtures'; the harness reports thirteen"
-status: in-progress
+status: green
 source: qa
 depends_on: []
 touches: [web/js/ethics.js]
-iterations: 0
+iterations: 1
 test_files: []
 branch: ""
 ---
@@ -45,3 +45,15 @@ figures — removes the whole class of drift rather than resetting the counter.
 
 - The count renders from the published report, not a literal.
 - Low severity; no user is misled about a score, but the page's accuracy claim is the point of it.
+
+## Resolution
+
+Green in 1 iteration. The count is read from the published report rather than corrected to another
+literal, so the drift class is closed rather than reset. With no report — or a report publishing no
+count — the determinism claim stands and the page states no count at all.
+
+The survey also caught two stale twelves nobody had asserted: `evalReport()`'s default in
+`web/js/test-fixtures.js` and a `tests/test_pipeline.py` docstring. Both corrected in the test commit.
+
+- tests locked: `a729f1e` · implementation: `731d604` · merged
+- **verified in a live browser**: the page now reads "13 golden fixtures pin the arithmetic"

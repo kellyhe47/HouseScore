@@ -1,11 +1,11 @@
 ---
 id: 024
 title: "Published MCP URL names a host the documented deploy never creates"
-status: in-progress
+status: green
 source: qa
 depends_on: [016]
 touches: [web/js/ethics.js, docs/DEPLOY.md, fly.toml]
-iterations: 0
+iterations: 1
 test_files: []
 branch: ""
 ---
@@ -43,3 +43,19 @@ One of the two has to move.
 
 - The hostname on the ethics page and the app name in `fly.toml` cannot disagree without a test
   failing (`tests/test_deploy_config.py` already parses these files).
+
+## Resolution
+
+Green in 1 iteration. The page moved, per the human decision; `fly.toml` and `docs/DEPLOY.md` were not
+touched and no second Fly app was added.
+
+The literal was in **`web/ethics.html:312`**, not `web/js/ethics.js` as this ticket claimed — recorded
+as a scope deviation. It now advertises `https://houseaccount.fly.dev/mcp`.
+
+The guard is the part worth keeping: `tests/test_deploy_config.py` **derives** the expected URL from
+`app = "..."` in `fly.toml` plus `MCP_PATH` from `houseaccount.server.app`, so the page and the deploy
+config cannot drift apart in either direction. A second test scans all of `web/` for any `*.fly.dev`
+host the deploy never creates, which catches a partial edit.
+
+- tests locked: `a729f1e` · implementation: `731d604` · merged
+- **verified in a live browser**: the rendered MCP section advertises `https://houseaccount.fly.dev/mcp`

@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildPanel, copyAddress, panelLayout } from './panel.js';
-import { scoredDoor, visionDoor, unscoredDoor, noEvidenceDoor } from './test-fixtures.js';
+import {
+  scoredDoor,
+  visionDoor,
+  unscoredDoor,
+  noEvidenceDoor,
+  detailedDoor,
+} from './test-fixtures.js';
 
 // U+2212 MINUS SIGN — the typographic minus the prototype's panel uses, not ASCII '-'.
 const MINUS = '−';
@@ -192,4 +198,125 @@ test('panelLayout is a side panel at the breakpoint', () => {
 
 test('panelLayout is a side panel on desktop', () => {
   assert.equal(panelLayout(1280), 'side');
+});
+
+// ---------- T013 amendment: talk track (R7.2) and score breakdown (R8.1) ----
+//
+// `GET /api/doors.geojson` carries only the R11.1 published properties, while
+// `GET /api/door/{pin}` also carries `groups`, `raw_total` and `talk_track`.
+// The panel therefore has to render both shapes: the map's own properties open
+// the panel instantly, and the fetched detail fills the two extra sections in.
+// Every assertion above still holds for a door without them.
+
+test('a door with no talk track has no talk-track section', () => {
+  assert.equal(buildPanel(scoredDoor()).talkTrack, null);
+});
+
+test('a door with no group math has no breakdown section', () => {
+  assert.equal(buildPanel(scoredDoor()).breakdown, null);
+});
+
+test('buildPanel surfaces the talk track the planner wrote (R7.2)', () => {
+  const door = detailedDoor();
+  assert.equal(buildPanel(door).talkTrack, door.talk_track);
+});
+
+test('the breakdown carries the scoring groups in ICP order', () => {
+  const breakdown = buildPanel(detailedDoor()).breakdown;
+
+  assert.deepEqual(
+    breakdown.groups.map((group) => group.key),
+    ['mover', 'hires_out', 'capacity', 'need', 'modifier']
+  );
+});
+
+test('each group row carries its points and its ceiling', () => {
+  const breakdown = buildPanel(detailedDoor()).breakdown;
+  const byKey = Object.fromEntries(breakdown.groups.map((group) => [group.key, group]));
+
+  assert.deepEqual(
+    breakdown.groups.map((group) => [group.key, group.max]),
+    [
+      ['mover', 100],
+      ['hires_out', 60],
+      ['capacity', 30],
+      ['need', 30],
+      ['modifier', -15],
+    ]
+  );
+  assert.equal(byKey.capacity.points, 15);
+  assert.equal(byKey.need.points, 8);
+  assert.equal(byKey.modifier.points, -20);
+});
+
+test('each group row carries a label to render', () => {
+  const breakdown = buildPanel(detailedDoor()).breakdown;
+
+  assert.deepEqual(
+    breakdown.groups.map((group) => group.label),
+    ['Mover', 'Hires-out', 'Capacity', 'Need', 'Modifier']
+  );
+});
+
+test('a door with no modifier does not show a modifier row', () => {
+  const door = detailedDoor({
+    groups: { mover: 85, hires_out: 0, capacity: 15, need: 8, modifier: 0 },
+    raw_total: 108,
+    score: 100,
+  });
+
+  assert.deepEqual(
+    buildPanel(door).breakdown.groups.map((group) => group.key),
+    ['mover', 'hires_out', 'capacity', 'need']
+  );
+});
+
+test('the breakdown reports the unclamped total beside the score', () => {
+  const breakdown = buildPanel(detailedDoor()).breakdown;
+
+  assert.equal(breakdown.rawTotal, 3);
+  assert.equal(breakdown.score, 3);
+});
+
+test('an unclamped score reads as plain arithmetic', () => {
+  assert.equal(buildPanel(detailedDoor()).breakdown.mathLine, 'raw 3 = score 3');
+});
+
+test('a raw total over 100 shows the cap in the math line', () => {
+  const door = detailedDoor({
+    groups: { mover: 85, hires_out: 0, capacity: 15, need: 8, modifier: 0 },
+    raw_total: 108,
+    score: 100,
+  });
+
+  assert.equal(buildPanel(door).breakdown.mathLine, 'raw 108 → capped 100');
+});
+
+test('a raw total below 0 shows the floor in the math line (DESIGN-ADDITIONS)', () => {
+  const door = detailedDoor({
+    groups: { mover: 0, hires_out: 0, capacity: 0, need: 0, modifier: -15 },
+    raw_total: -15,
+    score: 0,
+  });
+
+  assert.equal(buildPanel(door).breakdown.mathLine, 'raw -15 → floored 0');
+});
+
+test('the group points account for the raw total', () => {
+  const breakdown = buildPanel(detailedDoor()).breakdown;
+  const total = breakdown.groups.reduce((sum, group) => sum + group.points, 0);
+
+  assert.equal(total, breakdown.rawTotal);
+});
+
+test('an unscored door has neither a talk track nor a breakdown', () => {
+  const panel = buildPanel(unscoredDoor({ groups: null, raw_total: null, talk_track: null }));
+
+  assert.equal(panel.talkTrack, null);
+  assert.equal(panel.breakdown, null);
+});
+
+test('the widened panel is still plain data', () => {
+  const panel = buildPanel(detailedDoor());
+  assert.deepEqual(JSON.parse(JSON.stringify(panel)), panel);
 });

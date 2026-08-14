@@ -123,3 +123,134 @@ export function doorWithScore(score, pin = 'pin_' + String(score)) {
     evidence: [],
   };
 }
+
+// --- T013 ---------------------------------------------------------------------
+// The route/walk surfaces read two more shapes: the widened `GET /api/door/{pin}`
+// body (published properties + `groups`, `raw_total`, `talk_track`) and the
+// `POST /api/route` payload, whose stops are `houseaccount.route.Stop` verbatim.
+
+/**
+ * A door as `GET /api/door/{pin}` serves it after the T013 amendment: the same
+ * published properties plus the group math and the rep's opener.
+ */
+export function detailedDoor(overrides = {}) {
+  return {
+    ...scoredDoor(),
+    // The group math reconciles with `scoredDoor()`'s evidence trail:
+    // 15 + 8 − 20 + 0 = 3, which is also the sum of these five groups.
+    groups: { mover: 0, hires_out: 0, capacity: 15, need: 8, modifier: -20 },
+    raw_total: 3,
+    score: 3,
+    talk_track:
+      "Hi, I'm working SNYDER AVE today. Quick reason I knocked: " +
+      'assessed at $880,700, at or above the $743,350 territory median. Is now a bad time?',
+    ...overrides,
+  };
+}
+
+/** One stop exactly as the server serializes `houseaccount.route.Stop`. */
+export function stop(overrides = {}) {
+  return {
+    pams_pin: '0248_01101_00012',
+    address: '12 OAK ST, Ramsey NJ 07446',
+    score: 100,
+    walk_minutes: 0.0,
+    cumulative_minutes: 0.0,
+    talk_track: "Hi, I'm working OAK ST today. Is now a bad time?",
+    ...overrides,
+  };
+}
+
+/**
+ * A three-stop `POST /api/route` body.
+ *
+ * The scores deliberately do NOT descend: the planner orders on score per
+ * walking minute, and anything that re-sorts this list in the browser has
+ * re-implemented the planner (R10.3).
+ */
+export function routePayload(overrides = {}) {
+  return {
+    stops: [
+      stop(),
+      stop({
+        pams_pin: '0248_01101_00020',
+        address: '20 MAPLE AVE, Ramsey NJ 07446',
+        score: 58,
+        walk_minutes: 4.4,
+        cumulative_minutes: 4.4,
+        talk_track: "Hi, I'm working MAPLE AVE today. Is now a bad time?",
+      }),
+      stop({
+        pams_pin: '0248_3502_8.01',
+        address: '27 FAWN HILL RD, Ramsey NJ 07446',
+        score: 81,
+        walk_minutes: 37.9,
+        cumulative_minutes: 42.3,
+        talk_track: "Hi, I'm working FAWN HILL RD today. Is now a bad time?",
+      }),
+    ],
+    total_minutes: 42.3,
+    estimate_disclosure:
+      'Walking times are straight-line estimates (x1.3 detour at 3 mph), '
+      + 'not turn-by-turn directions.',
+    ...overrides,
+  };
+}
+
+/**
+ * The same three stops after `requestRoute` has mapped them — the row shape
+ * walk mode consumes, so `walk.js` can be tested without a fetch.
+ */
+export function routeRows() {
+  return routePayload().stops.map((item, index) => ({
+    n: index + 1,
+    pin: item.pams_pin,
+    address: item.address,
+    score: item.score,
+    walkMinutes: item.walk_minutes,
+    cumulativeMinutes: item.cumulative_minutes,
+    elapsedLabel: `+${Math.round(item.cumulative_minutes)} min`,
+    talkTrack: item.talk_track,
+  }));
+}
+
+/**
+ * A `fetch` stand-in. Records every call and answers with `payload`.
+ *
+ * `node --test` has a real `fetch` but no server to point it at, so every module
+ * that talks to the API takes its `fetch` as an injected dependency and the
+ * tests hand it this.
+ */
+export function fakeFetch(payload, { status = 200, ok = true } = {}) {
+  const calls = [];
+  const impl = async (url, init = {}) => {
+    calls.push({ url, init, body: init.body ? JSON.parse(init.body) : null });
+    return {
+      ok,
+      status,
+      json: async () => (typeof payload === 'function' ? payload(calls.length) : payload),
+    };
+  };
+  impl.calls = calls;
+  return impl;
+}
+
+/**
+ * A `localStorage` stand-in: the same three methods, backed by a plain object.
+ *
+ * `node --test` has no `localStorage`, so `walk.js` takes its storage as an
+ * injected `{getItem, setItem, removeItem}` and the tests hand it this.
+ */
+export function memoryStorage(initial = {}) {
+  const data = { ...initial };
+  return {
+    data,
+    getItem: (key) => (key in data ? data[key] : null),
+    setItem: (key, value) => {
+      data[key] = String(value);
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
+  };
+}

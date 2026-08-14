@@ -50,7 +50,7 @@ from fastapi.testclient import TestClient
 from houseaccount.normalize import situs_display
 from houseaccount.publish import DOORS_GEOJSON_NAME, RunManifest, publish
 from houseaccount.resolve import DoorFacts, ResolveReport
-from houseaccount.route import Stop
+from houseaccount.route import Stop, decode_share
 from houseaccount.scoring.engine import score_door
 from houseaccount.server.app import UI_ORIGINS, DataUnavailable, create_app
 from houseaccount.server.mcp_tools import create_mcp_server
@@ -74,6 +74,13 @@ PUBLISHED_PROPERTIES = {
 }
 
 STOP_FIELDS = {field.name for field in fields(Stop)}
+
+#: The five groups R6 scores; T013 puts them on the door endpoint so the
+#: evidence panel can draw the prototype's "Score breakdown" section (R8.1).
+GROUP_NAMES = {"mover", "hires_out", "capacity", "need", "modifier"}
+
+#: What the door endpoint carries beyond the published allowlist after T013.
+DOOR_DETAIL_FIELDS = {"groups", "raw_total", "talk_track"}
 
 
 # --- builders -----------------------------------------------------------------
@@ -263,6 +270,67 @@ def test_door_endpoint_serves_the_unscored_door_with_its_exclusion(client):
     assert isinstance(body["exclusion_reason"], str) and body["exclusion_reason"]
 
 
+def test_the_door_endpoint_carries_the_group_math_the_breakdown_draws(client):
+    """T013: the panel's "Score breakdown" needs `groups` and `raw_total` (R8.1).
+
+    The published GeoJSON deliberately does not carry them — they are server-side
+    (`doors.groups`, `doors.raw_total` in SQLite) — so the panel gets them from
+    the door endpoint, which is the only place a browser can ask for one door.
+    """
+    result = engine_result(OAK)
+
+    body = client.get(f"/api/door/{OAK.pams_pin}").json()
+
+    assert DOOR_DETAIL_FIELDS <= set(body)
+    assert set(body["groups"]) == GROUP_NAMES
+    assert body["groups"] == dict(result.groups)
+    assert body["raw_total"] == result.raw_total
+
+
+def test_the_door_endpoints_group_math_reconciles_with_its_evidence(client):
+    """The breakdown and the evidence list are two views of one sum (R8.1/R7.1)."""
+    body = client.get(f"/api/door/{OAK.pams_pin}").json()
+
+    assert sum(body["groups"].values()) == body["raw_total"]
+    assert sum(item["points"] for item in body["evidence"]) == body["raw_total"]
+
+
+def test_the_door_endpoint_carries_the_same_talk_track_the_route_does(client):
+    """R7.2: one opener per door, whichever surface the rep reached it through.
+
+    Asserted against `POST /api/route` rather than against a re-derivation, so the
+    panel and the route list cannot drift into two different sentences.
+    """
+    body = client.get(f"/api/door/{OAK.pams_pin}").json()
+    stops = client.post(
+        "/api/route", json={"hours": 2, "start_point": list(START)}
+    ).json()["stops"]
+
+    planned = next(stop for stop in stops if stop["pams_pin"] == OAK.pams_pin)
+    assert isinstance(body["talk_track"], str) and body["talk_track"].strip()
+    assert body["talk_track"] == planned["talk_track"]
+
+
+def test_an_unscored_door_has_no_group_math_and_no_talk_track(client):
+    """No score, no breakdown, no opener — the panel shows its exclusion instead (R9.4)."""
+    body = client.get(f"/api/door/{BIRCH.pams_pin}").json()
+
+    assert DOOR_DETAIL_FIELDS <= set(body)
+    assert body["groups"] is None
+    assert body["raw_total"] is None
+    assert body["talk_track"] is None
+
+
+def test_the_published_geojson_is_not_widened_by_the_door_detail(client):
+    """R11.1: the browser-facing artifact keeps its allowlist exactly.
+
+    Widening the door endpoint is a server-side lookup, not a change to what the
+    pipeline publishes — the map still downloads only the allowlist for 540 doors.
+    """
+    for feature in client.get("/api/doors.geojson").json()["features"]:
+        assert set(feature["properties"]) == PUBLISHED_PROPERTIES
+
+
 def test_unknown_pin_is_a_structured_404(client):
     response = client.get("/api/door/0248_99999_99999")
 
@@ -297,6 +365,91 @@ def test_route_endpoint_with_no_time_returns_an_empty_route(client):
     assert response.json()["stops"] == []
 
 
+def test_the_route_endpoint_replans_without_an_excluded_door(client):
+    """T013 / frame 4c: "that house is vacant" — ✕ on a row re-plans without it.
+
+    Exclusion has to reach the planner: dropping the stop in the browser would
+    leave the rest of the walk detouring around a house nobody is visiting, and
+    would put route ordering in JavaScript, which R10.3 forbids.
+    """
+    response = client.post(
+        "/api/route",
+        json={"hours": 2, "start_point": list(START), "exclude": [OAK.pams_pin]},
+    )
+
+    assert response.status_code == 200
+    pins = [stop["pams_pin"] for stop in response.json()["stops"]]
+    assert OAK.pams_pin not in pins
+    assert MAPLE.pams_pin in pins
+
+
+def test_excluding_re_plans_the_walk_rather_than_filtering_it(client):
+    """The legs are re-measured from the new predecessor, not left as they were."""
+    full = client.post("/api/route", json={"hours": 2, "start_point": list(START)}).json()
+    without = client.post(
+        "/api/route",
+        json={"hours": 2, "start_point": list(START), "exclude": [OAK.pams_pin]},
+    ).json()
+
+    kept = next(stop for stop in full["stops"] if stop["pams_pin"] == MAPLE.pams_pin)
+    replanned = next(stop for stop in without["stops"] if stop["pams_pin"] == MAPLE.pams_pin)
+    assert replanned["cumulative_minutes"] != kept["cumulative_minutes"]
+    assert without["total_minutes"] == without["stops"][-1]["cumulative_minutes"]
+
+
+def test_the_same_exclusions_plan_the_same_walk_every_time(client):
+    """Deterministic: the rep who excludes the same door twice sees one answer."""
+    body = {"hours": 2, "start_point": list(START), "exclude": [OAK.pams_pin]}
+
+    first = client.post("/api/route", json=body).json()
+    second = client.post("/api/route", json=body).json()
+
+    assert first == second
+
+
+def test_an_exclusion_that_names_no_door_changes_nothing(client):
+    """A stale share link or a re-excluded door must not empty the route."""
+    plain = client.post("/api/route", json={"hours": 2, "start_point": list(START)}).json()
+    ignored = client.post(
+        "/api/route",
+        json={"hours": 2, "start_point": list(START), "exclude": ["0248_99999_99999"]},
+    ).json()
+
+    assert ignored == plain
+
+
+def test_excluding_every_door_returns_an_empty_route(client):
+    response = client.post(
+        "/api/route",
+        json={
+            "hours": 2,
+            "start_point": list(START),
+            "exclude": [door.pams_pin for door in DOORS],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["stops"] == []
+
+
+def test_a_share_token_from_the_browser_decodes_on_the_server(client):
+    """R10.4's share link: the map encodes the fragment, the server has to read it.
+
+    `zlib.compress(payload, 9)` and the browser's `CompressionStream('deflate')`
+    write the same zlib format at different compression levels, so the bytes
+    differ while the stream stays readable. This is the browser's spelling of the
+    OAK/MAPLE route, produced by `CompressionStream`, and `decode_share` must
+    take it — otherwise a link shared from a phone opens an empty route.
+    """
+    from_browser = "r1eJwzMDKxiDcwNDQwjDcwMDA00jFAETAygAgYmxoYxVvoGRgCAPz0Clk"
+
+    assert decode_share(from_browser) == (
+        "0248_01101_00012",
+        "0248_01101_00020",
+        "0248_3502_8.01",
+    )
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -309,6 +462,16 @@ def test_route_endpoint_with_no_time_returns_an_empty_route(client):
 )
 def test_a_malformed_route_request_is_rejected_before_the_planner_sees_it(client, body):
     assert client.post("/api/route", json=body).status_code == 422
+
+
+def test_a_malformed_exclusion_list_is_rejected_too(client):
+    """`exclude` is a list of PINs; a bare string is a 422, not a per-character filter."""
+    response = client.post(
+        "/api/route",
+        json={"hours": 2, "start_point": list(START), "exclude": OAK.pams_pin},
+    )
+
+    assert response.status_code == 422
 
 
 # --- CORS ---------------------------------------------------------------------

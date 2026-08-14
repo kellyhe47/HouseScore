@@ -10,3 +10,4 @@ data/doors.geojson
 data/houseaccount.sqlite
 data/tiles/
 .env
+scratchpad/

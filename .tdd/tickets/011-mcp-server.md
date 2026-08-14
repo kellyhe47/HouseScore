@@ -1,11 +1,11 @@
 ---
 id: 011
 title: "MCP server + HTTP API for the UI (R8)"
-status: pending
+status: tests-written
 depends_on: [009, 010]
-touches: [src/houseaccount/server/app.py, src/houseaccount/server/mcp_tools.py, src/houseaccount/server/api.py, tests/test_server.py, tests/test_mcp_tools.py]
+touches: [src/houseaccount/server/app.py, src/houseaccount/server/mcp_tools.py, src/houseaccount/server/api.py, src/houseaccount/publish.py, tests/test_server.py, tests/test_mcp_tools.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_server.py, tests/test_mcp_tools.py]
 branch: ""
 ---
 
@@ -14,6 +14,20 @@ branch: ""
 FastAPI app serving two surfaces from the published artifacts: the MCP tool surface (R8) and the
 REST endpoints the Map UI consumes. Route planning delegates to `houseaccount.route` — no second
 implementation (R10.3).
+
+### Scope amendment (orchestrator decisions on the test-writer's three scope questions)
+
+1. **`explain_score` needs group math that nothing publishes.** Approved: `publish` gains
+   `doors.groups` (TEXT, JSON object, NULL when unscored) and `doors.raw_total` (INTEGER, NULL
+   when unscored) in the **SQLite** artifact. Not in `doors.geojson` — a locked test freezes that
+   property allowlist. Rejected the alternative of re-deriving groups by summing evidence points
+   per type, which would put a second copy of engine knowledge in the server.
+2. **Full-situs lookup.** Approved: both `"12 OAK ST"` and the published
+   `"12 OAK ST, Ramsey NJ 07446"` resolve to the same door. R9.1 hands the rep that full string to
+   copy, so a rep pasting it back must work.
+3. **Missing `data/`.** Approved: fail fast at construction with the path it looked in, rather
+   than a live server answering 200 over an empty territory. A reviewer who has not run the
+   pipeline gets a sentence telling them to.
 
 ## Acceptance criteria
 

@@ -13,9 +13,17 @@ the transport is not called at all, which is what makes a re-run free. Only 2xx
 bodies are cached — a 404 or a 500 must not poison the address for the eventual
 successful fetch.
 
-Retries cover the transient statuses only (an upstream ArcGIS/Socrata hiccup);
-a 4xx is the caller's mistake and fails immediately. Backoff goes through
-`time.sleep` so it can be neutralised in tests.
+Retries cover the transient statuses (an upstream ArcGIS/Socrata hiccup) *and*
+the transport failing to produce a response at all — a read timeout, a reset
+connection, a DNS blip. A 4xx is the caller's mistake and fails immediately.
+Backoff goes through `time.sleep` so it can be neutralised in tests.
+
+A transport that raises is the same event as a 503 for everyone upstream, so it
+is retried and then reported as `SourceError` rather than escaping as whatever
+the HTTP library happened to throw. That is what lets a caller like the
+pipeline's tile fetch treat one unreachable tile as a missing frame instead of
+a failed run; a bare `requests.ConnectionError` would sail past its `except
+SourceError` and abort ~1000 good fetches over one flaky one.
 """
 
 from __future__ import annotations
@@ -143,7 +151,19 @@ def fetch_json(
         method=method,
         max_attempts=max_attempts,
     )
-    return json.loads(body.decode("utf-8"))
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        # A 200 whose body is not JSON is an upstream lying about success — the
+        # Census API answers an unactivated key with an HTML "Invalid Key" page
+        # under a 200, and `fetch_bytes` has already cached it by now. Left
+        # there it outlives the cause: activating the key changes nothing,
+        # because the next run is served the error page off disk and never
+        # calls anyone. So the entry is evicted on the way out, and the failure
+        # is reported as the source failure it is.
+        if cache is not None:
+            cache.drop(cache.key(url, params))
+        raise SourceError(url, 0, f"{url} returned a 200 that is not JSON: {exc}") from exc
 
 
 def _request(
@@ -157,10 +177,19 @@ def _request(
 ) -> bytes:
     """Call the transport until it succeeds or the attempt budget runs out."""
     for attempt in range(1, max(1, max_attempts) + 1):
-        response = transport(method, url, params, headers)
+        exhausted = attempt >= max_attempts
+        try:
+            response = transport(method, url, params, headers)
+        except OSError as exc:
+            # Every `requests` network failure subclasses OSError, so this
+            # catches timeouts and resets without importing requests here and
+            # without swallowing a test transport's AssertionError.
+            if exhausted:
+                raise SourceError(url, 0, f"{url} could not be reached: {exc}") from exc
+            time.sleep(BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)))
+            continue
         if 200 <= response.status < 300:
             return response.body
-        exhausted = attempt >= max_attempts
         if response.status not in RETRY_STATUSES or exhausted:
             raise SourceError(url, response.status)
         time.sleep(BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)))

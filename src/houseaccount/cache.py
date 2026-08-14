@@ -84,6 +84,18 @@ class Cache:
             return json.loads(document.read_text(encoding="utf-8"))
         return None
 
+    def drop(self, key: str) -> None:
+        """Forget `key` entirely. A miss is not an error.
+
+        Caching is keyed on the request, not on whether the response turned out
+        to be usable — so a body that arrived 200 and only later proved to be
+        junk (an upstream that serves an HTML error page with a success status)
+        would otherwise be served from disk forever, and the re-fetch that would
+        fix it never happens. Whoever discovers the body is unusable evicts it.
+        """
+        self._path(key, _BYTES_SUFFIX).unlink(missing_ok=True)
+        self._path(key, _JSON_SUFFIX).unlink(missing_ok=True)
+
     # --- internals ----------------------------------------------------------
 
     def _path(self, key: str, suffix: str) -> Path:

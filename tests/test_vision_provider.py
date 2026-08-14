@@ -46,7 +46,13 @@ from houseaccount.vision.provider import (
     OpenAIVisionProvider,
     VisionProvider,
 )
-from houseaccount.vision.run import VisionRun, run_vision
+from houseaccount.vision.run import (
+    VISION_MAX_RETRIES,
+    VISION_TIMEOUT_SECONDS,
+    VisionRun,
+    _build_client,
+    run_vision,
+)
 from houseaccount.vision.schema import Detection, to_score_vision
 from houseaccount.vision.tiles import Tile
 
@@ -636,6 +642,121 @@ def test_parse_failures_surface_on_the_run(with_key):
     result = run_vision(batch, config=with_key, client=client)
     assert list(result.detections) == []
     assert len(result.parse_failures) >= 1
+
+
+# --- the real client's retry budget -----------------------------------------
+#
+# A whole territory is a few hundred requests and far more tokens than a
+# standard per-minute allowance, so 429s are the normal texture of a real run.
+# The SDK's default budget of 2 gives up seconds into a wait the API asked for,
+# which loses a run that was working. Nothing else in this suite constructs the
+# real client, so without this the budget could silently go back to the default.
+
+
+# --- pacing against the per-minute allowance --------------------------------
+#
+# Retries and pacing solve different halves of the same 429. Retries ride out a
+# transient limit; pacing is what keeps a run that is legitimately bigger than
+# one minute's allowance from emptying the bucket in its first few seconds.
+
+
+#: What one `FakeUsage` reply totals: 1200 prompt + 180 completion. It carries
+#: no `total_tokens`, so this also pins the summed fallback in `_tokens_for`.
+FAKE_TOTAL_TOKENS = 1200 + 180
+
+
+def test_pacing_waits_in_proportion_to_tokens_spent():
+    slept = []
+    batch = tiles(4)
+    provider = OpenAIVisionProvider(
+        client=FakeOpenAI(batch),
+        ledger=CostLedger(),
+        tokens_per_minute=60_000,
+        sleep=slept.append,
+    )
+    provider.detect(batch)
+    # 60_000 tokens/min is 1_000 tokens/second, so the wait is tokens / 1_000.
+    assert slept and all(pause > 0 for pause in slept)
+    assert sum(slept) == pytest.approx(FAKE_TOTAL_TOKENS / 1_000.0)
+
+
+def test_a_slower_allowance_waits_longer():
+    fast, slow = [], []
+    batch = tiles(4)
+    for budget, sink in ((120_000, fast), (60_000, slow)):
+        OpenAIVisionProvider(
+            client=FakeOpenAI(batch),
+            ledger=CostLedger(),
+            tokens_per_minute=budget,
+            sleep=sink.append,
+        ).detect(batch)
+    assert sum(slow) == pytest.approx(2 * sum(fast))
+
+
+def test_without_an_allowance_nothing_sleeps():
+    """The default path — and every injected-client test — must not sleep."""
+    slept = []
+    batch = tiles(4)
+    OpenAIVisionProvider(client=FakeOpenAI(batch), ledger=CostLedger(), sleep=slept.append).detect(
+        batch
+    )
+    assert slept == []
+
+
+def test_an_injected_client_never_paces(with_key, monkeypatch):
+    """`run_vision` with a test double must stay instant."""
+    monkeypatch.setattr(
+        "houseaccount.vision.provider.time.sleep",
+        lambda _s: pytest.fail("a test double must not pace"),
+    )
+    batch = tiles(2)
+    assert run_vision(batch, config=with_key, client=FakeOpenAI(batch)).declined is False
+
+
+class StubOpenAIModule:
+    """Stands in for the `openai` package: records how OpenAI(...) was called."""
+
+    def __init__(self):
+        self.kwargs = None
+
+    def OpenAI(self, **kwargs):  # noqa: N802 — mirrors the SDK's own name
+        self.kwargs = kwargs
+        return object()
+
+
+@pytest.fixture
+def stub_openai(monkeypatch):
+    stub = StubOpenAIModule()
+    monkeypatch.setitem(sys.modules, "openai", stub)
+    return stub
+
+
+def test_the_real_client_is_built_with_a_raised_retry_budget(with_key, stub_openai):
+    _build_client(with_key)
+    assert stub_openai.kwargs["max_retries"] == VISION_MAX_RETRIES
+
+
+def test_the_retry_budget_beats_the_sdk_default_of_two(with_key, stub_openai):
+    _build_client(with_key)
+    assert stub_openai.kwargs["max_retries"] > 2
+
+
+def test_the_real_client_gets_the_configured_key(with_key, stub_openai):
+    _build_client(with_key)
+    assert stub_openai.kwargs["api_key"] == with_key.openai_api_key
+
+
+def test_the_real_client_bounds_each_attempt(with_key, stub_openai):
+    """An unbounded attempt multiplied by the retry budget is an hour-long hang."""
+    _build_client(with_key)
+    assert stub_openai.kwargs["timeout"] == VISION_TIMEOUT_SECONDS
+
+
+def test_the_worst_case_hang_stays_bounded(with_key, stub_openai):
+    """Timeout x retries is the real ceiling; keep it inside a coffee break."""
+    _build_client(with_key)
+    worst_case = stub_openai.kwargs["timeout"] * (stub_openai.kwargs["max_retries"] + 1)
+    assert worst_case <= 15 * 60
 
 
 def test_a_configured_run_feeds_the_score_engine(with_key):

@@ -171,3 +171,37 @@ def test_two_cache_roots_are_isolated(tmp_path):
     key = a.key(URL, PARAMS)
     a.put(key, {"in": "a"})
     assert b.get(key) is None
+
+
+# --- eviction ---------------------------------------------------------------
+
+
+def test_drop_forgets_a_stored_entry(tmp_path):
+    cache = Cache(tmp_path / "cache")
+    key = cache.key("https://example.test/a", {"x": 1})
+    cache.put(key, b"payload")
+    cache.drop(key)
+    assert cache.get(key) is None
+
+
+def test_drop_forgets_a_json_entry_too(tmp_path):
+    cache = Cache(tmp_path / "cache")
+    key = cache.key("https://example.test/b")
+    cache.put(key, {"some": "document"})
+    cache.drop(key)
+    assert cache.get(key) is None
+
+
+def test_dropping_a_miss_is_not_an_error(tmp_path):
+    cache = Cache(tmp_path / "cache")
+    cache.drop(cache.key("https://example.test/never-stored"))
+
+
+def test_drop_leaves_other_entries_alone(tmp_path):
+    cache = Cache(tmp_path / "cache")
+    doomed = cache.key("https://example.test/doomed")
+    kept = cache.key("https://example.test/kept")
+    cache.put(doomed, b"x")
+    cache.put(kept, b"y")
+    cache.drop(doomed)
+    assert cache.get(kept) == b"y"

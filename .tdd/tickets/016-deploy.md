@@ -67,8 +67,10 @@ Prereqs, no credentials: `brew install flyctl` · `npm install --global vercel` 
 
 1. ★ `flyctl auth login`
 2. `flyctl apps create houseaccount` (if the name is taken, change `app` in `fly.toml`)
-3. ★ `flyctl secrets set ANTHROPIC_API_KEY=<key> CENSUS_API_KEY=<key>` — both optional; the
-   deployed server calls neither, they only matter if you re-run the pipeline in the cloud
+3. ★ `flyctl secrets set OPENAI_API_KEY=<key> CENSUS_API_KEY=<key> GOOGLE_MAPS_KEY=<key>` — all
+   three optional; the deployed server calls none of them, they only matter if you re-run the
+   pipeline in the cloud. (Was written as `ANTHROPIC_API_KEY` before the provider swap to OpenAI
+   gpt-4o-mini; `.env.example`, `houseaccount.config` and `docs/DEPLOY.md` are the list of record.)
 4. `flyctl deploy`
 5. `curl https://<fly-app>.fly.dev/health` → expect a non-zero door count
 6. ★ `vercel login`

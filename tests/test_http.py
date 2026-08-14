@@ -165,3 +165,111 @@ def test_fetch_bytes_raises_source_error_too(cache):
 
 def test_source_error_is_an_exception():
     assert issubclass(SourceError, Exception)
+
+
+# --- a transport that raises instead of answering ---------------------------
+#
+# A read timeout mid-run is the ordinary case for ~1000 NJ ortho tile fetches,
+# not an exotic one. It has to arrive at the caller as `SourceError`, because
+# that is the only thing `pipeline._fetch_tiles` catches to record a missing
+# frame; anything else aborts a run that was otherwise complete.
+
+
+class RaisingTransport:
+    """Raises `exc` for the first `failures` calls, then answers normally."""
+
+    def __init__(self, exc, failures=1, then=None):
+        self.exc = exc
+        self.failures = failures
+        self.then = then if then is not None else ok()
+        self.calls = []
+
+    def __call__(self, method, url, params, headers):
+        self.calls.append(url)
+        if len(self.calls) <= self.failures:
+            raise self.exc
+        return self.then
+
+
+def timed_out():
+    """What `requests` raises on a read timeout, without importing requests."""
+    return OSError("HTTPSConnectionPool(host='maps.nj.gov', port=443): Read timed out.")
+
+
+def test_transport_exception_is_retried_then_succeeds(cache):
+    transport = RaisingTransport(timed_out(), failures=1)
+    assert fetch_json(URL, params=PARAMS, cache=cache, transport=transport) == PAYLOAD
+    assert len(transport.calls) == 2
+
+
+def test_persistent_transport_exception_becomes_a_source_error(cache):
+    transport = RaisingTransport(timed_out(), failures=99)
+    with pytest.raises(SourceError) as excinfo:
+        fetch_bytes(URL, params=PARAMS, cache=cache, transport=transport)
+    assert excinfo.value.url == URL
+    assert excinfo.value.status == 0
+    assert isinstance(excinfo.value.__cause__, OSError)
+
+
+def test_transport_exception_retries_are_bounded(cache):
+    transport = RaisingTransport(timed_out(), failures=99)
+    with pytest.raises(SourceError):
+        fetch_json(URL, params=PARAMS, cache=cache, transport=transport)
+    assert 1 < len(transport.calls) <= 10
+
+
+def test_a_raised_response_is_not_cached(cache):
+    """The failure must not poison the address for the retry that works."""
+    transport = RaisingTransport(timed_out(), failures=1)
+    fetch_json(URL, params=PARAMS, cache=cache, transport=transport)
+    warm = ScriptedTransport(ok([{"different": "payload"}]))
+    assert fetch_json(URL, params=PARAMS, cache=cache, transport=warm) == PAYLOAD
+    assert warm.calls == []
+
+
+# --- a 200 that is not JSON -------------------------------------------------
+#
+# The Census API answers an unactivated key with an HTML "Invalid Key" page
+# under a 200 status. Cached, that page outlives its own cause: the key gets
+# activated and every later run is still served the error off disk.
+
+
+HTML_ERROR = b"<html><head><title>Invalid Key</title></head><body>go away</body></html>"
+
+
+def html_200():
+    return Response(status=200, body=HTML_ERROR, headers={"content-type": "text/html"})
+
+
+def test_a_200_that_is_not_json_raises_source_error(cache):
+    with pytest.raises(SourceError) as excinfo:
+        fetch_json(URL, params=PARAMS, cache=cache, transport=ScriptedTransport(html_200()))
+    assert excinfo.value.url == URL
+
+
+def test_a_200_that_is_not_json_is_evicted_so_the_next_run_refetches(cache):
+    """The whole point: fixing the upstream cause must be enough."""
+    with pytest.raises(SourceError):
+        fetch_json(URL, params=PARAMS, cache=cache, transport=ScriptedTransport(html_200()))
+    # The key now works, so the very next call must reach the network again.
+    recovered = ScriptedTransport(ok())
+    assert fetch_json(URL, params=PARAMS, cache=cache, transport=recovered) == PAYLOAD
+    assert len(recovered.calls) == 1
+
+
+def test_valid_json_is_still_cached(cache):
+    """Eviction must not cost the warm-cache guarantee."""
+    fetch_json(URL, params=PARAMS, cache=cache, transport=ScriptedTransport(ok()))
+    assert fetch_json(URL, params=PARAMS, cache=cache, transport=ExplodingTransport()) == PAYLOAD
+
+
+def test_fetch_bytes_still_accepts_a_non_json_body(cache):
+    """Only `fetch_json` demands JSON — tile bytes are not JSON and never were."""
+    transport = ScriptedTransport(Response(status=200, body=IMAGE, headers={}))
+    assert fetch_bytes(URL, cache=cache, transport=transport) == IMAGE
+
+
+def test_a_non_oserror_from_the_transport_still_escapes(cache):
+    """Only network faults are retried. A bug in a transport must surface."""
+    with pytest.raises(AssertionError):
+        fetch_json(URL, params=PARAMS, cache=cache, transport=ExplodingTransport())

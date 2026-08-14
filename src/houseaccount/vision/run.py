@@ -81,10 +81,15 @@ def run_vision(
         logger.warning(NO_KEY_REASON)
         return VisionRun(detections=(), declined=True, reason=NO_KEY_REASON, parse_failures=())
 
+    # Pacing belongs to the real account's allowance, so it is switched on by
+    # the same condition that builds the real client: an injected client is a
+    # test double with no rate limit, and must not make the suite sleep.
+    live = client is None
     inner = OpenAIVisionProvider(
-        client=client if client is not None else _build_client(config),
+        client=_build_client(config) if live else client,
         ledger=ledger if ledger is not None else CostLedger(),
         batch_size=batch_size,
+        tokens_per_minute=VISION_TOKENS_PER_MINUTE if live else None,
     )
     provider = CachedVisionProvider(inner, cache=cache) if cache is not None else inner
 
@@ -97,8 +102,51 @@ def run_vision(
     )
 
 
+#: The per-minute token allowance the live run paces itself against.
+#:
+#: Deliberately under the 200,000 TPM of a standard account: the limiter counts
+#: tokens the API measured, this counts tokens it reported afterwards, and the
+#: gap between those two is what the headroom pays for. Retries cover the rest.
+#:
+#: This is a throughput ceiling, not a budget — it changes how long a run takes,
+#: never how much it costs. A territory is ~1M tokens, so a full run paces out
+#: to roughly five minutes.
+VISION_TOKENS_PER_MINUTE = 180_000
+
+#: Seconds one vision request may take before it is abandoned and retried.
+#:
+#: The SDK's default read timeout is 600s, tuned for long reasoning turns. A
+#: batch of four 640px tiles answers in seconds, so a request still open after
+#: a minute is hung, not thinking. The default matters because it multiplies
+#: with the retry budget: at 600s x `VISION_MAX_RETRIES` one stuck request can
+#: hold a run for over an hour, which is indistinguishable from a crash but
+#: burns the wall-clock of a working one. Bounding the attempt is what makes a
+#: generous retry budget safe.
+VISION_TIMEOUT_SECONDS = 60.0
+
+#: How many times the SDK may retry one request before giving up.
+#:
+#: A full territory is ~1100 tiles, and at `DEFAULT_BATCH_SIZE` that is a few
+#: hundred requests of a few thousand tokens each — comfortably more than a
+#: standard 200k tokens-per-minute allowance can take in one go. So a 429 here
+#: is the expected shape of a *healthy* run against a real account, not an
+#: outage: the limiter refills continuously and the work simply has to pace
+#: itself across several minutes.
+#:
+#: The SDK's default of 2 retries is tuned for interactive use and gives up
+#: after a couple of seconds, which turns that ordinary throttling into a dead
+#: run — and, because the cache is written per batch, a dead run that has
+#: already paid for everything it fetched. The SDK honours the `retry-after`
+#: the API sends, so raising the budget waits exactly as long as asked.
+VISION_MAX_RETRIES = 8
+
+
 def _build_client(config: Config) -> Any:
     """The only place the real SDK is touched. Imported lazily on purpose."""
     import openai
 
-    return openai.OpenAI(api_key=config.openai_api_key)
+    return openai.OpenAI(
+        api_key=config.openai_api_key,
+        max_retries=VISION_MAX_RETRIES,
+        timeout=VISION_TIMEOUT_SECONDS,
+    )

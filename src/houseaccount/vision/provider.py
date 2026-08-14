@@ -28,8 +28,9 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Any, Callable, Mapping, Protocol, Sequence, runtime_checkable
 
 from houseaccount.cache import Cache
 from houseaccount.cost import CostLedger
@@ -154,11 +155,15 @@ class OpenAIVisionProvider:
         ledger: CostLedger,
         batch_size: int = DEFAULT_BATCH_SIZE,
         model: str = VISION_MODEL,
+        tokens_per_minute: float | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._client = client
         self._ledger = ledger
         self._batch_size = max(1, int(batch_size))
         self._model = model
+        self._tokens_per_minute = tokens_per_minute
+        self._sleep = sleep
         self.parse_failures: list[ParseFailure] = []
 
     def detect(self, tiles: Sequence[Tile]) -> list[Detection]:
@@ -168,6 +173,26 @@ class OpenAIVisionProvider:
         for start in range(0, len(batch_list), self._batch_size):
             found.extend(self._detect_batch(batch_list[start : start + self._batch_size]))
         return found
+
+    # --- staying inside the account's per-minute allowance ------------------
+
+    def _pace(self, tokens: int) -> None:
+        """Wait out this request's share of the tokens-per-minute allowance.
+
+        A whole territory is a few hundred requests and roughly a million
+        tokens. Fired back-to-back that empties a standard 200k tokens-per-
+        minute bucket in seconds, and every request after it is a 429 — which
+        no retry budget fixes, because the bucket refills on the clock rather
+        than on demand. Retries handle a *transient* limit; only pacing handles
+        a workload that is legitimately larger than one minute's allowance.
+
+        Charging each request its real `usage` rather than an assumed constant
+        means the delay tracks what the account was actually billed for, so a
+        prompt or batch-size change cannot silently drift back over the line.
+        """
+        if not self._tokens_per_minute or tokens <= 0:
+            return
+        self._sleep(tokens * 60.0 / self._tokens_per_minute)
 
     # --- one request --------------------------------------------------------
 
@@ -180,6 +205,7 @@ class OpenAIVisionProvider:
         # Bill first. The money left the account whatever the model said, and a
         # run that under-reports its own spend is worse than one that overspends.
         self._ledger.record(LEDGER_SOURCE, units=len(batch), usd=_usd_for(response))
+        self._pace(_tokens_for(response))
 
         text = _response_text(response)
         payload = _parse_envelope(text)
@@ -339,6 +365,17 @@ def _usd_for(response: Any) -> float:
     input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
     return input_tokens * INPUT_USD_PER_TOKEN + output_tokens * OUTPUT_USD_PER_TOKEN
+
+
+def _tokens_for(response: Any) -> int:
+    """Total tokens one request consumed — what the rate limit counts."""
+    usage = getattr(response, "usage", None)
+    total = getattr(usage, "total_tokens", None)
+    if total:
+        return int(total)
+    input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+    return input_tokens + output_tokens
 
 
 def _parse_envelope(text: str) -> list[Any] | None:

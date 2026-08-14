@@ -47,7 +47,8 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 014 | Data & Ethics page (R11.4) | pending | 0 | 008,012 | W9 batch |
 | 015 | README + reproducibility + cost report (R13/R14) | pending | 0 | 009,011 | W9 batch |
 | 016 | Deploy readiness (R12) — expected blocked-on-human | pending | 0 | 011,012 | W10 |
-| 017 | R3.2 match rate: municipal denominator, not territory blocks | tests-written | 0 | 006,008,009 | W6b seq |
+| 017 | R3.2 match rate: municipal denominator, not territory blocks | green | 1 | 006,008,009 | W6b seq |
+| 018 | make eval reads the published run manifest | pending | 0 | 009,017 | W9 batch |
 
 ## Wave plan
 

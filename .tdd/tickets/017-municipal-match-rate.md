@@ -1,10 +1,10 @@
 ---
 id: 017
 title: "Report the R3.2 match rate against the municipality, not the territory block set"
-status: tests-written
+status: green
 depends_on: [006, 008, 009]
 touches: [src/houseaccount/resolve.py, src/houseaccount/pipeline.py, eval/harness.py, tests/test_resolve.py, tests/test_harness.py, tests/test_pipeline.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_resolve.py, tests/test_harness.py, tests/test_pipeline.py]
 branch: ""
 ---
@@ -43,3 +43,12 @@ NOT be collapsed by the normalizer.
 - [ ] `pipeline.py` passes the municipal parcel set through, and a live-shaped test pins that the
       published manifest carries both rates.
 - [ ] Running the real pipeline afterwards reports a municipal match rate ≥ 0.95.
+
+## Attempt log
+
+- iter 1: green. Live re-run confirms `municipal_match_rate = 0.9742` (1696/1741) against
+  R3.2's 0.95 floor, while the territory-scoped `permit_match_rate` keeps its old 0.6207.
+- `_is_placeholder` routes block/lot through the same `parcel_key` normalizer rather than a
+  second spelling table, so the placeholder bucket cannot drift from the join.
+- Lot suffixes stayed distinct for free: `parcel_key` only rstrips trailing zeros of the
+  fraction, so `4.2` and `4.02` remain different lots (NJ MOD-IV convention).

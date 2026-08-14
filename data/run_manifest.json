@@ -1,7 +1,7 @@
 {
-  "run_at": "2026-08-14T08:01:28.016816+00:00",
+  "run_at": "2026-08-14T08:16:55.759958+00:00",
   "as_of": "2026-08-14",
-  "code_version": "7463f27",
+  "code_version": "d87b9d7",
   "territory_median_value": 743350.0,
   "acs_dual_income_threshold": 0.35,
   "retrieved": {
@@ -28,7 +28,10 @@
     "permits_in_territory": 232,
     "permits_matched": 144,
     "permits_unmatched": 88,
+    "permits_in_window": 1741,
+    "permits_matched_municipal": 1696,
     "permit_match_rate": 0.6206896551724138,
+    "municipal_match_rate": 0.974152785755313,
     "block_lot_match_rate": 0.6206896551724138,
     "address_match_rate": 0.0,
     "doors_with_block_group": 0,

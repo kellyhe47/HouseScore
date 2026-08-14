@@ -1,10 +1,10 @@
 ---
 id: 009
 title: "Publish artifacts + end-to-end pipeline orchestrator (R2.2, R2.3)"
-status: tests-written
+status: green
 depends_on: [003, 004, 005, 006, 007]
 touches: [src/houseaccount/publish.py, src/houseaccount/pipeline.py, tests/test_publish.py, tests/test_pipeline.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_publish.py, tests/test_pipeline.py]
 branch: ""
 ---
@@ -32,3 +32,12 @@ Turn resolved+scored doors into the serving artifacts, and wire the whole run in
       provider declining) is logged and the run still completes and publishes.
 - [ ] Idempotent: two consecutive runs on the same warm cache produce identical `doors.geojson`
       content (manifest timestamp excepted).
+
+## Attempt log
+
+- iter 1: green. First live `make pipeline` completed in 12s, publishing 540/540 doors with
+  ACS, rental and vision all declining for missing credentials — the degradation path is the
+  one that actually runs here, and it published anyway.
+- Only the parcel harvest is load-bearing; every other source's SourceError is a logged
+  degradation recorded in the manifest.
+- The live run surfaced the match-rate reporting defect that became ticket 017.

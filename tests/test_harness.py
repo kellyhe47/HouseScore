@@ -37,11 +37,21 @@ Pinned seams (the implementer must satisfy exactly):
         cost_total_usd: float
         doors_scored: int
         cost_per_door: float
-        resolve_match_rate: float | None
+        resolve_match_rate: float | None    # the *municipal* rate (see below)
         ok: bool
       methods:
         .as_dict() -> dict          # exactly the JSON written to eval/report.json
         .render()  -> str           # the printed report
+
+**Which match rate the >=0.95 gate reads.** `ResolveReport` carries two, and
+they are different numbers: `permit_match_rate` is territory-scoped (its
+denominator is in-window permits on a block the territory occupies, which
+includes the many municipal parcels the territory does not hold) and
+`municipal_match_rate` is in-window permits joining any municipal parcel over
+*all* in-window permits. R3.2 grades the municipal one, so that is the field
+`run_eval` reads off the report — from the dataclass or from the mapping the
+pipeline writes to JSON. A report carrying only the territory rate is treated
+as no rate at all rather than being silently graded on the wrong denominator.
 
     main(argv: Sequence[str] | None = None) -> int
         Flags: --golden-dir --labels-dir --report --resolve-report --ledger
@@ -454,12 +464,25 @@ def test_a_saved_ledger_on_disk_is_picked_up(tmp_path, report_path):
 # --- entity-resolution match rate -------------------------------------------
 
 
+#: A resolve report whose two rates disagree — the territory-scoped one sits
+#: below the floor throughout, so every assertion below is also an assertion
+#: about *which* denominator the harness read.
+TERRITORY_RATE = 0.62
+
+
 def as_mapping(rate):
-    return {"permit_match_rate": rate, "coverage": 0.99, "doors_total": 500}
+    return {
+        "municipal_match_rate": rate,
+        "permit_match_rate": TERRITORY_RATE,
+        "coverage": 0.99,
+        "doors_total": 500,
+    }
 
 
 def as_dataclass(rate):
-    return ResolveReport(as_of=AS_OF, permit_match_rate=rate)
+    return ResolveReport(
+        as_of=AS_OF, municipal_match_rate=rate, permit_match_rate=TERRITORY_RATE
+    )
 
 
 def test_match_rate_floor_is_ninety_five_percent():
@@ -491,6 +514,38 @@ def test_a_real_resolve_report_below_the_floor_fails_the_run(form, rate, ok, why
     assert report.fixtures_passed == report.fixtures_total
     assert report.ok is ok, why
     assert rendered_value(report.render(), "match rate") == pytest.approx(rate, abs=0.001)
+
+
+@pytest.mark.parametrize("form", [as_mapping, as_dataclass], ids=["mapping", "dataclass"])
+def test_the_gate_reads_the_municipal_rate_not_the_territory_one(form):
+    """R3.2 is a municipality-wide question. A run whose municipal rate clears
+    the floor passes even though its territory-scoped rate is 0.62."""
+    report = run_eval(resolve_report=form(0.9742))
+
+    assert report.resolve_match_rate == pytest.approx(0.9742)
+    assert report.ok is True
+
+
+@pytest.mark.parametrize("form", [as_mapping, as_dataclass], ids=["mapping", "dataclass"])
+def test_a_high_territory_rate_cannot_rescue_a_failing_municipal_rate(form):
+    report = run_eval(resolve_report=form(0.80))
+
+    assert report.resolve_match_rate == pytest.approx(0.80)
+    assert report.ok is False
+
+
+def test_a_report_carrying_only_the_territory_rate_grades_nothing():
+    """Reading `permit_match_rate` here is the bug this ticket exists to fix, so
+    a report without the municipal number is treated as no number at all."""
+    report = run_eval(resolve_report={"permit_match_rate": 0.62, "coverage": 0.99})
+
+    assert report.resolve_match_rate is None
+    assert report.ok is True
+
+
+def test_the_printed_report_says_which_denominator_the_rate_used():
+    rendered = run_eval(resolve_report=as_mapping(0.97)).render().lower()
+    assert "municipal" in rendered
 
 
 # --- the report: printed and machine-readable -------------------------------

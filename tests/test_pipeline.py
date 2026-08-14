@@ -468,6 +468,39 @@ def test_the_manifest_records_the_inputs_the_run_was_computed_against(tmp_path):
     assert payload["code_version"] == code_version()
 
 
+def test_the_run_measures_the_permit_join_against_the_whole_municipality(tmp_path):
+    """R3.2's rate is a municipality-wide question, and the harvest already has
+    every municipal parcel in hand — so the pipeline hands that full set to
+    `resolve` rather than only the three doors the territory selected.
+
+    Two permits are in the window. RAM-1 (block 1101, lot 3) is a door and a
+    municipal parcel; RAM-2 (block 9999) is neither. So the territory-scoped
+    rate reads 1/1 = 1.0 and the municipal rate reads 1/2 = 0.5 — the two
+    denominators, on one run, disagreeing.
+    """
+    config = config_for(tmp_path)
+
+    result = go(config, RoutingTransport())
+
+    assert result.report.permits_in_window == 2
+    assert result.report.permits_matched_municipal == 1
+    assert result.report.municipal_match_rate == pytest.approx(0.5)
+    assert result.report.permit_match_rate == pytest.approx(1.0)
+
+
+def test_the_manifest_publishes_both_match_rates(tmp_path):
+    """A reader of the manifest must be able to tell the two apart."""
+    config = config_for(tmp_path)
+
+    go(config, RoutingTransport())
+
+    block = manifest(config)["resolve"]
+    assert {"permit_match_rate", "municipal_match_rate"} <= set(block)
+    assert block["permit_match_rate"] == pytest.approx(1.0)
+    assert block["municipal_match_rate"] == pytest.approx(0.5)
+    assert block["municipal_match_rate"] != block["permit_match_rate"]
+
+
 def test_the_incomplete_record_is_published_unscored_and_counted(tmp_path):
     """R9.4: "537 of 540" — the gap is explained and still counted."""
     config = config_for(tmp_path)

@@ -11,16 +11,30 @@ that does carry an address. `PermitRecord` never will; a future OPRA-obtained
 municipal permit list might, so the fallback is duck-typed on an `address`
 attribute and a plain `PermitRecord` simply skips it.
 
-**What `permit_match_rate` divides by.** R3.2 grades "match rate on records whose
-address falls in the territory". Taking the denominator as *exact* block+lot
-containment would make the rate identically 1.0 — a permit whose block+lot is a
-territory parcel matches by construction, so the metric would be ungradeable.
-The denominator this suite pins is therefore the honest one: permits, inside the
-2-year window, whose **block** is a block the territory occupies. Those are the
-records that plausibly belong to us; the graded question is how many of them we
-landed on a door. Permits on other blocks are out of territory, and permits
-outside the window are out of scope — both are *counted* in the report rather
-than dropped, which is the real content of "never silently dropped".
+**Two denominators, and which one R3.2 grades.** The report carries both, and
+they are different numbers on purpose:
+
+* `permit_match_rate` = permits matched to a *door* / permits in the window
+  whose **block** the territory occupies. Territory-scoped. A block holds many
+  parcels the territory does not, so this rate under-reports how well permits
+  resolve to parcels — the first live run read 0.62 on a join that was fine.
+* `municipal_match_rate` = permits joining **any municipal parcel** by block/lot
+  / **all** in-window permits. Municipality-wide, and the one R3.2's >=95% floor
+  is graded against (the live run reads 0.9742 here).
+
+Neither denominator may be made trivially 1.0: exact block+lot containment as a
+denominator would match by construction. The territory rate's denominator is
+therefore block-level, and the municipal rate's is every in-window permit.
+
+Permits carrying placeholder block/lot (`0000`/`00`) get their own bucket, and
+permits naming a lot no parcel has stay in the municipal unmatched count — both
+are real residual misses that must stay visible instead of being normalized
+away. Lot-suffix variants (`4.2` vs `4.02`) are *distinct* lots in NJ MOD-IV
+convention and are pinned as distinct here.
+
+Permits on other blocks are out of territory, and permits outside the window are
+out of scope — both are *counted* in the report rather than dropped, which is
+the real content of "never silently dropped".
 
 No network, no fixtures on disk: every parcel, permit and polygon below is
 synthetic and built in-module.
@@ -31,6 +45,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from houseaccount import resolve as resolve_module
 from houseaccount.normalize import normalize_address, parcel_key, situs_display
 from houseaccount.resolve import (
     SIGNAL_ACS,
@@ -310,6 +325,262 @@ def test_an_out_of_territory_permit_reaches_no_door(worked_example):
 def test_an_out_of_window_permit_reaches_no_door(worked_example):
     landed = {p.record_id for facts in worked_example.doors.values() for p in facts.permits_2yr}
     assert not {"P-OLD-1", "P-OLD-2"} & landed
+
+
+# --- the municipal denominator (the rate R3.2 grades) --------------------------
+#
+# The territory is block 101, lots 1-4. The municipality is nine parcels: those
+# four, three more on the same block (lots 5-7), two on block 102, one on block
+# 4203 (lot 3). Fourteen permits in.
+#
+#   IN WINDOW (12)                            territory        municipal
+#     3 on doors            101/1,2,3         matched          matched
+#     3 on the same block   101/5,6,7         IN, unmatched    matched
+#     2 on block 102        102/1,2           out of terr.     matched
+#     1 on block 4203       4203/3            out of terr.     matched
+#     2 placeholders        0000/00           out of terr.     placeholder
+#     1 naming no lot       4203/4            out of terr.     unmatched
+#   OUT OF WINDOW (2)       101/1, 900 days ago
+#   ---------------------------------------------------------------------------
+#   territory:  3 matched / 6 in territory                     = 0.50
+#   municipal:  9 matched / 12 in window                       = 0.75
+#
+# The two rates disagree, which is the whole point: 9 of the 12 permits resolve
+# to a parcel, and the territory-scoped number cannot say so.
+
+MUNICIPAL_BLOCK = "102"
+GHOST_BLOCK = "4203"
+PLACEHOLDER_BLOCK, PLACEHOLDER_LOT = "0000", "00"
+
+
+def municipal_example_doors():
+    """The territory: block 101, lots 1-4."""
+    return [door(BLOCK_A, lot, street="MAPLE") for lot in range(1, 5)]
+
+
+def municipal_example_parcels():
+    """Every parcel the municipality has — the four doors plus five more."""
+    return (
+        municipal_example_doors()
+        + [door(BLOCK_A, lot, street="MAPLE") for lot in (5, 6, 7)]
+        + [door(MUNICIPAL_BLOCK, lot, street="ELM") for lot in (1, 2)]
+        + [door(GHOST_BLOCK, 3, street="OAK")]
+    )
+
+
+def municipal_example_permits():
+    on_doors = [permit(f"P-DOOR-{lot}", BLOCK_A, lot) for lot in (1, 2, 3)]
+    same_block = [permit(f"P-BLOCK-{lot}", BLOCK_A, lot) for lot in (5, 6, 7)]
+    other_blocks = [permit(f"P-ELM-{lot}", MUNICIPAL_BLOCK, lot) for lot in (1, 2)]
+    other_blocks += [permit("P-OAK-3", GHOST_BLOCK, 3)]
+    placeholders = [
+        permit(f"P-PLACEHOLDER-{n}", PLACEHOLDER_BLOCK, PLACEHOLDER_LOT) for n in (1, 2)
+    ]
+    ghost = [permit("P-GHOST", GHOST_BLOCK, 4)]
+    stale = [permit(f"P-OLD-{n}", BLOCK_A, 1, days_ago=900) for n in (1, 2)]
+    return on_doors + same_block + other_blocks + placeholders + ghost + stale
+
+
+@pytest.fixture
+def municipal_example():
+    return resolved(
+        municipal_example_doors(),
+        municipal_example_permits(),
+        municipal_parcels=municipal_example_parcels(),
+    )
+
+
+MUNICIPAL_EXAMPLE_NUMBERS = [
+    ("permits_total", 14),
+    ("permits_out_of_window", 2),
+    ("permits_in_window", 12),
+    ("permits_matched_municipal", 9),
+    ("permits_placeholder_block_lot", 2),
+    ("permits_unmatched_municipal", 1),
+    ("municipal_match_rate", 0.75),
+]
+
+#: The same run, read through the territory-scoped fields. Unchanged in meaning
+#: by the municipal set being supplied — only newly accompanied.
+MUNICIPAL_EXAMPLE_TERRITORY_NUMBERS = [
+    ("permits_out_of_territory", 6),
+    ("permits_in_territory", 6),
+    ("permits_matched", 3),
+    ("matched_by_block_lot", 3),
+    ("matched_by_address", 0),
+    ("permit_match_rate", 0.5),
+]
+
+
+@pytest.mark.parametrize(
+    "field_name, expected", MUNICIPAL_EXAMPLE_NUMBERS + MUNICIPAL_EXAMPLE_TERRITORY_NUMBERS
+)
+def test_the_municipal_worked_example_report_is_exactly_this(
+    municipal_example, field_name, expected
+):
+    assert getattr(municipal_example.report, field_name) == pytest.approx(expected)
+
+
+def test_the_two_rates_are_different_numbers_on_the_same_run(municipal_example):
+    """The whole ticket: one number is territory-scoped, the other is not."""
+    report = municipal_example.report
+    assert report.permit_match_rate == pytest.approx(0.5)
+    assert report.municipal_match_rate == pytest.approx(0.75)
+    assert report.municipal_match_rate != report.permit_match_rate
+
+
+def test_every_in_window_permit_lands_in_exactly_one_municipal_bucket(municipal_example):
+    report = municipal_example.report
+    assert report.permits_in_window == report.permits_total - report.permits_out_of_window
+    assert (
+        report.permits_matched_municipal
+        + report.permits_placeholder_block_lot
+        + report.permits_unmatched_municipal
+        == report.permits_in_window
+    )
+
+
+def test_the_municipal_rate_divides_by_every_in_window_permit(municipal_example):
+    report = municipal_example.report
+    assert report.municipal_match_rate == pytest.approx(
+        report.permits_matched_municipal / report.permits_in_window
+    )
+
+
+def test_placeholder_permits_are_their_own_bucket_not_silent_unmatched(municipal_example):
+    """Two placeholders and one absent lot: three misses, two distinct kinds."""
+    report = municipal_example.report
+    assert report.permits_placeholder_block_lot == 2
+    assert report.permits_unmatched_municipal == 1  # P-GHOST alone
+
+
+@pytest.mark.parametrize(
+    "block, lot, placeholder",
+    [
+        ("0000", "00", True),
+        ("0", "0", True),
+        ("", "", True),
+        ("0000", "4", True),
+        ("4203", "00", True),
+        ("4203", "4", False),
+    ],
+    ids=[
+        "both-placeholders",
+        "bare-zeros",
+        "blank",
+        "placeholder-block",
+        "placeholder-lot",
+        "a-real-lot-the-parcel-file-lacks",
+    ],
+)
+def test_a_placeholder_block_or_lot_is_counted_apart_from_a_real_miss(block, lot, placeholder):
+    doors = [door(BLOCK_A, 1)]
+    report = resolved(
+        doors, [permit("P-1", block, lot)], municipal_parcels=doors + [door(GHOST_BLOCK, 3)]
+    ).report
+
+    assert report.permits_in_window == 1
+    assert report.permits_matched_municipal == 0
+    assert report.permits_placeholder_block_lot == (1 if placeholder else 0)
+    assert report.permits_unmatched_municipal == (0 if placeholder else 1)
+
+
+@pytest.mark.parametrize(
+    "parcel_lot, permit_lot, joins",
+    [
+        ("4.02", "4.02", True),
+        ("4.2", "4.2", True),
+        ("4.02", "4.2", False),
+        ("4.2", "4.02", False),
+    ],
+    ids=["same-suffix", "same-other-suffix", "02-is-not-2", "2-is-not-02"],
+)
+def test_lot_suffix_variants_are_distinct_lots_municipality_wide(parcel_lot, permit_lot, joins):
+    """NJ MOD-IV convention: `4.2` and `4.02` are different parcels. Collapsing
+    them would invent matches to flatter the rate."""
+    doors = [door(BLOCK_A, 1)]
+    municipal = doors + [door(GHOST_BLOCK, parcel_lot)]
+    report = resolved(
+        doors, [permit("P-1", GHOST_BLOCK, permit_lot)], municipal_parcels=municipal
+    ).report
+
+    assert report.permits_matched_municipal == (1 if joins else 0)
+    assert report.municipal_match_rate == pytest.approx(1.0 if joins else 0.0)
+
+
+def test_the_municipal_join_is_block_lot_not_the_door_address_fallback():
+    """The municipal rate answers "did this permit resolve to a parcel", which is
+    the block/lot question — the address fallback exists to place a record on a
+    *door*, and is reported by `matched_by_address`."""
+    doors = [door(BLOCK_A, 12, street="MAPLE")]
+    result = resolved(
+        doors, [addressed("P-1", BLOCK_A, "999", "12 Maple St")], municipal_parcels=doors
+    )
+
+    assert result.report.matched_by_address == 1
+    assert result.report.permits_matched_municipal == 0
+    assert result.report.permits_unmatched_municipal == 1
+
+
+def test_omitting_the_municipal_set_measures_against_the_territory_parcels():
+    """The parameter defaults to the parcels given, so today's callers keep
+    working — the denominator is still every in-window permit."""
+    report = resolved(municipal_example_doors(), municipal_example_permits()).report
+
+    assert report.permits_in_window == 12
+    assert report.permits_matched_municipal == 3
+    assert report.permits_placeholder_block_lot == 2
+    assert report.permits_unmatched_municipal == 7
+    assert report.municipal_match_rate == pytest.approx(0.25)
+
+
+TERRITORY_SCOPED_FIELDS = (
+    "doors_total",
+    "doors_with_signal",
+    "coverage",
+    "permits_total",
+    "permits_out_of_window",
+    "permits_out_of_territory",
+    "permits_in_territory",
+    "permits_matched",
+    "matched_by_block_lot",
+    "matched_by_address",
+    "permit_match_rate",
+    "block_lot_match_rate",
+    "address_match_rate",
+    "unmatched",
+)
+
+
+@pytest.mark.parametrize("field_name", TERRITORY_SCOPED_FIELDS)
+def test_supplying_a_municipal_set_changes_no_territory_scoped_number(field_name):
+    doors, permits = municipal_example_doors(), municipal_example_permits()
+    without = resolved(doors, permits).report
+    with_municipal = resolved(doors, permits, municipal_parcels=municipal_example_parcels()).report
+
+    assert getattr(with_municipal, field_name) == getattr(without, field_name)
+
+
+def test_a_municipality_with_no_in_window_permits_reports_a_zero_rate_not_a_crash():
+    doors = [door(BLOCK_A, 1)]
+    report = resolved(
+        doors, [permit("P-1", BLOCK_A, 1, days_ago=900)], municipal_parcels=doors
+    ).report
+
+    assert report.permits_in_window == 0
+    assert report.municipal_match_rate == 0.0
+
+
+@pytest.mark.parametrize("needle", ["R3.2", "municipal_match_rate", "permit_match_rate"])
+def test_the_report_docstring_names_both_denominators(needle):
+    """Shape, not prose: a reader of the dataclass must be told which rate the
+    rubric grades without leaving the file."""
+    assert needle in (ResolveReport.__doc__ or "")
+
+
+@pytest.mark.parametrize("needle", ["R3.2", "municipal_match_rate"])
+def test_the_module_docstring_explains_the_two_denominators(needle):
+    assert needle in (resolve_module.__doc__ or "")
 
 
 # --- the match-rate arithmetic, at other ratios --------------------------------
@@ -973,6 +1244,12 @@ REPORT_FIELDS = (
     "permit_match_rate",
     "block_lot_match_rate",
     "address_match_rate",
+    # The municipal denominator (R3.2's floor is graded on `municipal_match_rate`).
+    "permits_in_window",
+    "permits_matched_municipal",
+    "permits_placeholder_block_lot",
+    "permits_unmatched_municipal",
+    "municipal_match_rate",
     "unmatched",
     "doors_with_block_group",
     "acs_available",

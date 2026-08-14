@@ -1,10 +1,10 @@
 ---
 id: 014
 title: "Data & Ethics page — doubles as the one-page score rationale (R11.4)"
-status: tests-written
+status: green
 depends_on: [008, 012]
 touches: [web/ethics.html, web/js/ethics.js, web/js/ethics.test.js]
-iterations: 0
+iterations: 1
 test_files: [web/js/ethics.test.js]
 branch: ""
 ---
@@ -32,3 +32,22 @@ results).
 - [ ] ACS language is neighbourhood-level throughout — no household claims (R6.2).
 - [ ] The demo-only "simulate data-fetch error" trigger is present and visually marked as
       demo-only (DESIGN-ADDITIONS).
+
+## Attempt log
+
+- iter 1: green (207 JS tests). Orchestrator live probe: the page renders the run manifest
+  verbatim — all three declination reasons (ACS/rental/vision), 540 of 540 doors scored,
+  per-source retrieval dates — and the frozen-fixture metrics caveat prints directly under the
+  P/R numbers instead of being buried.
+- Weights anti-drift works in both directions: the JS mirror is deep-equalled against a parse of
+  `src/houseaccount/scoring/weights.py`, and a fourth test guards the parser so an empty mirror
+  cannot pass.
+- Also fixed: stale header tooltips, Data & Ethics now a real link, `map.resize()` + bounds refit
+  on viewport resize, and a sticky `#demo-error` fragment that made Retry re-fail forever.
+
+## Deployment finding (handed to 016)
+
+`ethics.html` reads `eval/report.json` and `data/run_manifest.json` via
+`HOUSEACCOUNT_ARTIFACT_BASE`, default `..` — i.e. the repo root relative to `web/`. A static host
+serving `web/` as the site root cannot resolve that. The deploy must either serve those two
+artifacts through the API or copy them into the published directory.

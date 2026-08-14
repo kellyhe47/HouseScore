@@ -1,7 +1,7 @@
 ---
 id: 025
 title: "Ethics page hardcodes 'twelve golden fixtures'; the harness reports thirteen"
-status: pending
+status: in-progress
 source: qa
 depends_on: []
 touches: [web/js/ethics.js]

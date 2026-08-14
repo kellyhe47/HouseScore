@@ -1,7 +1,7 @@
 ---
 id: 022
 title: "Map renders blank on every reload — initial camera does not frame the territory"
-status: pending
+status: in-progress
 source: qa
 depends_on: []
 touches: [web/js/map.js]

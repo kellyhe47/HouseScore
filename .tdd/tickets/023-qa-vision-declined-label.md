@@ -1,7 +1,7 @@
 ---
 id: 023
 title: "Data & Ethics calls the vision stage DECLINED on a run where it produced 119 doors of imagery"
-status: pending
+status: in-progress
 source: qa
 depends_on: []
 touches: [web/js/ethics.js, src/houseaccount/publish.py]

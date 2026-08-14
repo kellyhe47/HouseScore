@@ -1,7 +1,7 @@
 ---
 id: 024
 title: "Published MCP URL names a host the documented deploy never creates"
-status: pending
+status: in-progress
 source: qa
 depends_on: [016]
 touches: [web/js/ethics.js, docs/DEPLOY.md, fly.toml]

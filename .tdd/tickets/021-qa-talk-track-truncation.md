@@ -1,11 +1,11 @@
 ---
 id: 021
 title: "Talk track is truncated mid-sentence wherever the top evidence item is a permit"
-status: pending
+status: green
 source: qa
 depends_on: []
 touches: [src/houseaccount/server/api.py, src/houseaccount/route.py, web/js/panel.js, web/js/route.js]
-iterations: 0
+iterations: 1
 test_files: []
 branch: ""
 ---
@@ -54,3 +54,21 @@ rather. Is now a bad time?"
 - Truncation, if it must stay, falls back to a shorter *complete* evidence sentence rather than
   cutting one.
 - A test covers a permit-led door in both surfaces.
+
+## Resolution
+
+Green in 1 iteration. `_as_clause` now shortens an over-long evidence sentence only to a boundary the
+sentence already contains (em/en dash, semicolon, colon, period), and carries it whole when there is no
+such mark inside `_EVIDENCE_LIMIT`. The limit survives but bounds *where a stop is looked for*, not
+where the text is chopped.
+
+One function, both surfaces: `route.talk_track_for` feeds route rows directly and the evidence panel
+via `server/published.py:308`.
+
+- tests locked: `efd9d24` · implementation: `62813b7` · merged to working branch
+- live probe on a real server: 20-stop route, **0 dangling openers** (was 6 of 20)
+- full suite on the merged branch: 1357 Python, 215 JS
+
+Noted by the implementer, deliberately not fixed here (out of scope, no ticket filed yet): the
+no-boundary fallback removes the only length ceiling a route row had, so a pathological evidence
+sentence with no internal punctuation now arrives in full — layout is the surface that absorbs it.

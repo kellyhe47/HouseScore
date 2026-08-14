@@ -1,10 +1,10 @@
 ---
 id: 006
 title: "Entity resolution + match-rate reporting (R3)"
-status: tests-written
+status: green
 depends_on: [002, 004, 005]
 touches: [src/houseaccount/resolve.py, src/houseaccount/sources/tiger.py, tests/test_resolve.py, tests/test_tiger.py]
-iterations: 0
+iterations: 1
 test_files: [tests/test_resolve.py, tests/test_tiger.py]
 branch: ""
 ---
@@ -48,3 +48,10 @@ it R3.1's "ACS joined to parcels" is unimplementable.
 - [ ] Determinism: same inputs → identical `.doors` ordering and identical report numbers.
 - [ ] A door with zero permits, no ACS and no rental data still resolves to valid `DoorFacts`
       (it will simply score low) — resolution never drops a territory door.
+
+## Attempt log
+
+- iter 1: green. shapely 2 gotcha recorded: `STRtree.query(geom, predicate=...)` applies
+  `predicate(query_geom, tree_geom)`, so point-in-polygon needs `covered_by`, not `covers`.
+  `_route_permits` is the single exit point per record, making the accounting invariant
+  structural rather than asserted.

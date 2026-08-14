@@ -73,3 +73,39 @@ the 100-point Mover group cannot fire on this data vintage. The parser is correc
 passes; raw `'240920'` parses to 2024-09-20) — the source is stale. Ticket 019 discloses it.
 **The question the PRD does not pre-make: add NJ SR1A sales flat-files as a fresher deed source so
 Mover can fire, or ship with the vintage disclosed?**
+
+
+## Phase 3 — PRD walk (orchestrator, end of run)
+
+| Req | Status | Evidence |
+|---|---|---|
+| R1.1 territory | ✅ | `data/territory.geojson`, 540 class-2 parcels nearest the country club; deterministic, idempotent |
+| R1.2 parcel source | ✅ | ArcGIS paginated via `resultOffset`, 5,671 Ramsey parcels, cached |
+| R2.1 sources | ⚠️ | parcels · permits · ACS · orthos · rental seam all built. **Street View not built** — see gaps |
+| R2.2 pipeline autonomy | ✅ | `make pipeline`, fresh clone, no credentials, 12s cold / 0.3s warm, 540/540 published |
+| R2.3 caching | ✅ | content-addressed cache; warm run makes zero network calls (test-enforced) |
+| R3.1/3.2 entity resolution | ✅ | block/lot join + address fallback; **municipal match rate 0.974** ≥ 0.95 |
+| R3.3 vision schema | ✅ | `Detection{pams_pin,signal,present,confidence,image_ref,capture_date}`, validated |
+| R4.1 pool from orthos | ⚠️ | built and unit-tested end to end; **never executed** — no `ANTHROPIC_API_KEY`. Disclosed |
+| R4.2 Street View demo-scale | ❌ | **not built.** ToS position published; `GOOGLE_MAPS_KEY` documented as unused |
+| R4.3 Haiku + structured JSON | ✅ | `ClaudeVisionProvider`, batched, cached, ledger-billed, fake-client tested |
+| R5.1/5.2 eval harness | ⚠️ | `make eval` runs; P/R from **fixture 09's frozen set** — hand labels not collected. Disclosed loudly |
+| R6 House Score | ✅ | all 10 scored fixtures + 3 comparatives + fixture 11 end-to-end, via the real engine |
+| R6.1 graceful degradation | ✅ | 98 of 540 real doors published `confidence: low` with a `data_gap` line |
+| R6.2 ACS neighbourhood-only | ✅ | whole-page scan test on the ethics page; engine sentence says "block group" |
+| R7.1/7.2/7.3 evidence | ✅ | signed points, source, retrieval date, imagery attachment; talk track; zero-point context rows |
+| R8 MCP server | ✅ | exactly `get_door_score`, `explain_score`, `plan_route`; verified live over streamable HTTP |
+| R9 map UI | ✅ | choropleth, filter, coverage readout, evidence panel, degraded states; probed at 1280 and 375 |
+| R10 route planner | ✅ | one shared module; 540 doors < 2s; walk mode with localStorage resume; probed live |
+| R11.1–11.4 ethics | ✅ | zero identity tokens in shipped code or artifacts; Data & Ethics page live |
+| R12 deployment | 🔒 | deploy-ready; **blocked on human credentials** (ticket 016) |
+| R13 reproducibility | ✅ | README, `.env.example`, guard tests; no secret-shaped literal anywhere |
+| R14 cost | ✅ | actual spend **$0.00** against a $50 budget; cost-per-door reported by `make eval` |
+
+### Honest gaps a reviewer should know about
+
+1. **Street View was never built** (R4.2). The ToS analysis that justifies avoiding it *is* published, and all bulk signals come from public-domain orthos as R4.1 requires — but the ~50-door demo the PRD describes does not exist.
+2. **The vision stage has never run.** No `ANTHROPIC_API_KEY` in this environment. The code path is real and unit-tested against a fake client; the declination is recorded in every run manifest.
+3. **No hand labels.** So vision P/R is fixture 09's frozen arithmetic, printed under a loud NOT-A-MEASUREMENT banner. Nothing was fabricated.
+4. **The Mover group scored zero everywhere** — the MOD-IV extract's newest deed is 20 months stale. Disclosed by ticket 019; the fix (NJ SR1A flat files) is the one open decision for the human.
+5. **Nothing is deployed.** Ticket 016 is blocked on Fly.io/Vercel credentials, with the exact runbook.

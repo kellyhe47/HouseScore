@@ -32,13 +32,20 @@ the planner is only ever called with arguments it can plan from.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from houseaccount.server.published import Territory, door_payload, route_payload
+from houseaccount.server.published import (
+    Territory,
+    door_payload,
+    read_json_artifact,
+    resolve_eval_report,
+    route_payload,
+)
 
 #: `doors.geojson` is GeoJSON, and saying so lets a client that cares (QGIS, a
 #: fetch that branches on type) treat it as such. It is still `+json`, so
@@ -71,14 +78,38 @@ class RouteRequest(BaseModel):
     )
 
 
-def build_router(territory: Territory) -> APIRouter:
-    """The four endpoints, closed over the run they serve.
+def _artifact_or_404(path: Path, *, error: str) -> Response:
+    """One published JSON artifact, or the "no published run" 404 (R12).
+
+    The Data & Ethics page renders `response.ok ? body : null` and already says
+    plainly when there is nothing to describe, so absent and malformed both
+    become that same 404 rather than an exception the browser sees as a 500.
+    """
+    content = read_json_artifact(path)
+    if content is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": error,
+                "message": (
+                    f"No readable {path.name} in this deployment. "
+                    "Run `make pipeline` and `make eval` to publish one."
+                ),
+            },
+        )
+    return JSONResponse(content=content)
+
+
+def build_router(territory: Territory, eval_report: Path | None = None) -> APIRouter:
+    """The endpoints, closed over the run they serve.
 
     A router built per territory rather than reading a global is what lets a
     test drive a `tmp_path` territory and a deployment drive `data/` through the
-    identical code path.
+    identical code path. `eval_report` is the one artifact that lives outside
+    `data/`, so it is addressed separately; `None` means the repository's own.
     """
     router = APIRouter()
+    eval_report_path = resolve_eval_report(eval_report)
 
     @router.get("/health")
     def health() -> dict[str, Any]:
@@ -113,6 +144,26 @@ def build_router(territory: Territory) -> APIRouter:
                 },
             )
         return JSONResponse(content=door_payload(found))
+
+    @router.get("/api/eval/report.json")
+    def eval_report_json() -> Response:
+        """The eval report the Data & Ethics page draws its numbers from (R12).
+
+        The path mirrors `web/ethics.html`'s own `artifact('eval/report.json')`,
+        so a deploy points `HOUSEACCOUNT_ARTIFACT_BASE` at this app's `/api` and
+        nothing in `web/` changes. Read per request rather than at boot: `make
+        pipeline` without `make eval` is an ordinary state, not a failed deploy.
+        """
+        return _artifact_or_404(eval_report_path, error="eval_report_unavailable")
+
+    @router.get("/api/data/run_manifest.json")
+    def run_manifest_json() -> Response:
+        """What actually ran on the published run: sources, dates, degradations.
+
+        Served from the same directory the doors were read from, so the page's
+        provenance table and the map's doors can never describe two runs.
+        """
+        return _artifact_or_404(territory.manifest_path, error="run_manifest_unavailable")
 
     @router.post("/api/route")
     def route(request: RouteRequest) -> dict[str, Any]:

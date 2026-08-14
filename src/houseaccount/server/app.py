@@ -55,10 +55,17 @@ UI_ORIGINS: tuple[str, ...] = (
 MCP_PATH = "/mcp"
 
 
-def create_app(data_dir: Path | None = None) -> FastAPI:
+def create_app(data_dir: Path | None = None, eval_report: Path | None = None) -> FastAPI:
     """Build the app that serves the run published under `data_dir`.
 
     Raises `DataUnavailable` if that directory holds no published run.
+
+    `eval_report` points at the eval harness's report *file*, which lives
+    outside `data/` and defaults to the repository's own `eval/report.json`.
+    Deliberately not part of the boot contract: `make pipeline` without `make
+    eval` is an ordinary state, and the Data & Ethics page already degrades
+    through a missing report — so it is a 404 on one endpoint, not a dead
+    deployment.
     """
     territory = load_territory(data_dir)
     mcp_server = mcp_server_for(territory)
@@ -89,6 +96,13 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
-    app.include_router(build_router(territory))
+    # Adopted rather than `include_router`-ed, for the same reason the MCP
+    # routes are: since FastAPI 0.141 `include_router` stores an opaque
+    # `_IncludedRouter` wrapper in `app.routes`, so the app can no longer be
+    # asked which paths it serves. Nothing here uses a prefix or router-level
+    # dependencies, so adopting the routes is behaviourally identical — and it
+    # keeps `create_app(...).routes` introspectable, which is what lets a test
+    # assert that the routes and `web/ethics.html`'s fetches are one decision.
+    app.routes.extend(build_router(territory, eval_report=eval_report).routes)
     app.routes.extend(mcp_app.routes)
     return app

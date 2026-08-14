@@ -1,0 +1,56 @@
+# Fly.io configuration for the HouseAccount server (R12).
+#
+# One machine in one region serving both front doors of `create_app`: the REST
+# endpoints the Map UI on Vercel calls, and the MCP transport at `/mcp`. The
+# published run is baked into the image (see `Dockerfile`), so there is no
+# volume, no database to attach and nothing stateful to lose — a deploy is a
+# whole new immutable copy of a reviewed run.
+#
+# Credentials are NOT here. This file is committed, and `[env]` is baked into
+# the machine's config where anyone with read access to the app can print it.
+# The three application credentials are Fly secrets, set out of band:
+#
+#   flyctl secrets set ANTHROPIC_API_KEY=... CENSUS_API_KEY=... GOOGLE_MAPS_KEY=...
+#
+# The server itself needs none of them — it reads artifacts and calls nothing —
+# so they are named here for the day a stage moves behind the API, and so the
+# runbook and this file describe one list. See `docs/DEPLOY.md`.
+
+app = "houseaccount"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Non-secret process configuration only. Anything matching key/token/secret/
+# password belongs in `flyctl secrets set`, and `tests/test_deploy_config.py`
+# fails this file if one appears below.
+[env]
+  PORT = "8000"
+  PYTHONUNBUFFERED = "1"
+
+[http_service]
+  # The port the container's uvicorn binds. Fly terminates TLS and forwards here.
+  internal_port = 8000
+  force_https = true
+  # The app is a stateless read of a baked-in run, so a cold machine costs a few
+  # seconds and nothing else — but a reviewer clicking the demo link should not
+  # be the one who pays it, so one machine stays warm.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    # `GET /health` reports the door count as well as liveness, so "up but
+    # serving an empty territory" — the failure a TCP check is blind to — still
+    # reaches a human as a red check rather than as an empty map.
+    path = "/health"
+    protocol = "http"
+    method = "get"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

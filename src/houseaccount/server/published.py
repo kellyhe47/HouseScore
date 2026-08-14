@@ -46,8 +46,13 @@ from typing import Any, Mapping, Sequence
 from houseaccount import route as route_module
 from houseaccount.config import Config
 from houseaccount.normalize import normalize_address
-from houseaccount.publish import DOORS_GEOJSON_NAME, SQLITE_NAME
+from houseaccount.publish import DOORS_GEOJSON_NAME, RUN_MANIFEST_NAME, SQLITE_NAME
 from houseaccount.route import RouteDoor
+
+#: Where `make eval` writes its report, relative to the repository root. It
+#: lives outside `data/` because it describes a scoring run against the golden
+#: fixtures rather than the published territory.
+EVAL_REPORT_RELATIVE = Path("eval") / "report.json"
 
 
 class DataUnavailable(RuntimeError):
@@ -120,6 +125,16 @@ class Territory:
     by_pin: Mapping[str, Door]
     by_address: Mapping[str, Door]
 
+    @property
+    def manifest_path(self) -> Path:
+        """The run manifest beside the artifacts this run was read from.
+
+        Not loaded at boot: the manifest describes the run, nothing here reads
+        it, and a run published before the manifest existed still serves doors.
+        The Data & Ethics page is its only consumer, so it is read per request.
+        """
+        return self.data_dir / RUN_MANIFEST_NAME
+
     def door(self, pams_pin: str) -> Door | None:
         return self.by_pin.get(pams_pin)
 
@@ -158,6 +173,34 @@ def resolve_data_dir(data_dir: Path | None) -> Path:
     configured with. `uvicorn ... --factory` passes nothing, so the default has
     to be the same `data/` the pipeline writes."""
     return Path(data_dir) if data_dir is not None else Config.from_env().data_dir
+
+
+def resolve_eval_report(eval_report: Path | None) -> Path:
+    """Where the eval report is, for the deployment and for a test alike.
+
+    The same shape as `resolve_data_dir`, and for the same reason: `--factory`
+    can pass nothing, so the default is the repository's own `eval/report.json`
+    — the file `make eval` writes. It is a *file* rather than a directory
+    because it is the only artifact outside `data/` the UI reads (R12).
+    """
+    if eval_report is not None:
+        return Path(eval_report)
+    return Config.from_env().repo_root / EVAL_REPORT_RELATIVE
+
+
+def read_json_artifact(path: Path) -> Any | None:
+    """One published JSON artifact, or `None` if there is not one there.
+
+    Absent and malformed collapse to the same answer on purpose. `make eval`
+    interrupted halfway leaves half a JSON file behind, and the Data & Ethics
+    page treats any non-`ok` response as "no published run" and says so — so a
+    truncated file has to reach the browser as that same honest 404 rather than
+    as a 500 out of the JSON decoder.
+    """
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def load_territory(data_dir: Path | None = None) -> Territory:

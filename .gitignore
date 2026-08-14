@@ -9,3 +9,4 @@ cache/
 data/tiles/
 .env
 scratchpad/
+web/js/config.js

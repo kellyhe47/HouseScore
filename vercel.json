@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "web",
+  "buildCommand": "sh scripts/vercel-build.sh \"$HOUSEACCOUNT_API_BASE\" \"$HOUSEACCOUNT_ARTIFACT_BASE\"",
+  "framework": null,
+  "github": { "silent": true },
+  "headers": [
+    {
+      "source": "/js/config.js",
+      "headers": [{ "key": "cache-control", "value": "no-store" }]
+    }
+  ]
+}

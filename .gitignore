@@ -10,3 +10,5 @@ data/tiles/
 .env
 scratchpad/
 web/js/config.js
+.qa/screens/
+.tdd/worktrees/

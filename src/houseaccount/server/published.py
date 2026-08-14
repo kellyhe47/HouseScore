@@ -17,6 +17,11 @@ the route planner needs a centroid per door, so it supplies geometry plus the
 R11.1 published properties. SQLite supplies the R8.1 group math (`groups`,
 `raw_total`), which is deliberately not in the browser-facing allowlist.
 
+**Why the streets are built here.** The parcels are the only description of the
+territory's roads there is (`houseaccount.streets` reads them out of the gaps),
+they arrive with the run, and they cannot change under a running server — so
+the network is derived once at load and handed to the planner with every route.
+
 **Why two address keys.** R8.2 resolves a rep's typing through the same
 normalizer the join uses, so "12 oak st" and "12 OAK STREET" land on one door.
 But R9.1 also hands the rep the full situs string to copy — "12 OAK ST, Ramsey
@@ -48,6 +53,7 @@ from houseaccount.config import Config
 from houseaccount.normalize import normalize_address
 from houseaccount.publish import DOORS_GEOJSON_NAME, RUN_MANIFEST_NAME, SQLITE_NAME
 from houseaccount.route import RouteDoor
+from houseaccount.streets import build_walk_network
 
 #: Where `make eval` writes its report, relative to the repository root. It
 #: lives outside `data/` because it describes a scoring run against the golden
@@ -124,6 +130,10 @@ class Territory:
     doors: tuple[Door, ...]
     by_pin: Mapping[str, Door]
     by_address: Mapping[str, Door]
+    #: The streets the rep can walk, derived from the parcels at boot, or None
+    #: for a run whose parcels do not describe a street grid (see
+    #: `houseaccount.streets`). The planner falls back to straight lines then.
+    walk_network: Any = None
 
     @property
     def manifest_path(self) -> Path:
@@ -241,6 +251,7 @@ def load_territory(data_dir: Path | None = None) -> Territory:
         doors=doors,
         by_pin=by_pin,
         by_address=by_address,
+        walk_network=_walk_network(features),
     )
 
 
@@ -272,6 +283,7 @@ def route_payload(
         hours=hours,
         start_point=start_point,
         max_doors=max_doors,
+        network=territory.walk_network,
     )
     if exclude:
         planned = planned.exclude(exclude)
@@ -362,6 +374,31 @@ def _read_group_math(path: Path) -> dict[str, tuple[Mapping[str, int] | None, in
         pams_pin: (json.loads(groups) if groups else None, raw_total)
         for pams_pin, groups, raw_total in rows
     }
+
+
+def _walk_network(features: Sequence[Mapping[str, Any]]) -> Any:
+    """The territory's streets, derived from its parcels once at boot.
+
+    A third of a second for 540 parcels, spent here rather than per request:
+    every route the process ever plans walks the same streets, and the input is
+    an artifact that cannot change under a running server.
+
+    A derivation that raises is a server that still serves doors — the planner
+    reverts to straight-line legs and says so in its own disclosure — because a
+    territory whose geometry defeats the medial axis is a worse route, not a
+    dead deployment.
+    """
+    geometries = [feature.get("geometry") for feature in features]
+    door_points: dict[tuple[float, float], Mapping[str, Any]] = {}
+    for geometry in geometries:
+        centroid = _centroid(geometry)
+        if centroid is not None and geometry is not None:
+            door_points.setdefault(centroid, geometry)
+
+    try:
+        return build_walk_network(geometries, door_points)
+    except Exception:  # pragma: no cover - shapely refusing a published run
+        return None
 
 
 def _centroid(geometry: Mapping[str, Any] | None) -> tuple[float, float] | None:

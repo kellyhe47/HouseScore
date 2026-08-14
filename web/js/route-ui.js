@@ -23,6 +23,10 @@ const DEFAULT_API_BASE = '/api';
  * `elapsedLabel` is an offset from the start of the walk, never a clock time
  * (R10.2): the plan does not know when the rep will actually set off, and
  * "10:40" would be wrong by however long they spent parking.
+ *
+ * `path` is the leg the planner measured — the line the map draws. It arrives
+ * as a list of `[lon, lat]` and is carried through untouched; a payload without
+ * one leaves it empty and the map falls back to the door's centroid.
  */
 function toRow(stop, index) {
   return {
@@ -34,7 +38,44 @@ function toRow(stop, index) {
     cumulativeMinutes: stop.cumulative_minutes,
     elapsedLabel: `+${Math.round(stop.cumulative_minutes)} min`,
     talkTrack: stop.talk_track,
+    path: stop.path ?? [],
   };
+}
+
+/**
+ * The whole walk as one line: the parking spot, then every leg the planner
+ * measured, end to end.
+ *
+ * The vertices are the server's. A rep walks along streets, and the planner is
+ * the only thing here that knows where those are — it measured the minutes
+ * along them. Joining the doors' centroids in the browser instead would draw a
+ * walk through the middle of a block beside a time that assumed otherwise,
+ * which is the same R10.3 rule that keeps the *order* on the server.
+ *
+ * `centroidOf` supplies a door's point for a leg that arrived without a path,
+ * so a route payload from an older server still draws something honest.
+ *
+ * @param {{pin: string, path?: number[][]}[]} rows
+ * @param {[number, number]|null} startPoint
+ * @param {(pin: string) => [number, number]|null} centroidOf
+ * @returns {number[][]} the line's coordinates, `[]` when there is nothing to draw
+ */
+export function routeLine(rows, startPoint, centroidOf = () => null) {
+  const coordinates = [];
+  const push = (point) => {
+    const last = coordinates[coordinates.length - 1];
+    // Each leg starts where the previous one ended; drawing that seam twice
+    // costs a duplicate vertex on every stop.
+    if (!last || last[0] !== point[0] || last[1] !== point[1]) coordinates.push(point);
+  };
+
+  if (startPoint) push(startPoint);
+  for (const row of rows ?? []) {
+    const leg = row.path && row.path.length ? row.path : [centroidOf(row.pin)];
+    for (const point of leg) if (point) push(point);
+  }
+
+  return coordinates.length > 1 ? coordinates : [];
 }
 
 /**

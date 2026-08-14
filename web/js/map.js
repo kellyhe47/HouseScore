@@ -43,6 +43,9 @@ const API_BASE = String(
 /** Above this zoom every visible parcel wears its score (wireframe frame 1). */
 const LABEL_ZOOM = 17;
 
+/** Breathing room around the territory, in pixels, whenever the camera is fitted. */
+const FIT_PADDING = 48;
+
 /** Out-of-range parcels stay on the map, dimmed, so the territory keeps its shape. */
 const DIM_OPACITY = 0.14;
 
@@ -155,6 +158,10 @@ let selectedPin = null;
 let map = null;
 let toastTimer = null;
 let labelFrame = null;
+/** True once the territory has been framed against a viewport that could hold it. */
+let territoryFramed = false;
+/** The ResizeObserver waiting for that viewport, or null once it is no longer needed. */
+let containerWatch = null;
 
 /** The detail body of the selected door, once `/api/door/{pin}` answers. */
 let selectedDetail = null;
@@ -412,6 +419,63 @@ function boundsOfDoors() {
   return any ? bounds : null;
 }
 
+/**
+ * Frame the whole territory — once, and only once the container can hold it.
+ *
+ * `fitBounds` is silent about failure: MapLibre asks `cameraForBounds` for a
+ * camera, and a viewport too small to hold the padding yields none, so the call
+ * returns the map untouched with nothing logged. A reload serves
+ * `doors.geojson` from cache, which means the style can be up before the
+ * browser has laid the just-unhidden map screen out — the one fit fired against
+ * a container of no size, was discarded, and left the camera on the
+ * constructor's opening centre. That is the blank grey map QA saw on every
+ * reload, with a clean console and a readout still claiming 540 doors.
+ *
+ * Re-measuring harder does not help, because there is nothing to measure yet.
+ * So the fit is attempted, and if the viewport cannot carry it the attempt is
+ * simply not counted — `watchContainer` will bring it back when the container
+ * has a size. Once it lands, `territoryFramed` closes the door: the rep's own
+ * panning and zooming is theirs to keep.
+ */
+function frameTerritory() {
+  if (territoryFramed || !map || !map.isStyleLoaded()) return;
+
+  // The container may only just have become measurable; the map still believes
+  // whatever it measured at construction time.
+  map.resize();
+  const canvas = map.getCanvas();
+  if (canvas.clientWidth <= FIT_PADDING * 2 || canvas.clientHeight <= FIT_PADDING * 2) return;
+
+  const bounds = boundsOfDoors();
+  if (!bounds) return;
+
+  map.fitBounds(bounds, { padding: FIT_PADDING, duration: 0 });
+  territoryFramed = true;
+  stopWatchingContainer();
+}
+
+/**
+ * Retry the opening fit whenever the map container changes size.
+ *
+ * A container getting its first real size during the page's own layout is not a
+ * window `resize` — no such event is ever dispatched — which is why the resize
+ * handler at the bottom of this file cannot stand in for this. A
+ * `ResizeObserver` is the hook that genuinely fires for it, including for the
+ * `display: none` → laid-out transition `renderMachine` triggers one statement
+ * before the map is built.
+ */
+function watchContainer(container) {
+  if (containerWatch || typeof ResizeObserver !== 'function' || !container) return;
+  containerWatch = new ResizeObserver(() => frameTerritory());
+  containerWatch.observe(container);
+}
+
+function stopWatchingContainer() {
+  if (!containerWatch) return;
+  containerWatch.disconnect();
+  containerWatch = null;
+}
+
 function renderMap() {
   if (!window.maplibregl) {
     console.error('[houseaccount] MapLibre GL JS did not load.');
@@ -447,14 +511,11 @@ function renderMap() {
   });
   map.touchZoomRotate.disableRotation();
   map.getCanvas().style.cursor = 'grab';
+  // Registered before the style can possibly be up, so whichever of the two
+  // arrives second — the layout or the `load` — carries the fit.
+  watchContainer(map.getContainer());
 
   map.on('load', () => {
-    // The map is built the moment the doors arrive, which can be before the
-    // browser has laid the freshly-unhidden map screen out. Measuring again
-    // here is what keeps `fitBounds` below fitting the real viewport rather
-    // than MapLibre's 400×300 fallback.
-    map.resize();
-
     map.addSource('doors', { type: 'geojson', data: sourceData() });
 
     map.addLayer({
@@ -499,8 +560,10 @@ function renderMap() {
       paint: { 'line-color': '#E8791A', 'line-width': 2.5, 'line-dasharray': [3, 2] },
     });
 
-    const bounds = boundsOfDoors();
-    if (bounds) map.fitBounds(bounds, { padding: 48, duration: 0 });
+    // The map is built the moment the doors arrive, which can be before the
+    // browser has laid the freshly-unhidden map screen out — so this is an
+    // attempt, not the guarantee. `watchContainer` below is the guarantee.
+    frameTerritory();
 
     scheduleLabels();
   });
@@ -1409,7 +1472,7 @@ window.addEventListener('resize', () => {
     map.resize();
     if (!routeView && !selectedPin) {
       const bounds = boundsOfDoors();
-      if (bounds) map.fitBounds(bounds, { padding: 48, duration: 0 });
+      if (bounds) map.fitBounds(bounds, { padding: FIT_PADDING, duration: 0 });
     }
   }
   scheduleLabels();

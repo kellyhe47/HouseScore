@@ -366,3 +366,544 @@ export function healthyManifest(overrides = {}) {
     ...overrides,
   };
 }
+
+// --- T022 ---------------------------------------------------------------------
+// `map.js` is the one module that is not DOM-free: it reads elements, talks to
+// MapLibre and boots itself on import. The camera bug in ticket 022 lives there
+// and nowhere else, so it needs a stand-in for the browser rather than a pure
+// unit under test.
+//
+// This is the same injected-double idea as `fakeFetch` and `memoryStorage`, one
+// level up: instead of handing a module its dependency, the harness installs the
+// globals `map.js` reaches for (`document`, `window`, `maplibregl`, `fetch`,
+// `localStorage`, `requestAnimationFrame`, `ResizeObserver`) and then records
+// what the module did to the camera.
+//
+// Nothing here models MapLibre's rendering. It models exactly two things the
+// bug turns on: **when the map container becomes measurable**, and **when the
+// style's `load` event fires**.
+
+/* ── Doors with geometry ─────────────────────────────────────────────────── */
+
+/**
+ * A square parcel centred on `[lng, lat]`.
+ *
+ * Square and axis-aligned on purpose: the mean of the four distinct ring
+ * vertices is the centre exactly, so a test can state the expected bounds from
+ * the centres it passed in without re-implementing the centroid arithmetic
+ * `map.js` uses.
+ */
+export function parcelFeature(properties, [lng, lat], half = 0.0004) {
+  return {
+    type: 'Feature',
+    properties,
+    geometry: {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [lng - half, lat - half],
+          [lng + half, lat - half],
+          [lng + half, lat + half],
+          [lng - half, lat + half],
+          [lng - half, lat - half],
+        ],
+      ],
+    },
+  };
+}
+
+/**
+ * The published run as `GET /api/doors.geojson` serves it.
+ *
+ * `centres` is the whole point: the territory's extent is data, not a constant,
+ * and a test that shifts the centres must see the camera move with them.
+ */
+export function doorsGeojson(centres = TERRITORY_CENTRES) {
+  const properties = [scoredDoor(), visionDoor(), noEvidenceDoor(), unscoredDoor()];
+  return {
+    type: 'FeatureCollection',
+    features: centres.map((centre, index) =>
+      parcelFeature(properties[index % properties.length], centre)
+    ),
+  };
+}
+
+/** Four corners of a plausible Ramsey territory, spread far enough to need a fit. */
+const TERRITORY_CENTRES = [
+  [-74.152, 41.048],
+  [-74.128, 41.048],
+  [-74.128, 41.072],
+  [-74.152, 41.072],
+];
+
+/** `[[west, south], [east, north]]` over the parcel centres — the fit to expect. */
+export function centreBounds(centres = TERRITORY_CENTRES) {
+  const lngs = centres.map(([lng]) => lng);
+  const lats = centres.map(([, lat]) => lat);
+  return [
+    [Math.min(...lngs), Math.min(...lats)],
+    [Math.max(...lngs), Math.max(...lats)],
+  ];
+}
+
+/** The default territory, for tests that do not care which one they get. */
+export function territoryCentres() {
+  return TERRITORY_CENTRES.map((centre) => [...centre]);
+}
+
+/* ── A DOM stand-in ──────────────────────────────────────────────────────── */
+
+function fakeElement(tag = 'div', id = '') {
+  const listeners = new Map();
+
+  const node = {
+    tagName: String(tag).toUpperCase(),
+    id,
+    className: '',
+    type: '',
+    title: '',
+    value: '',
+    src: '',
+    alt: '',
+    disabled: false,
+    hidden: false,
+    textContent: '',
+    scrollTop: 0,
+    offsetWidth: 320,
+    clientWidth: 0,
+    clientHeight: 0,
+    style: {},
+    dataset: {},
+    attributes: {},
+    children: [],
+    listeners,
+
+    get firstChild() {
+      return node.children[0] ?? null;
+    },
+    appendChild(child) {
+      if (child && child.isFragment) {
+        node.children.push(...child.children);
+        child.children = [];
+        return child;
+      }
+      node.children.push(child);
+      return child;
+    },
+    append(...kids) {
+      for (const kid of kids) {
+        node.appendChild(typeof kid === 'string' ? fakeElement('span') : kid);
+      }
+    },
+    removeChild(child) {
+      const at = node.children.indexOf(child);
+      if (at >= 0) node.children.splice(at, 1);
+      return child;
+    },
+    remove() {},
+    setAttribute(name, value) {
+      node.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return node.attributes[name] ?? null;
+    },
+    querySelector() {
+      return fakeElement();
+    },
+    addEventListener(type, handler) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(handler);
+    },
+    removeEventListener() {},
+    /** Test-side: fire a listener the module registered. */
+    dispatch(type, event = {}) {
+      for (const handler of listeners.get(type) ?? []) handler(event);
+    },
+  };
+
+  return node;
+}
+
+/* ── A MapLibre stand-in ─────────────────────────────────────────────────── */
+
+function fakeLngLatBounds() {
+  let west = null;
+  let south = null;
+  let east = null;
+  let north = null;
+
+  return {
+    extend([lng, lat]) {
+      west = west === null ? lng : Math.min(west, lng);
+      east = east === null ? lng : Math.max(east, lng);
+      south = south === null ? lat : Math.min(south, lat);
+      north = north === null ? lat : Math.max(north, lat);
+      return this;
+    },
+    getWest: () => west,
+    getSouth: () => south,
+    getEast: () => east,
+    getNorth: () => north,
+    getCenter: () => [(west + east) / 2, (south + north) / 2],
+    toArray: () => [
+      [west, south],
+      [east, north],
+    ],
+  };
+}
+
+/**
+ * The map object `map.js` drives, recording every camera command.
+ *
+ * `fitBounds` follows MapLibre's own refusal rule: a viewport that cannot hold
+ * the requested padding yields no camera at all (`cameraForBounds` returns
+ * undefined and `fitBounds` quietly returns the map unchanged). That is the
+ * behaviour a fit issued against an unmeasured container actually gets — it is
+ * silent, which is why the bug reaches a browser with a clean console.
+ */
+class FakeMap {
+  constructor(options, harness) {
+    this.options = options;
+    this.harness = harness;
+
+    this.center = options.center;
+    this.zoom = options.zoom;
+    /** What the map believes its viewport is — refreshed only by `resize()`. */
+    this.size = harness.containerSize();
+
+    this.sources = new Map();
+    this.layers = new Map();
+    this.filters = new Map();
+    this.listeners = new Map();
+
+    /** Every `fitBounds` call, applied or refused. */
+    this.fits = [];
+    this.resizes = [];
+    this.isLoaded = false;
+
+    this.touchZoomRotate = { disableRotation() {} };
+    this.canvas = { style: {}, clientWidth: this.size.width, clientHeight: this.size.height };
+
+    harness.maps.push(this);
+  }
+
+  on(type, layerOrHandler, maybeHandler) {
+    const handler = typeof layerOrHandler === 'function' ? layerOrHandler : maybeHandler;
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type).push(handler);
+    return this;
+  }
+  off() {
+    return this;
+  }
+  once(type, handler) {
+    return this.on(type, handler);
+  }
+  fire(type, event = {}) {
+    for (const handler of [...(this.listeners.get(type) ?? [])]) handler(event);
+  }
+
+  resize() {
+    this.size = this.harness.containerSize();
+    this.canvas.clientWidth = this.size.width;
+    this.canvas.clientHeight = this.size.height;
+    this.resizes.push({ ...this.size });
+    return this;
+  }
+  getCanvas() {
+    return this.canvas;
+  }
+  getContainer() {
+    return this.harness.container;
+  }
+
+  addSource(id, spec) {
+    const source = { id, data: spec.data, setData: (data) => (source.data = data) };
+    this.sources.set(id, source);
+  }
+  getSource(id) {
+    return this.sources.get(id);
+  }
+  addLayer(spec) {
+    this.layers.set(spec.id, spec);
+  }
+  getLayer(id) {
+    return this.layers.get(id);
+  }
+  setFilter(id, filter) {
+    this.filters.set(id, filter);
+  }
+
+  fitBounds(bounds, options = {}) {
+    const padding = options.padding ?? 0;
+    const usableWidth = this.size.width - padding * 2;
+    const usableHeight = this.size.height - padding * 2;
+
+    const record = {
+      bounds: bounds.toArray(),
+      padding,
+      viewport: { ...this.size },
+      applied: false,
+    };
+    this.fits.push(record);
+
+    // MapLibre's own guard. No throw, no error — the camera simply stays where
+    // the constructor put it.
+    if (usableWidth <= 0 || usableHeight <= 0) return this;
+
+    record.applied = true;
+    this.center = bounds.getCenter();
+    const spanLng = Math.max(bounds.getEast() - bounds.getWest(), 1e-9);
+    this.zoom = Math.log2((360 / spanLng) * (usableWidth / 512));
+    return this;
+  }
+
+  getZoom() {
+    return this.zoom;
+  }
+  getCenter() {
+    return this.center;
+  }
+  getBounds() {
+    return { contains: () => true };
+  }
+  project() {
+    return { x: 0, y: 0 };
+  }
+  panBy() {}
+  zoomIn() {
+    this.zoom += 1;
+  }
+  zoomOut() {
+    this.zoom -= 1;
+  }
+  queryRenderedFeatures() {
+    return [];
+  }
+  loaded() {
+    return this.isLoaded;
+  }
+  isStyleLoaded() {
+    return this.isLoaded;
+  }
+  remove() {}
+}
+
+/**
+ * The camera command that actually framed something.
+ *
+ * A fit computed against a viewport of no size is not a framing — it is the
+ * bug. So this only counts a call that both applied and had a real viewport to
+ * apply itself to.
+ */
+export function appliedFit(map) {
+  return map.fits.find(
+    (fit) => fit.applied && fit.viewport.width > 0 && fit.viewport.height > 0
+  );
+}
+
+/* ── The harness ─────────────────────────────────────────────────────────── */
+
+let bootSerial = 0;
+
+/**
+ * Install a browser for `map.js` to boot into.
+ *
+ * The two knobs are the whole point:
+ *   `harness.layout()`    the container gets its real size (the browser has
+ *                         laid the freshly-unhidden map screen out)
+ *   `harness.loadStyle()` MapLibre's `load` event fires
+ *
+ * Tests drive those in either order. A fresh tab lays out first, because the
+ * doors fetch went to the network and gave the browser a frame to do it in; a
+ * reload serves the doors from cache and the style can be up before the layout
+ * is.
+ */
+export function createMapHarness({ doors = doorsGeojson(), viewport = { width: 1280, height: 780 } } = {}) {
+  const harness = {
+    maps: [],
+    /** rAF callbacks the module has queued. */
+    frames: [],
+    resizeObservers: [],
+    fetchCalls: [],
+    viewport,
+  };
+
+  let size = { width: 0, height: 0 };
+  let elements = new Map();
+
+  const getElement = (id) => {
+    if (!elements.has(id)) elements.set(id, fakeElement('div', id));
+    return elements.get(id);
+  };
+
+  const buildDocument = () => {
+    elements = new Map();
+    harness.container = getElement('map');
+    return {
+      getElementById: (id) => getElement(id),
+      querySelector: () => fakeElement(),
+      createElement: (tag) => fakeElement(tag),
+      createDocumentFragment: () => {
+        const fragment = fakeElement();
+        fragment.isFragment = true;
+        return fragment;
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      body: fakeElement('body'),
+    };
+  };
+
+  const windowListeners = new Map();
+  const fakeWindow = {
+    innerWidth: 1280,
+    innerHeight: 780,
+    addEventListener: (type, handler) => {
+      if (!windowListeners.has(type)) windowListeners.set(type, []);
+      windowListeners.get(type).push(handler);
+    },
+    removeEventListener: () => {},
+  };
+
+  const maplibregl = {
+    Map: function Map(options) {
+      return new FakeMap(options, harness);
+    },
+    LngLatBounds: function LngLatBounds() {
+      return fakeLngLatBounds();
+    },
+  };
+  fakeWindow.maplibregl = maplibregl;
+
+  harness.containerSize = () => ({ ...size });
+  harness.element = getElement;
+  /** The map instance the current boot created. */
+  Object.defineProperty(harness, 'map', { get: () => harness.maps.at(-1) });
+
+  const saved = {};
+  const globals = {
+    window: fakeWindow,
+    document: buildDocument(),
+    location: { hash: '', pathname: '/', search: '', href: 'http://localhost:5173/' },
+    history: { replaceState: () => {} },
+    navigator: {},
+    localStorage: memoryStorage(),
+    sessionStorage: memoryStorage(),
+    maplibregl,
+    requestAnimationFrame: (callback) => harness.frames.push(callback),
+    cancelAnimationFrame: () => {},
+    ResizeObserver: function ResizeObserver(callback) {
+      const observer = { callback, targets: [], observe(t) { observer.targets.push(t); }, disconnect() {} };
+      harness.resizeObservers.push(observer);
+      return observer;
+    },
+    Image: function Image() {
+      return fakeElement('img');
+    },
+    fetch: async (url, init) => {
+      harness.fetchCalls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => doors,
+        headers: init?.headers ?? {},
+      };
+    },
+  };
+
+  // Some of these (`navigator`, `location`) are accessor-only on `globalThis` in
+  // Node, so they are installed and put back as property descriptors.
+  const define = (key, value) =>
+    Object.defineProperty(globalThis, key, {
+      value,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+
+  harness.install = () => {
+    for (const [key, value] of Object.entries(globals)) {
+      saved[key] = Object.getOwnPropertyDescriptor(globalThis, key) ?? null;
+      define(key, value);
+    }
+    return harness;
+  };
+
+  harness.restore = () => {
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor === null) delete globalThis[key];
+      else Object.defineProperty(globalThis, key, descriptor);
+    }
+  };
+
+  /** Settle promises, then run whatever the module asked for next frame. */
+  harness.flush = async () => {
+    for (let pass = 0; pass < 6; pass += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const due = harness.frames.splice(0, harness.frames.length);
+      for (const callback of due) callback(pass);
+    }
+  };
+
+  /**
+   * The browser lays the map container out.
+   *
+   * Deliberately does NOT dispatch a window `resize` event: a container getting
+   * its size during the page's own first layout is not a window resize, and
+   * pretending otherwise would let the bug pass on the strength of a handler
+   * that never runs in the field. Everything that genuinely does happen is
+   * offered — ResizeObserver callbacks, MapLibre's continued `render`/`idle`,
+   * and the next animation frame — so any honest recovery hook is available.
+   */
+  harness.layout = async (next = harness.viewport) => {
+    size = { ...next };
+    harness.container.clientWidth = size.width;
+    harness.container.clientHeight = size.height;
+
+    for (const observer of harness.resizeObservers) {
+      observer.callback(
+        observer.targets.map((target) => ({ target, contentRect: { ...size } })),
+        observer
+      );
+    }
+    for (const map of harness.maps) {
+      map.fire('render');
+      map.fire('idle');
+    }
+    await harness.flush();
+  };
+
+  /** MapLibre finishes the style and fires `load`. */
+  harness.loadStyle = async () => {
+    for (const map of harness.maps) {
+      if (map.isLoaded) continue;
+      map.isLoaded = true;
+      map.fire('load');
+    }
+    await harness.flush();
+  };
+
+  /** Boot a fresh instance of `map.js` into this browser. */
+  harness.boot = async () => {
+    bootSerial += 1;
+    await import(`./map.js?boot=${bootSerial}`);
+    await harness.flush();
+    return harness.map;
+  };
+
+  /**
+   * A reload: same tab, same storage, a brand-new document and a camera back at
+   * its starting position, with the container not yet measured.
+   */
+  harness.reload = () => {
+    globals.document = buildDocument();
+    define('document', globals.document);
+    size = { width: 0, height: 0 };
+    harness.maps = [];
+    harness.frames = [];
+    harness.resizeObservers = [];
+  };
+
+  return harness;
+}

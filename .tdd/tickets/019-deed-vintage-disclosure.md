@@ -1,10 +1,10 @@
 ---
 id: 019
 title: "Disclose the MOD-IV deed-date vintage — the Mover group cannot fire on this extract"
-status: tests-written
+status: green
 depends_on: [009, 014]
 touches: [src/houseaccount/pipeline.py, src/houseaccount/publish.py, web/js/ethics.js, tests/test_pipeline.py, tests/test_publish.py, web/js/ethics.test.js]
-iterations: 0
+iterations: 1
 test_files: [tests/test_pipeline.py, tests/test_publish.py, web/js/ethics.test.js]
 branch: ""
 ---
@@ -53,3 +53,17 @@ join — a substantial addition that PRD R2.1 does not list and R6.0 does not as
 **Question for the human: add SR1A as a harvest source so the Mover group can actually fire, or
 ship with the vintage disclosed?** The board records this as the one decision the PRD does not
 pre-make.
+
+## Attempt log
+
+- iter 1: green (1263 python, 214 JS). Live `make pipeline` now emits the disclosure:
+  "no door in this territory has a deed dated inside the 90-day mover window: the newest deed
+  anywhere in the MOD-IV extract is 2024-12-06. The Mover group — the heaviest signal in the
+  model — therefore scored zero everywhere on this run. That is the vintage of the county
+  extract, not a rule that failed to fire."
+- Manifest carries `deed_vintage: {latest_deed_date: "2024-12-06", mover_window_days: 90,
+  doors_in_mover_window: 0}`, with the window read from `THRESHOLDS["mover_90d_days"]` so the
+  disclosure cannot drift from the rule it describes.
+- The note is emitted by the pipeline, not by `publish` — an existing locked test pins
+  `manifest["degradations"] == list(result.degradations)`, which a publish-side synthesis would
+  have broken on the real run.

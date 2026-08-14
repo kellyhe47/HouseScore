@@ -254,3 +254,96 @@ export function memoryStorage(initial = {}) {
     },
   };
 }
+
+// --- T014 ---------------------------------------------------------------------
+// The Data & Ethics page reads two published artifacts. Neither exists in a fresh
+// clone, so the tests build them here in the real shape rather than reading disk.
+
+/** `eval/report.json` as `make eval` writes it today. */
+export function evalReport(overrides = {}) {
+  return {
+    fixtures_total: 12,
+    fixtures_passed: 12,
+    fixture_failures: [],
+    precision: 0.8181818181818182,
+    recall: 0.9,
+    hallucination_rate: 0.05,
+    // The honest caveat: no hand labels exist yet, so the vision metrics come
+    // from a frozen fixture. This string has to reach the reader.
+    metrics_source: 'frozen fixture 09 (hand labels not yet collected)',
+    cost_total_usd: 3.2,
+    doors_scored: 540,
+    cost_per_door: 0.006,
+    resolve_match_rate: null,
+    resolve_match_rate_threshold: 0.95,
+    ok: true,
+    ...overrides,
+  };
+}
+
+/** `data/run_manifest.json` as the published run writes it today. */
+export function runManifest(overrides = {}) {
+  return {
+    run_at: '2026-08-14T08:38:26.522178+00:00',
+    as_of: '2026-08-14',
+    code_version: '125f61e',
+    territory_median_value: 743350.0,
+    acs_dual_income_threshold: 0.35,
+    retrieved: { parcel: '2026-08-14', permits: '2026-08-14', acs: '2026-08-14' },
+    cost_usd: 3.2,
+    cost_per_door: 0.006,
+    doors_total: 540,
+    doors_scored: 540,
+    doors_unscored: 0,
+    coverage: 1.0,
+    degradations: [
+      'CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so '
+      + 'block-group statistics were not fetched',
+      'municipal rental registration not obtained via OPRA',
+      'ANTHROPIC_API_KEY is not set, so the vision stage was skipped. Pool, solar '
+      + 'and exterior-condition signals are unavailable; every door still scores, '
+      + 'but without the R4 imagery terms.',
+    ],
+    resolve: {
+      doors_total: 540,
+      doors_with_signal: 115,
+      coverage: 0.21296296296296297,
+      permits_total: 1741,
+      permits_in_territory: 232,
+      permits_matched: 144,
+      permits_unmatched: 88,
+      permits_in_window: 1741,
+      permits_matched_municipal: 1696,
+      permit_match_rate: 0.6206896551724138,
+      municipal_match_rate: 0.974152785755313,
+      block_lot_match_rate: 0.6206896551724138,
+      address_match_rate: 0.0,
+      doors_with_block_group: 0,
+      acs_available: false,
+      acs_reason:
+        'CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so '
+        + 'block-group statistics were not fetched',
+      rental_declination_reason: 'municipal rental registration not obtained via OPRA',
+    },
+    ...overrides,
+  };
+}
+
+/** The same run with every provider live — the other half of every degraded path. */
+export function healthyManifest(overrides = {}) {
+  const manifest = runManifest();
+  return {
+    ...manifest,
+    degradations: [],
+    resolve: {
+      ...manifest.resolve,
+      doors_with_block_group: 512,
+      acs_available: true,
+      acs_reason: null,
+      rental_declination_reason: null,
+      rental_registration_available: true,
+      rental_registration_matched: 37,
+    },
+    ...overrides,
+  };
+}

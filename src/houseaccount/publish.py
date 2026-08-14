@@ -9,7 +9,8 @@ Three files come out of one call, and each answers a different question:
 * `data/houseaccount.sqlite` is what the MCP server reads (`get_door_score`,
   `explain_score`). Two tables, `doors` and `evidence`, joined on `PAMS_PIN`,
   with an explicit `seq` because the order the engine produced the trail in is
-  part of the explanation and SQL rows have no order of their own.
+  part of the explanation and SQL rows have no order of their own. It is also
+  where the R8.1 group math lands (`groups`, `raw_total`) — see `_SCHEMA`.
 * `data/run_manifest.json` is what makes the run reproducible (R13): the
   once-per-run inputs the score was computed against, when each source was
   retrieved, what the run cost, and which code produced it.
@@ -69,13 +70,23 @@ EXCLUSION_REASON = "parcel record incomplete in county data"
 #: Two tables, created on first publish. `seq` is explicit because `explain_score`
 #: replays the trail in the order the engine built it, and rows in a table have
 #: no inherent order to fall back on.
+#:
+#: `groups` and `raw_total` are the R8.1 group math, carried here and *only* here.
+#: `explain_score` has to answer with the five group subtotals and the unclamped
+#: sum, and the alternatives are worse: re-deriving them by bucketing evidence
+#: points would put a second copy of the engine's group membership in the server,
+#: and re-scoring in the web process would drag the whole harvest stack in. The
+#: engine already computed both numbers, so the run records them. They stay out
+#: of `doors.geojson`, whose property set is the R11.1 allowlist a browser sees.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS doors (
     pams_pin         TEXT PRIMARY KEY,
     score            INTEGER,
     confidence       TEXT,
     situs            TEXT NOT NULL,
-    exclusion_reason TEXT
+    exclusion_reason TEXT,
+    groups           TEXT,
+    raw_total        INTEGER
 );
 CREATE TABLE IF NOT EXISTS evidence (
     pams_pin  TEXT    NOT NULL,
@@ -233,11 +244,13 @@ def _write_sqlite(path: Path, pairs: Sequence[tuple[DoorFacts, ScoreResult | Non
     try:
         with connection:
             connection.executescript(_SCHEMA)
+            _add_missing_columns(connection)
             connection.execute("DELETE FROM evidence")
             connection.execute("DELETE FROM doors")
             connection.executemany(
-                "INSERT INTO doors (pams_pin, score, confidence, situs, exclusion_reason)"
-                " VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO doors"
+                " (pams_pin, score, confidence, situs, exclusion_reason, groups, raw_total)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [_door_row(door, result) for door, result in pairs],
             )
             connection.executemany(
@@ -251,6 +264,20 @@ def _write_sqlite(path: Path, pairs: Sequence[tuple[DoorFacts, ScoreResult | Non
     return path
 
 
+def _add_missing_columns(connection: sqlite3.Connection) -> None:
+    """Bring a database written by an older run up to the current `doors` shape.
+
+    `CREATE TABLE IF NOT EXISTS` is a no-op against a table that already exists,
+    so a `data/` left over from a previous run would keep the old column set and
+    the insert below would fail. Adding the columns is cheaper — and less
+    surprising to whoever is holding that path open — than unlinking the file.
+    """
+    existing = {row[1] for row in connection.execute("PRAGMA table_info(doors)")}
+    for name, kind in (("groups", "TEXT"), ("raw_total", "INTEGER")):
+        if name not in existing:
+            connection.execute(f"ALTER TABLE doors ADD COLUMN {name} {kind}")
+
+
 def _door_row(door: DoorFacts, result: ScoreResult | None) -> tuple[Any, ...]:
     return (
         door.pams_pin,
@@ -258,6 +285,8 @@ def _door_row(door: DoorFacts, result: ScoreResult | None) -> tuple[Any, ...]:
         result.confidence if result is not None else None,
         door.situs,
         None if result is not None else EXCLUSION_REASON,
+        json.dumps(dict(result.groups), sort_keys=True) if result is not None else None,
+        result.raw_total if result is not None else None,
     )
 
 

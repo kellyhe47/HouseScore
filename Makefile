@@ -23,7 +23,7 @@ test-web:
 	npm --prefix web test
 
 serve:
-	$(PY) -m uvicorn houseaccount.server.app:app --host 0.0.0.0 --port 8000
+	$(PY) -m uvicorn houseaccount.server.app:create_app --factory --host 0.0.0.0 --port 8000
 
 clean:
 	rm -rf .pytest_cache __pycache__ data/doors.geojson data/houseaccount.sqlite

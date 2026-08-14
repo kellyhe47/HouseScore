@@ -1,0 +1,112 @@
+"""The REST surface the Map UI eats: four endpoints over one published run
+(T011, R9/R10.3/R12).
+
+The browser cannot speak MCP, so the map gets plain HTTP — but it gets it from
+the same `Territory` the MCP tools answer from, so what the map draws and what
+an LLM says about a door are the same numbers by construction.
+
+* `GET /health` — the liveness probe R12's deployment needs, and the first thing
+  anyone curls when the site looks wrong.
+* `GET /api/doors.geojson` — the published collection, byte for byte. The map
+  renders the artifact the pipeline wrote; anything reshaped in flight is a
+  place the map and the artifact can disagree, so nothing is.
+* `GET /api/door/{pams_pin}` — one door's published properties, for the evidence
+  panel (R9.1). Unknown PIN is a 404 with a body, not a stack trace.
+* `POST /api/route` — the map's route request, delegated to the same planner the
+  MCP tool uses (R10.3).
+
+**Errors are shapes.** Every failure carries `error` (a stable machine-readable
+slug) and `message` (something to show a person), so the UI's one error banner
+(R9.3) renders whatever went wrong without a branch per endpoint. That is why
+the 404 below builds its own `JSONResponse` rather than raising `HTTPException`,
+whose body is `{"detail": ...}`.
+
+**A malformed route request is rejected before the planner sees it.** The
+request model is the validation: a missing `hours`, a `start_point` that is not
+two numbers, and "two" where a number belongs all become 422s from FastAPI, so
+the planner is only ever called with arguments it can plan from.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Response
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from houseaccount.server.published import Territory, route_payload
+
+#: `doors.geojson` is GeoJSON, and saying so lets a client that cares (QGIS, a
+#: fetch that branches on type) treat it as such. It is still `+json`, so
+#: everything that just parses JSON keeps working.
+GEOJSON_MEDIA_TYPE = "application/geo+json"
+
+
+class RouteRequest(BaseModel):
+    """What the map sends when the rep asks for a walk (R10.1).
+
+    `start_point` is (lon, lat) — GeoJSON order, as everywhere in this codebase,
+    and as the map's own coordinates already are. Typed as a two-float tuple so
+    a half a point or a place name is a 422 rather than an `IndexError` deep in
+    the planner.
+    """
+
+    hours: float = Field(description="How long the rep has to walk, in hours.")
+    start_point: tuple[float, float] = Field(
+        description="Where the rep is standing, as [longitude, latitude]."
+    )
+    max_doors: int | None = Field(
+        default=None, description="Optional cap on how many doors to plan."
+    )
+
+
+def build_router(territory: Territory) -> APIRouter:
+    """The four endpoints, closed over the run they serve.
+
+    A router built per territory rather than reading a global is what lets a
+    test drive a `tmp_path` territory and a deployment drive `data/` through the
+    identical code path.
+    """
+    router = APIRouter()
+
+    @router.get("/health")
+    def health() -> dict[str, Any]:
+        """Liveness only: the process is up and its territory loaded (R12).
+
+        It reports the door count too, because "up but serving an empty town"
+        is the failure this probe is otherwise blind to.
+        """
+        return {"status": "ok", "doors": len(territory.doors)}
+
+    @router.get("/api/doors.geojson")
+    def doors_geojson() -> Response:
+        """The published collection verbatim — including the doors that could
+        not be scored, which R9.4 still counts and makes clickable."""
+        return Response(content=territory.geojson_text, media_type=GEOJSON_MEDIA_TYPE)
+
+    @router.get("/api/door/{pams_pin}")
+    def door(pams_pin: str) -> Response:
+        """One door's published properties, for the evidence panel (R9.1)."""
+        found = territory.door(pams_pin)
+        if found is None:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": "door_not_found",
+                    "message": f"No door published with PAMS PIN {pams_pin!r}.",
+                },
+            )
+        return JSONResponse(content=dict(found.properties))
+
+    @router.post("/api/route")
+    def route(request: RouteRequest) -> dict[str, Any]:
+        """The rep's walk, planned by the one shared planner (R10.3)."""
+        return route_payload(
+            territory,
+            hours=request.hours,
+            start_point=request.start_point,
+            max_doors=request.max_doors,
+        )
+
+    return router

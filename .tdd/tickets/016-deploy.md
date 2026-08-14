@@ -1,11 +1,11 @@
 ---
 id: 016
 title: "Deploy readiness: Fly.io server + Vercel UI (R12) — expected blocked-on-human"
-status: pending
+status: tests-written
 depends_on: [011, 012]
 touches: [Dockerfile, fly.toml, vercel.json, docs/DEPLOY.md, tests/test_deploy_config.py]
 iterations: 0
-test_files: []
+test_files: [tests/test_deploy_config.py, tests/test_server.py]
 branch: ""
 ---
 

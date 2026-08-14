@@ -133,7 +133,7 @@ not a healthy-looking deployment of a town with no houses in it.
 make test
 ```
 
-1,403 Python tests and 253 JavaScript tests. `make test-py` and `make test-web`
+1,403 Python tests and 254 JavaScript tests. `make test-py` and `make test-web`
 run each half on its own. The JS suite is `node --test` over `web/js/*.test.js`
 with no framework to install.
 

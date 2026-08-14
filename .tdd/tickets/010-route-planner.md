@@ -1,12 +1,12 @@
 ---
 id: 010
 title: "Route planner module — one implementation shared by MCP and UI (R10.1–R10.3)"
-status: pending
+status: green
 depends_on: [003]
 touches: [src/houseaccount/route.py, tests/test_route.py]
-iterations: 0
-test_files: []
-branch: ""
+iterations: 1
+test_files: [tests/test_route.py]
+branch: "tdd/010" (merged)
 ---
 
 ## Scope
@@ -32,3 +32,13 @@ No paid routing API: walking time is straight-line distance × a detour factor.
 - [ ] `exclude(pins)` re-plans without those doors, preserving determinism.
 - [ ] `encode_share(stops)` → a compact URL-fragment string; `decode_share` round-trips the exact
       ordered PIN list.
+
+## Attempt log
+
+- iter 1: implementation green on 80/81. The 81st was a genuine TEST bug — the parametrized
+  `{"score": None}` case expanded to `door(..., score=100, score=None)`, a TypeError at argument
+  binding that no implementation could satisfy. Verified by the orchestrator, fixed through the
+  test-writer (not the implementer), re-locked. Did not consume an implementation iteration.
+- Share links are deflate + base64url with an `r1` prefix (20 pins → 105 chars vs 339 naive);
+  garbage decodes to `()` rather than raising. `route.py` imports stdlib only — a locked test
+  enforces that it never pulls in the pipeline (R10.3).

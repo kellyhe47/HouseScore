@@ -53,3 +53,10 @@ Prototype: `docs/HouseAccount-Prototype.html`. Findings from driving the prototy
 
 ## Not re-verified this round
 - P2 #8 (compute cancel), P2 #9 (tappable imagery thumbs) — check in round 3.
+
+---
+# Round 3 close-out (2026-08-14)
+- #1 (P0) Parcel click → evidence panel: **FIXED & verified by driving** — works at default zoom and zoomed ("202 Island Rd · 92", "7 Dogwood Ln · 77", orange selection ring, capped-permit evidence rendered "+40 (capped at 40)"). Rounds 2's "still broken" verdict was reviewer instrument error: 7px targets through 1.2× screenshot scaling; synthetic-JS clicks also unreliable against the pointer-capture map. Lesson recorded.
+- #7 DESIGN-ADDITIONS.md: authored by reviewer from the source audit (docs/DESIGN-ADDITIONS.md); all 6 additions accepted into PRD.
+- P2 #8 compute cancel: present in source ✓. P2 #9 tappable thumbs + mobile header clip: carried to implementation as known-minors (noted in DESIGN-ADDITIONS.md).
+**Design round CLOSED — no open P0/P1. Prototype approved as implementation reference.**

@@ -1,11 +1,11 @@
 ---
 id: 019
 title: "Disclose the MOD-IV deed-date vintage — the Mover group cannot fire on this extract"
-status: pending
+status: tests-written
 depends_on: [009, 014]
 touches: [src/houseaccount/pipeline.py, src/houseaccount/publish.py, web/js/ethics.js, tests/test_pipeline.py, tests/test_publish.py, web/js/ethics.test.js]
 iterations: 0
-test_files: []
+test_files: [tests/test_pipeline.py, tests/test_publish.py, web/js/ethics.test.js]
 branch: ""
 ---
 

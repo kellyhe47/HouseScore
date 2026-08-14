@@ -49,7 +49,7 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 016 | Deploy readiness (R12) — expected blocked-on-human | blocked | 1 | 011,012 | W10 |
 | 017 | R3.2 match rate: municipal denominator, not territory blocks | green | 1 | 006,008,009 | W6b seq |
 | 018 | make eval reads the published run manifest | green | 1 | 009,017 | W9 batch |
-| 019 | Disclose the MOD-IV deed vintage (Mover cannot fire) | pending | 0 | 009,014 | W11 seq |
+| 019 | Disclose the MOD-IV deed vintage (Mover cannot fire) | tests-written | 0 | 009,014 | W11 seq |
 
 ## Wave plan
 

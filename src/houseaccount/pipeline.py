@@ -31,6 +31,15 @@ and it must do so *before* the tiles are fetched: downloading 1,080 ortho frames
 for a stage that will not look at them is exactly the waste the declination
 exists to avoid.
 
+**And declining is not the same as answering badly.** The vision stage has three
+outcomes — it ran, it ran and lost part of its answers, it never ran — and the
+run measures which one happened rather than leaving it to be read off the
+degradation sentence. A stage that answered 270 requests, lost 31 of them and
+left imagery evidence on 119 doors recorded prose that pattern-matched as a
+refusal, and the Data & Ethics page duly printed DECLINED beside evidence a
+reviewer could click on the map. The counts go into the manifest's `vision`
+block; the sentence stays in `degradations`, where an operator reads it.
+
 **A stale extract is a degradation too.** The Mover group is the heaviest signal
 in the model, and whether it can fire at all depends on how old the county's deed
 data is, not on the rule. When the run measures that no door is inside the mover
@@ -49,7 +58,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from houseaccount.cache import Cache
 from houseaccount.config import Config
@@ -114,6 +123,25 @@ class PipelineResult:
     published: PublishResult
     ledger: CostLedger
     degradations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class VisionStage:
+    """What the vision stage produced, and what it can say about its own run.
+
+    Two things a caller needs and one it must not have to guess. `signals` is
+    what the score reads. The rest is what the *manifest* reads: whether the
+    stage ran at all, and how much of what it issued came back readable. A run
+    that answered 270 requests and lost 31 of them is a partial loss, and the
+    only place that is distinguishable from a refusal is here — the degradation
+    sentence beside it reads like one to anything that pattern-matches prose.
+    """
+
+    signals: Mapping[str, dict[str, Any]]
+    available: bool
+    declination_reason: str | None
+    answers_total: int
+    answers_lost: int
 
 
 @dataclass(frozen=True)
@@ -250,7 +278,7 @@ def run_pipeline(
     # --- score --------------------------------------------------------------
     median = territory_median_value(territory)
     scored = [
-        (door, _score(door, as_of=as_of, median=median, vision=vision.get(door.pams_pin)))
+        (door, _score(door, as_of=as_of, median=median, vision=vision.signals.get(door.pams_pin)))
         for door in doors
     ]
 
@@ -270,6 +298,10 @@ def run_pipeline(
         sales_source_files=vintage.source_files,
         doors_with_sales_deed=resolved.report.sales_applied,
         doors_in_top_band=vintage.doors_in_top_band,
+        vision_available=vision.available,
+        vision_declination_reason=vision.declination_reason,
+        vision_answers_total=vision.answers_total,
+        vision_answers_lost=vision.answers_lost,
     )
     published = publish(
         scored, report=resolved.report, manifest=manifest, data_dir=config.data_dir
@@ -410,12 +442,18 @@ def _run_vision(
     transport: Transport,
     client: Any | None,
     degradations: list[str],
-) -> dict[str, dict[str, Any]]:
-    """The R4 imagery signals per PAMS_PIN, or an empty mapping.
+) -> VisionStage:
+    """The R4 imagery signals per PAMS_PIN, and what the stage says about itself.
 
     Tiles are only fetched when there is a key to read them with: `run_vision`
     declines without one, and a declination that first downloaded two frames per
     door would cost bandwidth for an answer nobody asked for.
+
+    The stage's own state is returned alongside the signals rather than left to
+    be inferred from the degradation sentence below. Both are recorded — the
+    sentence is what an operator reads, the counts are what the artifact states —
+    and only the counts can tell a stage that answered and lost 31 of 270 from
+    one that never ran at all.
     """
     tiles = (
         _fetch_tiles(doors, cache=cache, transport=transport, degradations=degradations)
@@ -431,14 +469,20 @@ def _run_vision(
     if result.parse_failures:
         _degrade(
             degradations,
-            f"{len(result.parse_failures)} vision answers could not be read as detections; "
+            f"{result.answers_lost} vision answers could not be read as detections; "
             "the doors they covered scored without their imagery signals",
         )
 
     by_pin: dict[str, list[Detection]] = {}
     for detection in result.detections:
         by_pin.setdefault(detection.pams_pin, []).append(detection)
-    return {pin: to_score_vision(found) for pin, found in by_pin.items()}
+    return VisionStage(
+        signals={pin: to_score_vision(found) for pin, found in by_pin.items()},
+        available=not result.declined,
+        declination_reason=result.reason or None if result.declined else None,
+        answers_total=result.answers_total,
+        answers_lost=result.answers_lost,
+    )
 
 
 def _fetch_tiles(

@@ -144,6 +144,17 @@ class RunManifest:
     #: `doors_in_mover_window` with a zero here is the signature of the state's
     #: recording-and-publication lag, not of a rule that failed.
     doors_in_top_band: int = 0
+    #: The vision stage's own state, on the same defaulting principle as the deed
+    #: vintage above: `None` is "this run never measured the stage", which is what
+    #: every publish before it did, and it publishes no block rather than a
+    #: claim nobody made. `True` with a non-zero `vision_answers_lost` is the
+    #: state that did not exist before — the stage ran and lost part of its
+    #: answers, which is a partial loss and not a refusal.
+    vision_available: bool | None = None
+    vision_declination_reason: str | None = None
+    #: One answer per request issued, and the ones that could not be read.
+    vision_answers_total: int = 0
+    vision_answers_lost: int = 0
 
 
 @dataclass(frozen=True)
@@ -198,6 +209,7 @@ def publish(
         report=report,
         doors_total=doors_total,
         doors_scored=doors_scored,
+        doors_with_imagery=_doors_with_imagery(pairs),
     )
 
     return PublishResult(
@@ -343,6 +355,24 @@ def _evidence_rows(
 # --- run_manifest.json --------------------------------------------------------
 
 
+def _doors_with_imagery(
+    pairs: Sequence[tuple[DoorFacts, ScoreResult | None]]
+) -> int:
+    """Doors whose published evidence carries at least one re-openable frame.
+
+    Counted off the same pairs `doors.geojson` is written from, exactly like
+    `doors_scored`, because it is a fact about the artifact rather than an input
+    to it: a number the caller handed in could disagree with the file sitting
+    beside it, and this one is the numerator of the "119 of 540" the ethics page
+    prints against `doors_total`.
+    """
+    return sum(
+        1
+        for _, result in pairs
+        if result is not None and any(item.imagery for item in result.evidence)
+    )
+
+
 def _write_manifest(
     path: Path,
     *,
@@ -350,6 +380,7 @@ def _write_manifest(
     report: ResolveReport,
     doors_total: int,
     doors_scored: int,
+    doors_with_imagery: int,
 ) -> Path:
     """The run's inputs, its coverage, its cost and what it lost along the way.
 
@@ -372,6 +403,7 @@ def _write_manifest(
         "doors_unscored": doors_total - doors_scored,
         "coverage": _ratio(doors_scored, doors_total),
         "deed_vintage": _deed_vintage_block(manifest),
+        "vision": _vision_block(manifest, doors_with_imagery),
         "degradations": list(manifest.degradations),
         "resolve": _resolve_block(report),
     }
@@ -412,6 +444,40 @@ def _deed_vintage_block(manifest: RunManifest) -> dict[str, Any]:
             "source_files": list(manifest.sales_source_files),
             "doors_superseding_modiv": manifest.doors_with_sales_deed,
         },
+    }
+
+
+def _vision_block(manifest: RunManifest, doors_with_imagery: int) -> dict[str, Any] | None:
+    """Whether the vision stage ran, and what it lost if it did.
+
+    The stage has three outcomes and the manifest used to record only a
+    *sentence* about it, in `degradations`. Prose cannot carry the distinction:
+    a run that answered 270 requests, lost 31 of them and left imagery evidence
+    on 119 doors recorded a sentence that pattern-matched as a refusal, so the
+    Data & Ethics page printed DECLINED beside a stage whose evidence a reviewer
+    could click on the map. The three states are told apart here instead:
+
+        ran clean       available=True,  declination_reason=None, answers_lost 0
+        ran, lost some  available=True,  declination_reason=None, answers_lost >0
+        declined        available=False, declination_reason=<the refusal>
+
+    `answers_*` is what the run measured — one answer per request issued — and is
+    carried through unchanged. `doors_with_imagery` is counted from the features
+    being written, so the numerator of "119 of 540" cannot disagree with
+    `doors.geojson`; `doors_total` above is its denominator.
+
+    `None` for a run that never measured any of this. An unmeasured stage
+    published as `available: true, answers_total: 0` would be a claim nobody
+    made, on the same principle as the null `latest_deed_date` above.
+    """
+    if manifest.vision_available is None:
+        return None
+    return {
+        "available": manifest.vision_available,
+        "declination_reason": manifest.vision_declination_reason,
+        "answers_total": manifest.vision_answers_total,
+        "answers_lost": manifest.vision_answers_lost,
+        "doors_with_imagery": doors_with_imagery,
     }
 
 

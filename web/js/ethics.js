@@ -360,6 +360,9 @@ const PROVIDERS = [
     pattern: /vision|imagery|openai/i,
     reasonField: null,
     availableField: null,
+    // The one provider whose run has three outcomes, so it is the one provider
+    // that reads its own measured block instead of a sentence. See `visionState`.
+    measured: visionState,
   },
 ];
 
@@ -383,22 +386,35 @@ const MOVER_VINTAGE = {
  * reader looking at a map of zeroes cannot otherwise tell that from a broken
  * rule. It is a limit of the data, reported where the other limits are.
  *
+ * Each row carries a `status` of `live`, `partial` or `declined`. Two states
+ * were not enough: the vision stage answered 270 requests and left evidence on
+ * 119 doors on the published run, and printing DECLINED beside it made this
+ * section a lie about the map two clicks away. `live` is kept as exactly "not
+ * declined" — a stage that ran with a stated limit is live — so every existing
+ * reader of the boolean keeps working.
+ *
  * @param {object|null} manifest parsed `data/run_manifest.json`
  */
 export function signalAvailability(manifest) {
   const degradations = (manifest && manifest.degradations) || [];
   const resolve = (manifest && manifest.resolve) || {};
 
-  const providers = PROVIDERS.map(({ key, label, pattern, reasonField, availableField }) => {
+  const providers = PROVIDERS.map((provider) => {
+    const { key, label, pattern, reasonField, availableField, measured } = provider;
     if (!manifest) {
       return {
         key,
         label,
-        live: false,
+        status: 'declined',
         reason: 'No published run to report on, so this page cannot say whether '
           + 'the provider answered.',
       };
     }
+
+    // A run that measured this stage states its outcome, and the measurement
+    // wins over anything inferred from prose below.
+    const state = measured ? measured(manifest, degradations) : null;
+    if (state) return { key, label, ...state };
 
     // The manifest states a declination two ways — a per-provider reason in the
     // resolve block, and a human sentence in `degradations` — and either alone
@@ -410,10 +426,76 @@ export function signalAvailability(manifest) {
     const declared = availableField ? resolve[availableField] : undefined;
     const live = !reason && declared !== false;
 
-    return { key, label, live, reason: reason || null };
+    return { key, label, status: live ? 'live' : 'declined', reason: reason || null };
   });
 
-  return [...providers, moverVintageRow(manifest, degradations)];
+  // `live` is derived here and only here, so a row cannot disagree with its own
+  // badge.
+  return [...providers, moverVintageRow(manifest, degradations)].map((row) => ({
+    ...row,
+    live: row.status !== 'declined',
+  }));
+}
+
+/**
+ * The vision stage's own state, as the run measured it — or null for a run that
+ * never measured it.
+ *
+ * Three outcomes, and the middle one is the whole point: a stage that issued
+ * every request and lost some answers is neither a clean run nor a refusal, and
+ * the manifest is the only place that distinction exists. Returning null for an
+ * older publish is deliberate — it hands the row back to the degradation-string
+ * reading it has always had, rather than inventing a state nobody measured.
+ *
+ * @param {object} manifest parsed `data/run_manifest.json`
+ * @param {string[]} degradations the run's recorded degradations
+ */
+function visionState(manifest, degradations) {
+  const vision = manifest.vision;
+  if (!vision) return null;
+
+  if (vision.available === false) {
+    const recorded = degradations.find((note) => /vision|imagery|openai/i.test(note)) || null;
+    return {
+      status: 'declined',
+      reason: vision.declination_reason || recorded
+        || 'The vision stage did not run on this publish, and the run recorded no reason.',
+    };
+  }
+
+  const lost = isNumber(vision.answers_lost) ? vision.answers_lost : 0;
+  if (lost <= 0) return { status: 'live', reason: null };
+
+  return { status: 'partial', reason: describeVisionLoss(vision, manifest) };
+}
+
+/**
+ * What a partial vision run cost, as two fractions of the whole.
+ *
+ * Both are read from the run rather than written here — the counts drift every
+ * publish, and a sentence carrying its own numbers is how "twelve golden
+ * fixtures" survived into a thirteen-fixture harness. The second fraction is the
+ * one the badge exists for: it says the stage's evidence reached the map, which
+ * is what a reviewer can verify by clicking a door.
+ *
+ * @param {object} vision the manifest's `vision` block
+ * @param {object} manifest the run it came from, for `doors_total`
+ */
+function describeVisionLoss(vision, manifest) {
+  const total = isNumber(vision.answers_total) ? vision.answers_total : null;
+  const withImagery = isNumber(vision.doors_with_imagery) ? vision.doors_with_imagery : null;
+  const doors = isNumber(manifest.doors_total) ? manifest.doors_total : null;
+
+  const lostLine = total === null
+    ? `${vision.answers_lost} vision answers could not be read as detections`
+    : `${vision.answers_lost} of ${total} vision answers could not be read as detections`;
+
+  const ranLine = withImagery !== null && doors !== null
+    ? ` The stage itself ran: ${withImagery} of ${doors} doors carry an imagery-backed `
+      + 'evidence line, re-openable on the map.'
+    : ' The stage itself ran; the answers it lost are the only part missing.';
+
+  return `${lostLine}, so the doors they covered scored without their imagery signals.${ranLine}`;
 }
 
 /**
@@ -437,7 +519,7 @@ function moverVintageRow(manifest, degradations) {
   if (!vintage) {
     return {
       ...MOVER_VINTAGE,
-      live: false,
+      status: 'declined',
       reason: manifest
         ? 'This run did not record how old the deed data behind the Mover signal was, '
           + 'so this page cannot say whether any door was inside the mover window.'
@@ -455,10 +537,10 @@ function moverVintageRow(manifest, degradations) {
     // already weeks old and the top band may still be unreachable. When the run
     // measured that and said so, the sentence is carried here rather than being
     // dropped for a green badge: the signal is live, with a stated limit.
-    return { ...MOVER_VINTAGE, live: true, reason: recorded };
+    return { ...MOVER_VINTAGE, status: 'live', reason: recorded };
   }
 
-  return { ...MOVER_VINTAGE, live: false, reason: recorded || describeVintage(vintage) };
+  return { ...MOVER_VINTAGE, status: 'declined', reason: recorded || describeVintage(vintage) };
 }
 
 /**
@@ -558,7 +640,7 @@ export function buildEthicsPage({ report = null, manifest = null } = {}) {
   return {
     icp: icpSection(),
     trace: icpTrace(),
-    weights: weightsSection(),
+    weights: weightsSection(report),
     validation: validationSection(),
     evaluation: evalMetrics(report),
     sources: sourcesSection(manifest),
@@ -570,8 +652,9 @@ export function buildEthicsPage({ report = null, manifest = null } = {}) {
     },
     // The machine keys stay in `signalAvailability`, which is where they are
     // read; the page carries the sentences a reviewer actually reads.
-    availability: signalAvailability(manifest).map(({ label, live, reason }) => ({
+    availability: signalAvailability(manifest).map(({ label, status, live, reason }) => ({
       label,
+      status,
       live,
       reason,
     })),
@@ -631,7 +714,19 @@ const THRESHOLD_LABELS = {
   score_ceiling: 'Score ceiling',
 };
 
-function weightsSection() {
+/**
+ * The published weights, thresholds, clamp — and how many fixtures pin them.
+ *
+ * The fixture count is read from `eval/report.json` for the same reason every
+ * point value above is read from the engine's own table: this page had spelled
+ * "twelve" into its prose while the harness reported thirteen, which is exactly
+ * the drift the weights table is built to make impossible. A run that published
+ * no report claims no count — an unmeasured number stated as a literal is how
+ * the stale one survived in the first place.
+ *
+ * @param {object|null} report parsed `eval/report.json`
+ */
+function weightsSection(report) {
   return {
     rows: Object.entries(WEIGHTS).map(([key, points]) => ({
       key,
@@ -646,11 +741,30 @@ function weightsSection() {
     formula:
       'score = clamp(mover + hires-out + capacity + need + modifier, '
       + `${THRESHOLDS.score_floor}, ${THRESHOLDS.score_ceiling})`,
-    note:
-      'Deterministic and integer-valued. The same door and the same inputs produce '
-      + 'the same score on every run, and twelve golden fixtures pin the arithmetic.',
+    note: determinismNote(report),
     conditionScale: CONDITION_ORDER,
   };
+}
+
+/**
+ * The determinism claim, plus the fixture count when a report published one.
+ *
+ * Determinism is a property of the engine and holds whether or not anything was
+ * measured, so that half of the sentence is unconditional. The count is a
+ * measurement, so it appears only when there is a published one to quote.
+ *
+ * @param {object|null} report parsed `eval/report.json`
+ */
+function determinismNote(report) {
+  const total = report && isNumber(report.fixtures_total) ? report.fixtures_total : null;
+  const claim =
+    'Deterministic and integer-valued. The same door and the same inputs produce '
+    + 'the same score on every run';
+
+  return total === null
+    ? `${claim}. The golden-fixture count is read from the published evaluation report, `
+      + 'and this page has none to read, so it states no count rather than a remembered one.'
+    : `${claim}, and ${total} golden fixtures pin the arithmetic.`;
 }
 
 function validationSection() {

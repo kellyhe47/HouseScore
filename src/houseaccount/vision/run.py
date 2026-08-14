@@ -53,12 +53,25 @@ class VisionRun:
     `declined is True` is the "we chose not to" outcome and is distinct from
     "we ran and found nothing" — both carry an empty `detections`, and only the
     first should make an operator go looking for a key.
+
+    `answers_total` is how many requests the provider issued, which is also how
+    many answers came back: it is the denominator `answers_lost` is only
+    meaningful against, and without it the run can say "31 answers were lost"
+    but not whether that is most of the stage or a tenth of it. Cached tiles are
+    not counted, because nothing was asked about them.
     """
 
     detections: Sequence[Detection] = ()
     declined: bool = False
     reason: str = ""
     parse_failures: Sequence[Any] = field(default_factory=tuple)
+    answers_total: int = 0
+
+    @property
+    def answers_lost(self) -> int:
+        """Answers that could not be read as detections. Derived, never stored,
+        so it cannot drift from the failures it counts."""
+        return len(self.parse_failures)
 
 
 def run_vision(
@@ -110,6 +123,7 @@ def run_vision(
         declined=False,
         reason="",
         parse_failures=tuple(inner.parse_failures),
+        answers_total=inner.requests,
     )
 
 

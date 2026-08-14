@@ -215,8 +215,10 @@ function availabilitySection(page) {
   const rows = card(
     ...page.availability.map((row) => {
       const item = el('div', 'card__row card__row--status');
-      const badge = el('span', `badge ${row.live ? 'badge--live' : 'badge--declined'}`,
-        row.live ? 'live' : 'declined');
+      // Three states, not two: a stage that ran with partial loss is neither
+      // live nor a refusal, and a two-state boolean cannot print that however
+      // correct the view model behind it is.
+      const badge = el('span', `badge badge--${row.status}`, row.status);
       item.appendChild(badge);
       item.appendChild(el('span', 'card__key', row.label));
       item.appendChild(el('span', 'card__body', row.reason || 'Answered on this run.'));
@@ -231,7 +233,9 @@ function availabilitySection(page) {
       'doc__p',
       'A rationale that describes an ideal pipeline is worth nothing. This is what the '
         + 'published run actually obtained — and where a provider refused, the refusal is '
-        + 'printed instead of the number it would have produced.'
+        + 'printed instead of the number it would have produced. A stage that ran and lost '
+        + 'part of its answers is marked partial, with the loss counted against the whole: '
+        + 'that is a different fact from a refusal, and the map beside this page shows it.'
     ),
     rows,
     el('p', 'doc__note', page.coverage.text)
@@ -300,7 +304,11 @@ function validationSection(page) {
 
 function mcpSection() {
   const box = el('div', 'card card--plain');
-  box.appendChild(el('div', 'formula', 'https://houseaccount-mcp.fly.dev/mcp'));
+  // The one app `fly.toml` declares, with the transport mounted where
+  // `houseaccount.server.app` mounts it. The runbook verifies this origin after
+  // the deploy, so a reviewer who curls what this page prints reaches a server
+  // that exists — the previous `-mcp` host was one no documented step creates.
+  box.appendChild(el('div', 'formula', 'https://houseaccount.fly.dev/mcp'));
   for (const [tool, description] of [
     ['get_door_score(address)', 'score, confidence and the full evidence trail'],
     ['explain_score(address)', 'the same, plus the group-by-group arithmetic'],

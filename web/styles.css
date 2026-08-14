@@ -889,6 +889,9 @@ a.btn:hover { text-decoration: none; }
 }
 .badge--live { background: #E6F0E6; border: 1px solid #B9D2B9; color: #2C5F2C; }
 .badge--declined { background: var(--warn-bg); border: 1px solid var(--warn-edge); color: var(--warn-ink); }
+/* A stage that ran and lost part of its answers. Deliberately closer to live
+   than to declined: the signal reached the map, with a stated limit. */
+.badge--partial { background: #EDF1F7; border: 1px solid #C2CEDF; color: #3A4C66; }
 
 .metrics {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;

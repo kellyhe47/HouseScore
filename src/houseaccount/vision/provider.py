@@ -182,6 +182,10 @@ class OpenAIVisionProvider:
         self._pace_lock = threading.Lock()
         self._allowance_free_at = 0.0
         self.parse_failures: list[ParseFailure] = []
+        # One request is one answer, so this is the denominator the run reports
+        # its parse failures against. Counted here rather than derived from the
+        # tile count because a cached tile is never asked about.
+        self.requests = 0
 
     def detect(self, tiles: Sequence[Tile]) -> list[Detection]:
         """Detections for `tiles`, in batch order. Never raises on bad output.
@@ -255,6 +259,7 @@ class OpenAIVisionProvider:
         # Bill first. The money left the account whatever the model said, and a
         # run that under-reports its own spend is worse than one that overspends.
         with self._books:
+            self.requests += 1
             self._ledger.record(LEDGER_SOURCE, units=len(batch), usd=_usd_for(response))
         self._pace(_tokens_for(response))
 
@@ -379,6 +384,11 @@ class CachedVisionProvider:
     @property
     def parse_failures(self) -> Sequence[Any]:
         return getattr(self._inner, "parse_failures", ())
+
+    @property
+    def requests(self) -> int:
+        """Requests the wrapped provider actually issued — cache hits cost none."""
+        return int(getattr(self._inner, "requests", 0))
 
     def detect(self, tiles: Sequence[Tile]) -> list[Detection]:
         batch = list(tiles)

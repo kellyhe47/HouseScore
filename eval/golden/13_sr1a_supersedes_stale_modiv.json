@@ -1,0 +1,38 @@
+{
+  "name": "sr1a_supersedes_stale_modiv",
+  "why": "The ticket-020 case, taken from a real Ramsey parcel. MOD-IV's DEED_DATE for 41 Ramsey Ave reads '200916' (2020-09-16) — the *prior* owner's deed — while the NJ SR1A sales register records the parcel selling on 2026-06-01. Before this source existed the door scored 15 and the 100-point Mover group was structurally unearnable town-wide (the newest deed anywhere in the MOD-IV extract was 2024-12-06). Pins two things at once: that the fresher register wins the deed, and that winning it is worth exactly the 61-90 day band and not the top one — the state's recording-and-publication lag means a run can never see a sale newer than a few weeks.",
+  "given": {
+    "as_of": "2026-08-14",
+    "config": { "territory_median_value": 743350, "acs_dual_income_threshold": 0.35 },
+    "parcel": { "PAMS_PIN": "0248_3201_22", "DEED_DATE": "260601", "SALE_PRICE": 890000, "SALES_CODE": "", "YR_CONSTR": 2007, "NET_VALUE": 840700, "CALC_ACRE": 0.34 },
+    "permits_2yr": [],
+    "acs_block_group": {},
+    "rental_registration_match": false,
+    "vision": {},
+    "resolution": {
+      "why": "The `parcel` above is the *merged* record the score engine is handed, not what either source carries alone. This block is what it was merged from, and tests/test_resolve.py replays it through the real resolver.",
+      "modiv": { "PCLBLOCK": "3201", "PCLLOT": "22", "PCLQCODE": "", "DEED_DATE": "200916", "SALE_PRICE": 640000, "SALES_CODE": "" },
+      "sr1a_sale": { "BLOCK": "3201", "LOT": "22", "QUALIFICATION_CODES": "", "DEED_DATE": "260601", "REPORTED_SALES_PRICE": 890000, "SR_NU_CODE": "" },
+      "rule": "the sales register supersedes the parcel record only when its deed is strictly newer, and the whole record moves together — date, price and usability code"
+    }
+  },
+  "expect": {
+    "score": 85,
+    "arithmetic": "mover 70 (2026-06-01 is 74 days before as_of -> the 61-90 day band) + hires_out 0 (no permits) + capacity 15 (840,700 >= 743,350 median, and below 1.5x = 1,115,025) + need 0 (built 2007 = 19 yrs < 30; 0.34 acre < 0.5; no vision) + modifier 0 = 85",
+    "deed_source": "NJ SR1A sales register",
+    "confidence": "normal",
+    "evidence_must_include": [
+      { "type": "deed_recency", "reason": "the register supplied a deed inside the mover window, so the group fires where MOD-IV alone left it at zero" }
+    ],
+    "evidence_must_exclude": [
+      { "type": "tenure", "reason": "a door that just sold is not a long-tenure door; scoring MOD-IV's 2020 date would have produced this line instead" }
+    ],
+    "comparative": {
+      "baseline": "the same parcel scored from MOD-IV's own DEED_DATE=200916, as every run before ticket 020 did",
+      "baseline_parcel": { "DEED_DATE": "200916", "SALE_PRICE": 640000 },
+      "baseline_score": 15,
+      "assertion": "score - baseline_score == 70",
+      "why": "70 of this door's 85 points exist only because a fresher deed source was added. That gap is the ticket's whole justification, and it is the difference between a door a rep visits and one they never see."
+    }
+  }
+}

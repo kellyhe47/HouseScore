@@ -79,7 +79,7 @@ coverage, cost, entity-resolution rates, declinations — go into
 make eval
 ```
 
-Runs the twelve golden fixtures through the *shipped* score engine (not a
+Runs the thirteen golden fixtures through the *shipped* score engine (not a
 re-implementation of the rules — a weight table that drifts from the spec fails
 here), then reports vision precision, recall and hallucination rate, the
 **cost per door**, and the entity-resolution match rate. With no flags it reads
@@ -153,13 +153,14 @@ server, the map, the eval harness — reads them rather than re-deriving anythin
 
 ## Data sources, and their licence position
 
-Five upstreams, all public. The full write-up — including the signal→ICP trace
+Six upstreams, all public. The full write-up — including the signal→ICP trace
 table, the weights and the validation plan — is the
 [Data & Ethics page](web/ethics.html), which the pipeline's own manifest drives.
 
 | Source | Endpoint | Licence / ToS position |
 |---|---|---|
 | NJ statewide parcels + MOD-IV assessment records | ArcGIS FeatureServer, municipality code 0248 | Public record, open data. Owner-identity and mailing-address columns dropped at ingest for Daniel's Law (R11.1). |
+| NJ SR1A sales register | `nj.gov/treasury/taxation` year-to-date sales flat file (fixed-width, zipped) | Public record. Supplies deed recency wherever it is fresher than MOD-IV's — which on the shipped run is the only reason the Mover signal fires at all. The download is statewide and its layout reserves grantor/grantee identity columns, so only non-identity columns are read and the raw file is never cached (R11.1). |
 | NJ construction permits | Socrata, `data.nj.gov` dataset `w9se-dmra` | NJ Open Data public record; joined to parcels by block and lot. |
 | Census ACS 5-year block groups (B23007, B19013, B08303) | `api.census.gov` | US federal government work, public domain; used per the Census API terms. Neighbourhood context only, never a household claim. |
 | NJ orthophotography, 2015 and 2020 vintages | `maps.nj.gov` | Public domain. The source of **every** bulk imagery signal. |
@@ -200,7 +201,7 @@ src/houseaccount/     pipeline, scoring engine, sources, server
   sources/            one adapter per upstream, all behind one HTTP seam
   scoring/            the R6 weights table and the deterministic engine
   server/             FastAPI app: MCP tools + REST API
-eval/                 the harness, 12 golden fixtures, verify_claims.py
+eval/                 the harness, 13 golden fixtures, verify_claims.py
 web/                  static MapLibre UI + the Data & Ethics page
 tests/                the suite
 docs/                 PRD, wireframes, design notes

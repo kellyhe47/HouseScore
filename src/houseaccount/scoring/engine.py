@@ -39,6 +39,7 @@ from houseaccount.scoring.weights import CONDITION_ORDER, THRESHOLDS, WEIGHTS
 #: Attribution strings. Deliberately describe the dataset, never a person —
 #: Daniel's Law (R11.1) means no identity-derived field reaches a rep's screen.
 SOURCE_MODIV = "NJ MOD-IV parcel record"
+SOURCE_SR1A = "NJ SR1A sales register"
 SOURCE_PERMITS = "NJ DCA construction permits (Socrata)"
 SOURCE_ACS = "US Census ACS 5-year estimates, block group"
 SOURCE_RENTAL = "municipal rental registration list"
@@ -67,6 +68,11 @@ class ScoreInput:
     deed_date: date | None = None
     sale_price: float = 0.0
     sales_code: str = ""
+    #: Which register `deed_date` came from. MOD-IV carries one deed per parcel
+    #: and lags; the SR1A sales file supersedes it when it holds a newer sale.
+    #: R7 requires every evidence line to name the source it actually used, so
+    #: the mover lines read this rather than assuming the parcel record.
+    deed_source: str = SOURCE_MODIV
     yr_constr: int = 0
     net_value: float = 0.0
     calc_acre: float = 0.0
@@ -190,7 +196,7 @@ def _score_mover(door: ScoreInput, evidence: list[EvidenceItem]) -> int:
                     f"{_nominal_reason(door)} — a paperwork transfer, not a household "
                     "move, so it earns no mover points."
                 ),
-                source=SOURCE_MODIV,
+                source=door.deed_source,
                 retrieved=door.as_of,
             )
         )
@@ -209,7 +215,7 @@ def _score_mover(door: ScoreInput, evidence: list[EvidenceItem]) -> int:
                 type="tenure",
                 points=0,
                 sentence=_tenure_sentence(door.deed_date, days),
-                source=SOURCE_MODIV,
+                source=door.deed_source,
                 retrieved=door.as_of,
             )
         )
@@ -224,7 +230,7 @@ def _score_mover(door: ScoreInput, evidence: list[EvidenceItem]) -> int:
                 f"{band} of the 90-day mover window. New arrivals are still choosing "
                 "who they use for the house."
             ),
-            source=SOURCE_MODIV,
+            source=door.deed_source,
             retrieved=door.as_of,
         )
     )

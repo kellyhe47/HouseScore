@@ -40,8 +40,10 @@ No network, no fixtures on disk: every parcel, permit and polygon below is
 synthetic and built in-module.
 """
 
+import json
 from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -52,6 +54,7 @@ from houseaccount.resolve import (
     SIGNAL_PARCEL,
     SIGNAL_PERMITS,
     SIGNAL_RENTAL,
+    SIGNAL_SALES,
     DoorFacts,
     Provenance,
     ResolveReport,
@@ -65,6 +68,7 @@ from houseaccount.scoring.engine import (
     SOURCE_MODIV,
     SOURCE_PERMITS,
     SOURCE_RENTAL,
+    SOURCE_SR1A,
     ScoreInput,
     score_door,
 )
@@ -76,6 +80,7 @@ from houseaccount.sources.rental import (
     FixtureRentalProvider,
     NullRentalProvider,
 )
+from houseaccount.sources.sales import Sale
 from houseaccount.sources.tiger import BlockGroupBoundary, BlockGroupIndex
 
 AS_OF = date(2026, 8, 14)
@@ -947,6 +952,7 @@ DOOR_FACT_FIELDS = (
     "deed_date",
     "sale_price",
     "sales_code",
+    "deed_source",
     "yr_constr",
     "net_value",
     "calc_acre",
@@ -1308,3 +1314,272 @@ def test_resolution_composes_with_the_real_point_in_polygon_index():
 
     assert doors["0248_00101_00003"].block_group == BG_ONE
     assert doors["0248_00101_00004"].block_group is None
+
+
+# --- the SR1A merge (T020) ----------------------------------------------------
+#
+# MOD-IV carries one deed per parcel and the county extract runs badly stale —
+# on the run that prompted this source, twenty months. The sales register is the
+# same state's continuously-published record of the same transfers. Where both
+# describe a parcel, the newer one is the truth about who lives there now.
+#
+# The merge is deliberately narrow: it swaps a *deed*, not a score. Whether the
+# resulting transfer counts as a move is still decided by the engine's
+# non-arm's-length rule, which fixtures 03 and 12 pin and this ticket leaves
+# untouched.
+
+
+def sale(block, lot, deed_date, *, qualifier="", price=890000.0, nu_code="", recorded="260612"):
+    return Sale(
+        county="02",
+        district="48",
+        block=str(block),
+        lot=str(lot),
+        qualifier=qualifier,
+        prop_loc="41 RAMSEY AVE",
+        deed_date=deed_date,
+        date_recorded=recorded,
+        sale_price=price,
+        nu_code=nu_code,
+        prop_class="2",
+        year_built=2007,
+    )
+
+
+def only_door(result):
+    (facts,) = result.doors.values()
+    return facts
+
+
+def test_a_fresher_sale_supersedes_the_stale_parcel_deed():
+    """The whole point of the source: MOD-IV says 2020, the register says this
+    June, and the door is scored on this June."""
+    result = resolved([door(101, 3, deed_date="200916")], sales=[sale(101, 3, "260601")])
+
+    facts = only_door(result)
+    assert facts.deed_date == date(2026, 6, 1)
+    assert facts.deed_source == SOURCE_SR1A
+    assert facts.provenance[SIGNAL_SALES] == Provenance(source=SOURCE_SR1A, retrieved=AS_OF)
+
+
+def test_the_superseding_record_moves_as_one_piece():
+    """Taking the register's date but the parcel's price would describe two
+    different transfers as one — and the engine's nominal rule reads that pair."""
+    result = resolved(
+        [door(101, 3, deed_date="200916", sale_price=1.0, sales_code="26")],
+        sales=[sale(101, 3, "260601", price=890000.0, nu_code="")],
+    )
+
+    facts = only_door(result)
+    assert (facts.sale_price, facts.sales_code) == (890000.0, "")
+
+
+def test_an_older_sale_leaves_the_parcel_record_authoritative():
+    result = resolved([door(101, 3, deed_date="250110")], sales=[sale(101, 3, "240101")])
+
+    facts = only_door(result)
+    assert facts.deed_date == date(2025, 1, 10)
+    assert facts.deed_source == SOURCE_MODIV
+    assert SIGNAL_SALES not in facts.provenance
+
+
+def test_the_same_transfer_in_both_registers_stays_attributed_to_the_parcel():
+    """Once the county catches up both feeds name the same deed. Flipping
+    provenance on a date that never moved would make two identical runs disagree
+    about where the fact came from."""
+    result = resolved([door(101, 3, deed_date="260601")], sales=[sale(101, 3, "260601")])
+
+    assert only_door(result).deed_source == SOURCE_MODIV
+
+
+def test_a_parcel_with_no_deed_at_all_takes_the_register_s():
+    """98 of 540 real doors carry a null deed. A sale is strictly better than the
+    R6.1 degraded path, and must not be withheld because there was nothing to
+    compare against."""
+    result = resolved([door(101, 3, deed_date=None)], sales=[sale(101, 3, "260601")])
+
+    facts = only_door(result)
+    assert facts.deed_date == date(2026, 6, 1)
+    assert facts.deed_source == SOURCE_SR1A
+
+
+def test_a_sale_for_a_parcel_the_territory_does_not_hold_changes_nothing():
+    result = resolved([door(101, 3, deed_date="200916")], sales=[sale(999, 99, "260601")])
+
+    assert only_door(result).deed_source == SOURCE_MODIV
+
+
+def test_one_units_sale_does_not_move_its_neighbours_in_the_complex():
+    """Twenty real Ramsey sales share block 4001 / lot 22. Without the qualifier
+    in the key, one closing would mark the whole complex freshly moved — the
+    single worst failure this source could introduce."""
+    sold = door(4001, 22, qualifier="C0224", deed_date="200916")
+    neighbour = door(4001, 22, qualifier="C0112", deed_date="200916")
+    # Distinct PINs, exactly as the parcel layer publishes them.
+    sold = Parcel(**{**vars(sold), "pams_pin": "0248_4001_22_C0224"})
+    neighbour = Parcel(**{**vars(neighbour), "pams_pin": "0248_4001_22_C0112"})
+
+    result = resolved([sold, neighbour], sales=[sale(4001, 22, "260604", qualifier="C0224")])
+
+    assert result.doors["0248_4001_22_C0224"].deed_date == date(2026, 6, 4)
+    assert result.doors["0248_4001_22_C0224"].deed_source == SOURCE_SR1A
+    assert result.doors["0248_4001_22_C0112"].deed_date == date(2020, 9, 16)
+    assert result.doors["0248_4001_22_C0112"].deed_source == SOURCE_MODIV
+
+
+def test_a_nominal_sale_supersedes_the_date_and_the_engine_still_refuses_it():
+    """End to end through the real engine: the register makes the transfer
+    visible, and the existing R6 rule — untouched by this ticket — declines to
+    call it a move."""
+    result = resolved(
+        [door(101, 3, deed_date="200916")],
+        sales=[sale(101, 3, "260601", price=1.0, nu_code="10")],
+    )
+    facts = only_door(result)
+    assert facts.deed_source == SOURCE_SR1A
+
+    scored = score_door(
+        facts.to_score_input(
+            as_of=AS_OF, territory_median_value=700000.0, acs_dual_income_threshold=0.35
+        )
+    )
+    assert scored.groups["mover"] == 0
+    types = {item.type for item in scored.evidence}
+    assert "non_arms_length_transfer" in types
+    assert "deed_recency" not in types
+
+
+def test_the_mover_evidence_cites_the_register_the_date_came_from():
+    """R7: a rep asking "says who?" must be told the right file."""
+    result = resolved([door(101, 3, deed_date="200916")], sales=[sale(101, 3, "260601")])
+    scored = score_door(
+        only_door(result).to_score_input(
+            as_of=AS_OF, territory_median_value=700000.0, acs_dual_income_threshold=0.35
+        )
+    )
+
+    (recency,) = [item for item in scored.evidence if item.type == "deed_recency"]
+    assert recency.source == SOURCE_SR1A
+    assert recency.points == 70  # 74 days -> the 61-90 band
+
+
+def test_the_report_counts_what_the_register_actually_supplied():
+    result = resolved(
+        [door(101, 3, deed_date="200916"), door(101, 5, deed_date="260701")],
+        sales=[sale(101, 3, "260601"), sale(101, 5, "240101"), sale(999, 1, "260601")],
+    )
+
+    report = result.report
+    assert report.sales_total == 3
+    assert report.sales_parcels == 3
+    # Only door 3 was actually superseded: door 5's own deed is newer than its
+    # sale, and the third sale belongs to no territory parcel.
+    assert report.sales_applied == 1
+
+
+def test_no_sales_at_all_leaves_every_door_exactly_as_before():
+    """The source is not load-bearing: with the register absent the run is
+    byte-identical to the one before this ticket existed."""
+    parcels = [door(101, 3, deed_date="200916"), door(101, 5, deed_date="260701")]
+    without = resolved(parcels)
+    with_empty = resolved(parcels, sales=[])
+
+    assert {pin: f.deed_date for pin, f in without.doors.items()} == {
+        pin: f.deed_date for pin, f in with_empty.doors.items()
+    }
+    assert all(f.deed_source == SOURCE_MODIV for f in without.doors.values())
+
+
+def test_golden_fixture_13_replays_through_the_real_resolver():
+    """Fixture 13's `parcel` is the *merged* record. This is the test that keeps
+    it honest: build the two sources the fixture says it was merged from, run
+    the real resolver, and assert it produces exactly that record.
+
+    Without this, the fixture would assert only that a 2026 deed scores 85 —
+    true, but nothing to do with the source that supplied the deed.
+    """
+    fixture = json.loads(
+        (Path(__file__).resolve().parents[1] / "eval/golden/13_sr1a_supersedes_stale_modiv.json")
+        .read_text(encoding="utf-8")
+    )
+    given = fixture["given"]
+    resolution = given["resolution"]
+    modiv, sold = resolution["modiv"], resolution["sr1a_sale"]
+    as_of = date.fromisoformat(given["as_of"])
+
+    parcel = door(
+        modiv["PCLBLOCK"],
+        modiv["PCLLOT"],
+        deed_date=modiv["DEED_DATE"],
+        sale_price=modiv["SALE_PRICE"],
+        sales_code=modiv["SALES_CODE"],
+        qualifier=modiv["PCLQCODE"],
+        yr_constr=given["parcel"]["YR_CONSTR"],
+        net_value=given["parcel"]["NET_VALUE"],
+        calc_acre=given["parcel"]["CALC_ACRE"],
+    )
+    registered = sale(
+        sold["BLOCK"],
+        sold["LOT"],
+        sold["DEED_DATE"],
+        qualifier=sold["QUALIFICATION_CODES"],
+        price=sold["REPORTED_SALES_PRICE"],
+        nu_code=sold["SR_NU_CODE"],
+    )
+
+    facts = only_door(resolved([parcel], sales=[registered], as_of=as_of))
+
+    # The merged record is exactly the fixture's `parcel`.
+    assert facts.deed_date == date(2026, 6, 1)
+    assert facts.sale_price == given["parcel"]["SALE_PRICE"]
+    assert facts.sales_code == given["parcel"]["SALES_CODE"]
+    assert facts.deed_source == fixture["expect"]["deed_source"]
+
+    scored = score_door(
+        facts.to_score_input(
+            as_of=as_of,
+            territory_median_value=given["config"]["territory_median_value"],
+            acs_dual_income_threshold=given["config"]["acs_dual_income_threshold"],
+        )
+    )
+    assert scored.score == fixture["expect"]["score"]
+    assert scored.confidence == fixture["expect"]["confidence"]
+
+    types = {item.type for item in scored.evidence}
+    for required in fixture["expect"]["evidence_must_include"]:
+        assert required["type"] in types
+    for forbidden in fixture["expect"]["evidence_must_exclude"]:
+        assert forbidden["type"] not in types
+
+
+def test_golden_fixture_13_baseline_is_what_the_stale_deed_alone_would_score():
+    """The comparative the fixture claims: the same door, no sales register."""
+    fixture = json.loads(
+        (Path(__file__).resolve().parents[1] / "eval/golden/13_sr1a_supersedes_stale_modiv.json")
+        .read_text(encoding="utf-8")
+    )
+    given = fixture["given"]
+    modiv = given["resolution"]["modiv"]
+    as_of = date.fromisoformat(given["as_of"])
+
+    parcel = door(
+        modiv["PCLBLOCK"],
+        modiv["PCLLOT"],
+        deed_date=modiv["DEED_DATE"],
+        sale_price=modiv["SALE_PRICE"],
+        sales_code=modiv["SALES_CODE"],
+        yr_constr=given["parcel"]["YR_CONSTR"],
+        net_value=given["parcel"]["NET_VALUE"],
+        calc_acre=given["parcel"]["CALC_ACRE"],
+    )
+    facts = only_door(resolved([parcel], sales=[], as_of=as_of))
+    scored = score_door(
+        facts.to_score_input(
+            as_of=as_of,
+            territory_median_value=given["config"]["territory_median_value"],
+            acs_dual_income_threshold=given["config"]["acs_dual_income_threshold"],
+        )
+    )
+
+    assert scored.score == fixture["expect"]["comparative"]["baseline_score"]
+    assert facts.deed_source == SOURCE_MODIV

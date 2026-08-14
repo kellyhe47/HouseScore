@@ -533,9 +533,23 @@ def test_manifest_publishes_the_deed_vintage_the_run_measured(data_dir):
     )
 
     block = read_deed_vintage(data_dir)
-    assert set(block) == {"latest_deed_date", "mover_window_days", "doors_in_mover_window"}
+    assert set(block) == {
+        "latest_deed_date",
+        "mover_window_days",
+        "doors_in_mover_window",
+        "doors_in_top_band",
+        "top_band_days",
+        "sales_register",
+    }
     assert block["latest_deed_date"] == "2024-12-06"
     assert block["doors_in_mover_window"] == 0
+    # No sales register was read on this run, and the block says so rather than
+    # implying MOD-IV's date came from somewhere fresher.
+    assert block["sales_register"] == {
+        "latest_sale_date": None,
+        "source_files": [],
+        "doors_superseding_modiv": 0,
+    }
 
 
 def test_the_disclosed_mover_window_is_the_rule_it_describes(data_dir):

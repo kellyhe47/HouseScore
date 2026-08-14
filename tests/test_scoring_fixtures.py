@@ -93,13 +93,20 @@ def score_given(given):
     return score_door(ScoreInput.from_fixture(given))
 
 
-def baseline_given(given, description):
-    """The fixture's stated baseline mutation, applied to a copy of `given`."""
+def baseline_given(given, description, overrides=None):
+    """The fixture's stated baseline mutation, applied to a copy of `given`.
+
+    `overrides` is the structured `comparative.baseline_parcel` block — a
+    comparative that changes a parcel field names the field rather than hiding
+    it in prose this function would have to sniff for.
+    """
     mutated = copy.deepcopy(given)
     if "vision={}" in description:
         mutated["vision"] = {}
     if "rental_registration_match=false" in description:
         mutated["rental_registration_match"] = False
+    if overrides:
+        mutated["parcel"] = {**mutated.get("parcel", {}), **overrides}
     return mutated
 
 
@@ -133,7 +140,11 @@ def test_result_shape_and_clamp_relationship(fixture):
 def test_fixture_comparative_baseline(fixture):
     comparative = fixture["expect"]["comparative"]
     result = score_given(fixture["given"])
-    baseline = score_given(baseline_given(fixture["given"], comparative["baseline"]))
+    baseline = score_given(
+        baseline_given(
+            fixture["given"], comparative["baseline"], comparative.get("baseline_parcel")
+        )
+    )
 
     assert baseline.score == comparative["baseline_score"]
     # e.g. "score - baseline_score == 10" / "score == baseline_score - 15"

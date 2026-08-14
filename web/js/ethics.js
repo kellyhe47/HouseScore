@@ -366,7 +366,7 @@ const PROVIDERS = [
 /** The deed-vintage row's identity, kept beside the providers it is listed with. */
 const MOVER_VINTAGE = {
   key: 'mover_deed_vintage',
-  label: 'MOD-IV deed dates (Mover signal)',
+  label: 'Deed recency (Mover signal)',
 };
 
 /**
@@ -446,11 +446,18 @@ function moverVintageRow(manifest, degradations) {
     };
   }
 
+  const recorded = degradations.find((note) => /mover/i.test(note)) || null;
+
   if (isNumber(vintage.doors_in_mover_window) && vintage.doors_in_mover_window > 0) {
-    return { ...MOVER_VINTAGE, live: true, reason: null };
+    // The group fired — but "fired" and "fired everywhere it could" are not the
+    // same claim. A deed reaches the sales register only after county recording
+    // and the state's next file release, so the freshest sale a run can see is
+    // already weeks old and the top band may still be unreachable. When the run
+    // measured that and said so, the sentence is carried here rather than being
+    // dropped for a green badge: the signal is live, with a stated limit.
+    return { ...MOVER_VINTAGE, live: true, reason: recorded };
   }
 
-  const recorded = degradations.find((note) => /mover/i.test(note)) || null;
   return { ...MOVER_VINTAGE, live: false, reason: recorded || describeVintage(vintage) };
 }
 
@@ -808,6 +815,16 @@ function sourcesSection(manifest) {
       name: 'NJ statewide parcels and MOD-IV assessment records',
       detail: 'ArcGIS FeatureServer, municipality code 0248. Identity columns dropped at ingest.',
       retrieved: date('parcel'),
+    },
+    {
+      name: 'NJ SR1A sales register',
+      detail:
+        'Year-to-date statewide sales flat file (nj.gov/treasury/taxation), fixed-width, '
+        + 'joined to parcels by block, lot and condominium qualifier. Supplies the deed '
+        + 'recency the Mover signal reads whenever it is fresher than MOD-IV\u2019s. The '
+        + 'download is statewide and its layout reserves grantor/grantee identity columns; '
+        + 'only non-identity columns are ever read, and the raw file is never cached.',
+      retrieved: date('sales'),
     },
     {
       name: 'NJ construction permits',

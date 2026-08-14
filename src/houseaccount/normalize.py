@@ -167,6 +167,31 @@ def parcel_key(mun: str | None, block: str | None, lot: str | None) -> str:
     return "/".join(_join_component(part) for part in (mun, block, lot))
 
 
+def sale_key(
+    mun: str | None,
+    block: str | None,
+    lot: str | None,
+    qualifier: str | None = None,
+) -> str:
+    """Municipality + block + lot + qualifier -> the key SR1A sales join on.
+
+    Deliberately *not* `parcel_key` with a fourth argument. The permit feed has
+    no qualifier column, so permits must keep joining on the three-part key that
+    already reads a 0.974 municipal match rate; widening that key would strand
+    every permit filed against a condominium.
+
+    Sales need the fourth component because a condominium's units share one
+    block and lot: twenty Ramsey sales report block 4001 / lot 22, separated only
+    by the qualification code the parcel layer publishes as `PCLQCODE`. Without
+    it, one unit's closing would mark all twenty-five doors in the complex as
+    freshly moved. A blank qualifier — every detached house — reduces to exactly
+    the three-part key, so the two feeds meet unchanged on ordinary parcels.
+    """
+    base = parcel_key(mun, block, lot)
+    canonical = re.sub(r"\s+", "", str(qualifier or "").upper())
+    return f"{base}/{canonical}" if canonical else base
+
+
 def situs_display(prop_loc: str | None, zip5: str | None) -> str:
     """The copy-address string shown in the UI (R9.1).
 

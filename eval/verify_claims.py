@@ -14,6 +14,18 @@ GOLDEN = Path(__file__).parent / "golden"
 def parse_iso(s):
     return date.fromisoformat(s) if s else None
 
+def parse_deed(raw, today):
+    """A fixture's DEED_DATE, in either shape the real normalizer accepts.
+
+    MOD-IV and SR1A both write raw YYMMDD; fixtures written by hand use ISO.
+    The shipped `normalize.parse_deed_date` takes both, so this stdlib
+    re-derivation has to as well — otherwise a fixture carrying the authentic
+    raw shape could not be checked here at all.
+    """
+    if raw and len(str(raw)) == 6 and str(raw).isdigit():
+        return parse_yymmdd(str(raw), today)
+    return parse_iso(raw)
+
 def parse_yymmdd(raw, today):
     if not raw or len(raw) != 6 or not raw.isdigit():
         return None
@@ -31,7 +43,7 @@ def score(given):
     as_of = parse_iso(given["as_of"])
     total = 0
     # Mover (R6): bands 30/60/90 days; non-arm's-length earns 0
-    deed = parse_iso(p["DEED_DATE"]) if p.get("DEED_DATE") else None
+    deed = parse_deed(p["DEED_DATE"], as_of) if p.get("DEED_DATE") else None
     nominal = (p.get("SALE_PRICE") or 0) <= 100 or (p.get("SALES_CODE") or "") != ""
     if deed and not nominal:
         d = (as_of - deed).days
@@ -49,7 +61,11 @@ def score(given):
         total += 25
     elif nv >= med:
         total += 15
-    if given["acs_block_group"]["dual_income_pct"] >= cfg["acs_dual_income_threshold"]:
+    # An absent block group is the ordinary case, not a malformed fixture: the
+    # live run has no CENSUS_API_KEY and every door resolves without ACS. R6.2's
+    # nudge simply does not apply, exactly as the engine skips it on a None.
+    dual = (given.get("acs_block_group") or {}).get("dual_income_pct")
+    if dual is not None and dual >= cfg["acs_dual_income_threshold"]:
         total += 5
     # Need: age 8, pool 8, lot 4, decline 6, deferred combo 4
     v = given.get("vision", {})
@@ -104,6 +120,9 @@ def main():
                 g2["rental_registration_match"] = False
             if "vision={}" in cmp_["baseline"]:
                 g2["vision"] = {}
+            # A structured override rather than one more phrase sniffed out of
+            # the prose: a comparative that changes a parcel field names it.
+            g2["parcel"].update(cmp_.get("baseline_parcel") or {})
             got_b = score(g2)
             if got_b != cmp_["baseline_score"]:
                 failures.append(f"{name}: baseline computed {got_b}, fixture expects {cmp_['baseline_score']}")

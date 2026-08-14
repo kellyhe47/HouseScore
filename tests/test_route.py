@@ -42,6 +42,7 @@ the 540-door performance grid.
 import inspect
 import math
 import random
+import re
 import time
 from dataclasses import dataclass, replace
 
@@ -541,6 +542,120 @@ def test_the_talk_track_never_moves_the_score_or_the_order():
 
     assert pins_of(planned) == pins_of(reference)
     assert [stop.score for stop in planned.stops] == [stop.score for stop in reference.stops]
+
+
+# --- talk track: a long evidence sentence is still read aloud whole -----------
+#
+# QA found this on a real route: the opener carried the door's evidence only as
+# far as a fixed width, so the rep was handed "…work at this address gets
+# contracted out rather than. Is now a bad time?" — a sentence that stops
+# mid-clause at a stranger's door. 6 of 20 stops on one route were affected, all
+# of them permit-led, because the engine's permit sentence is the long one.
+#
+# The two sentences below are the engine's own `_score_hires_out` prose,
+# verbatim for one permit and for two. Both are over 110 characters and both
+# carry exactly one strong clause boundary — the em dash, 54 and 64 characters
+# in — so a fixed-width cut necessarily lands in the middle of the gloss while a
+# boundary-aware one has somewhere complete to stop.
+
+PERMIT_EVIDENCE = (
+    "1 permit filed here in the last 24 months (Alteration) — work at this address "
+    "gets contracted out rather than done in-house."
+)
+
+PERMIT_EVIDENCE_TWO = (
+    "2 permits filed here in the last 24 months (Alteration, Roofing) — work at this "
+    "address gets contracted out rather than done in-house."
+)
+
+LONG_EVIDENCE = [PERMIT_EVIDENCE, PERMIT_EVIDENCE_TWO]
+
+#: Words no spoken sentence can end on — they leave the listener waiting for the
+#: rest of it. "than" and "out" are the two endings QA actually heard.
+DANGLING_ENDINGS = {
+    "a", "an", "and", "at", "but", "for", "gets", "in", "of", "on", "or", "out",
+    "rather", "than", "the", "to", "with",
+}
+
+#: Punctuation a *complete* shorter clause may stop in front of. Deliberately
+#: excludes the comma and the hyphen: "(Alteration," is no more sayable than
+#: "rather than".
+CLAUSE_BOUNDARIES = {"—", "–", ";", ":", "."}
+
+
+def sentences_of(track):
+    """The opener's sentences, without their terminal punctuation."""
+    return [part.strip() for part in re.split(r"[.?!]", track) if part.strip()]
+
+
+def carried_evidence(track, evidence):
+    """How much of `evidence`, from its start, the opener actually says.
+
+    The longest leading run of the evidence sentence that survives into the
+    opener — `""` when the opener does not speak to the evidence at all. Matched
+    case-insensitively, because the opener folds the sentence's leading capital
+    into the middle of its own sentence and that is not what is under test here.
+    """
+    body = evidence.strip().rstrip(".!?")
+    spoken = track.lower()
+    for end in range(len(body), 0, -1):
+        if body[:end].lower() in spoken:
+            return body[:end]
+    return ""
+
+
+@pytest.mark.parametrize("evidence", LONG_EVIDENCE, ids=["one permit", "two permits"])
+def test_a_long_evidence_opener_never_ends_a_sentence_mid_clause(evidence):
+    """R7.2 / ticket 021: every sentence the rep reads aloud finishes itself."""
+    track = talk_track_for(door(pin(1), north_m=100, top_evidence=evidence))
+
+    for sentence in sentences_of(track):
+        last_word = sentence.split()[-1].strip("\"'()").lower()
+        assert last_word not in DANGLING_ENDINGS, f"dangling ending in {sentence!r}"
+
+
+@pytest.mark.parametrize("evidence", LONG_EVIDENCE, ids=["one permit", "two permits"])
+def test_long_evidence_is_carried_whole_or_stopped_at_a_clause_boundary(evidence):
+    """Ticket 021: shorten to a complete clause rather than cutting one.
+
+    Either the whole evidence sentence reaches the door, or what reaches it is a
+    leading run of it that stops where the sentence itself has a boundary. The
+    substance — "1 permit filed here in the last 24 months" — is what the rep
+    knocked on, so it is the part that must survive; dropping it for the gloss
+    would leave the opener with no reason in it.
+    """
+    body = evidence.strip().rstrip(".!?")
+    track = talk_track_for(door(pin(1), north_m=100, top_evidence=evidence))
+    carried = carried_evidence(track, evidence)
+
+    assert carried, "the opener has to speak to the door's evidence"
+    if carried != body:
+        remainder = body[len(carried) :].lstrip()
+        assert remainder[:1] in CLAUSE_BOUNDARIES, f"cut mid-clause: {carried!r}"
+
+
+def test_a_permit_led_route_row_reads_as_a_whole_sentence():
+    """The route list is the other surface QA saw it on (R7.2, R10.1)."""
+    doors = [replace(candidate, top_evidence=PERMIT_EVIDENCE) for candidate in WORKED_DOORS]
+
+    planned = plan_route(doors, hours=2.0, start_point=START)
+
+    assert planned.stops
+    for stop in planned.stops:
+        for sentence in sentences_of(stop.talk_track):
+            assert sentence.split()[-1].lower() not in DANGLING_ENDINGS
+
+
+def test_evidence_that_already_fits_reaches_the_door_word_for_word():
+    """Regression guard — green before the fix as well as after.
+
+    Only sentences too long to fit are reworded; a short one is not to be
+    reshaped on the way through. Case-insensitive: folding the leading capital
+    into the opener is deliberate and predates this ticket.
+    """
+    track = talk_track_for(door(pin(1), north_m=100, top_evidence=EVIDENCE_SENTENCE))
+
+    assert EVIDENCE_SENTENCE.rstrip(".").lower() in track.lower()
 
 
 # --- share links --------------------------------------------------------------

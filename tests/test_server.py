@@ -55,6 +55,7 @@ from houseaccount.route import Stop, decode_share
 from houseaccount.scoring.engine import score_door
 from houseaccount.server.app import UI_ORIGINS, DataUnavailable, create_app
 from houseaccount.server.mcp_tools import create_mcp_server
+from houseaccount.server.published import Door, door_payload
 
 AS_OF = date(2026, 8, 14)
 RUN_AT = datetime(2026, 8, 14, 6, 30, 0, tzinfo=timezone.utc)
@@ -310,6 +311,55 @@ def test_the_door_endpoint_carries_the_same_talk_track_the_route_does(client):
     planned = next(stop for stop in stops if stop["pams_pin"] == OAK.pams_pin)
     assert isinstance(body["talk_track"], str) and body["talk_track"].strip()
     assert body["talk_track"] == planned["talk_track"]
+
+
+#: The engine's own permit sentence (`scoring.engine._score_hires_out`), verbatim
+#: — 124 characters, and the sentence QA saw the panel cut at "…gets contracted
+#: out rather than. Is now a bad time?" (ticket 021). The route side of the same
+#: defect is pinned in `tests/test_route.py`; this is the panel's own path.
+PERMIT_EVIDENCE = (
+    "1 permit filed here in the last 24 months (Alteration) — work at this address "
+    "gets contracted out rather than done in-house."
+)
+
+#: Endings that leave the homeowner waiting for the rest of the sentence.
+DANGLING_ENDINGS = {"and", "gets", "out", "rather", "than", "the", "to"}
+
+
+def permit_led_door():
+    """One scored door whose top evidence is the long permit sentence."""
+    return Door(
+        pams_pin=OAK.pams_pin,
+        properties={
+            "PAMS_PIN": OAK.pams_pin,
+            "situs": OAK.situs,
+            "score": 56,
+            "confidence": "medium",
+            "evidence": [
+                {"type": "permit_history", "points": 20, "sentence": PERMIT_EVIDENCE},
+                {"type": "age", "points": 8, "sentence": "Built in 1962."},
+            ],
+            "exclusion_reason": None,
+        },
+        centroid=START,
+        groups={"hires_out": 20, "need": 8},
+        raw_total=28,
+    )
+
+
+def test_the_panel_opener_for_a_permit_led_door_is_a_whole_sentence():
+    """R7.2 / ticket 021: the panel shows the evidence in full right above the
+    opener, so an opener that stops mid-clause contradicts the same screen.
+
+    Driven through `door_payload` — the function `GET /api/door/{pin}` serves —
+    because the published territory this module builds has no permits in it.
+    """
+    track = door_payload(permit_led_door())["talk_track"]
+    sentences = [part.strip() for part in re.split(r"[.?!]", track) if part.strip()]
+
+    assert "permit" in track
+    for sentence in sentences:
+        assert sentence.split()[-1].lower() not in DANGLING_ENDINGS, sentence
 
 
 def test_an_unscored_door_has_no_group_math_and_no_talk_track(client):

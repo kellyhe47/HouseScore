@@ -70,8 +70,14 @@ _SHARE_PREFIX = "r1"
 #: Conservative: everything a PAMS PIN can contain, nothing a URL would mind.
 _PIN_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
 
-#: Keep a long evidence sentence from swallowing the opener.
+#: Keep a long evidence sentence from swallowing the opener — but only ever by
+#: stopping where the sentence already stops, never by cutting it short.
 _EVIDENCE_LIMIT = 110
+
+#: The punctuation a source sentence can be halted in front of and still be a
+#: whole thing said out loud. The comma and the hyphen are left out on purpose:
+#: "(Alteration," is no more sayable at a door than "rather than".
+_CLAUSE_BOUNDARIES = "—–;:."
 
 
 @dataclass(frozen=True)
@@ -310,9 +316,7 @@ def _as_clause(evidence: str) -> str:
     """An evidence sentence folded into the middle of the opener."""
     clause = evidence.strip().rstrip(".!?").strip()
     if len(clause) > _EVIDENCE_LIMIT:
-        head = clause[:_EVIDENCE_LIMIT]
-        clause = head[: head.rfind(" ")] if " " in head else head
-        clause = clause.rstrip(" ,;:.-")
+        clause = _stopped_at_a_boundary(clause)
 
     # Fold the leading capital into the sentence, but leave "SKYLIGHT" and other
     # shouted source values alone — they are what makes the opener specific.
@@ -320,3 +324,19 @@ def _as_clause(evidence: str) -> str:
     if head and not head[1:].isupper():
         clause = head.lower() + separator + tail
     return clause
+
+
+def _stopped_at_a_boundary(clause: str) -> str:
+    """The leading run of `clause` that fits, ended where the sentence itself ends
+    a thought — the whole sentence when it offers nowhere to stop.
+
+    A rep says this out loud at a stranger's door, so stopping on a word boundary
+    strands the homeowner on "...gets contracted out rather than" (ticket 021).
+    Only the source's own punctuation marks a place a listener hears as finished,
+    and the substance a permit-led door was knocked on for sits ahead of the first
+    of them. Where there is no such mark inside the limit, the sentence goes to
+    the door long rather than half-said.
+    """
+    stop = max(clause.rfind(mark, 0, _EVIDENCE_LIMIT) for mark in _CLAUSE_BOUNDARIES)
+    head = clause[:stop].rstrip() if stop > 0 else ""
+    return head or clause

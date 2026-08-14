@@ -6,6 +6,7 @@ import {
   centreBounds,
   createMapHarness,
   doorsGeojson,
+  streetBlock,
   territoryCentres,
 } from './test-fixtures.js';
 
@@ -127,3 +128,124 @@ test('T022 · the fit follows the doors that loaded, not a hardcoded centre and 
     );
   });
 });
+
+/* ── Street names over the canvas ────────────────────────────────────────────
+ *
+ * `streets.js` decides where a street's name belongs and which way it reads;
+ * these are about the other half — that the names reach the screen at all, and
+ * that two of them never end up written over each other, which is the failure a
+ * derived label is most likely to produce and the one a reader cannot untangle.
+ */
+
+test('the main streets are named over the map once the doors are in', async () => {
+  const doors = {
+    type: 'FeatureCollection',
+    features: streetBlock({ name: 'MAIN ST', lots: 15, start: [-74.152, 41.048] }),
+  };
+
+  await withBrowser({ doors }, async (harness) => {
+    await harness.boot();
+    await harness.layout();
+    await harness.loadStyle();
+
+    const drawn = harness.element('street-labels').children;
+    assert.ok(drawn.length, 'the map drew no street names at all');
+    assert.ok(
+      drawn.every((label) => label.textContent === 'MAIN ST'),
+      'a name appeared for a street that is not in the territory'
+    );
+    assert.ok(
+      drawn.every((label) => /rotate\(-?\d+(\.\d+)?deg\)/.test(label.style.transform)),
+      'a street name was laid down flat rather than along its street'
+    );
+  });
+});
+
+test('a long street says its name again further along, but not twice in a breath', async () => {
+  // Six hundred metres of one street: too much of it is off screen at walking
+  // zoom for a single label in the middle to be any use.
+  const doors = {
+    type: 'FeatureCollection',
+    features: streetBlock({ name: 'LONG ST', lots: 45, start: [-74.152, 41.048] }),
+  };
+
+  await withBrowser({ doors }, async (harness) => {
+    const map = await harness.boot();
+    await harness.layout();
+    await harness.loadStyle();
+
+    const spots = harness.element('street-labels').children.map((label) => ({
+      x: Number.parseFloat(label.style.left),
+      y: Number.parseFloat(label.style.top),
+    }));
+    assert.ok(spots.length > 1, 'a long street was named only once');
+    for (const [a, b] of pairs(spots)) {
+      const apart = Math.hypot(a.x - b.x, a.y - b.y);
+      assert.ok(apart >= 320, `the same street said its name twice ${apart.toFixed(0)}px apart`);
+    }
+
+    // Zoomed out, those same repeats are a stutter, and are dropped.
+    map.zoom -= 3;
+    map.fire('zoom');
+    await harness.flush();
+    assert.equal(harness.element('street-labels').children.length, 1);
+  });
+});
+
+test('two street names are never written on top of each other', async () => {
+  // Three parallel streets 55 metres apart. Close in, each name has its own
+  // roadway to sit in; far enough out, all three want the same few pixels.
+  const doors = {
+    type: 'FeatureCollection',
+    features: [
+      ...streetBlock({ name: 'FIRST ST', lots: 15, start: [-74.152, 41.048] }),
+      ...streetBlock({ name: 'SECOND ST', lots: 15, start: [-74.152, 41.0485] }),
+      ...streetBlock({ name: 'THIRD ST', lots: 15, start: [-74.152, 41.049] }),
+    ],
+  };
+
+  const drawn = (harness) =>
+    harness.element('street-labels').children.map((label) => ({
+      name: label.textContent,
+      x: Number.parseFloat(label.style.left),
+      y: Number.parseFloat(label.style.top),
+    }));
+
+  await withBrowser({ doors }, async (harness) => {
+    const map = await harness.boot();
+    await harness.layout();
+    await harness.loadStyle();
+
+    const close = drawn(harness);
+    assert.equal(close.length, 3, 'with room for all three names, all three should be drawn');
+
+    // Pull back until the three roadways are a few pixels apart.
+    map.zoom -= 5;
+    map.fire('zoom');
+    await harness.flush();
+
+    const far = drawn(harness);
+    assert.ok(far.length, 'zooming out dropped every street name');
+    assert.ok(far.length < close.length, 'three names cannot fit where one fits');
+    for (const [a, b] of pairs(far)) {
+      assert.ok(
+        Math.abs(a.x - b.x) > 20 || Math.abs(a.y - b.y) > 12,
+        `${a.name} and ${b.name} were drawn on the same few pixels`
+      );
+    }
+
+    // And the dropped names come back as the map makes room for them again.
+    map.zoom += 5;
+    map.fire('zoom');
+    await harness.flush();
+    assert.equal(drawn(harness).length, close.length);
+  });
+});
+
+function pairs(items) {
+  const out = [];
+  for (let i = 0; i < items.length; i += 1) {
+    for (let j = i + 1; j < items.length; j += 1) out.push([items[i], items[j]]);
+  }
+  return out;
+}

@@ -19,6 +19,7 @@ import { buildPanel, copyAddress, panelLayout } from './panel.js';
 import { createMapState } from './state.js';
 import { createRoutePlanner } from './route-ui.js';
 import { createWalk, readWalk, clearWalk, resumeOffer } from './walk.js';
+import { streetLabels } from './streets.js';
 import { copyAsText, copyShareLink, readShare } from './share.js';
 
 /* ── Configuration ───────────────────────────────────────────────────────── */
@@ -42,6 +43,24 @@ const API_BASE = String(
 
 /** Above this zoom every visible parcel wears its score (wireframe frame 1). */
 const LABEL_ZOOM = 17;
+
+/**
+ * How many streets get named in the grey, and how big that name is drawn.
+ *
+ * With no basemap under it, the map is parcels and gaps — legible as a territory
+ * only to someone who already knows the town. Naming the handful of streets the
+ * territory is mostly built along is what lets everyone else place themselves.
+ * Eight is enough to orient by and few enough to stay out of the way of the
+ * thing the screen is actually about, which is the scores.
+ */
+const STREET_LABEL_LIMIT = 8;
+const STREET_LABEL_HEIGHT = 13;
+/** Average advance of one uppercase character at the label's size, in pixels. */
+const STREET_LABEL_CHAR = 7.6;
+/** Empty pixels held around each street name so two never read as one. */
+const STREET_LABEL_MARGIN = 6;
+/** How far apart on screen the same street's name may be written twice. */
+const STREET_REPEAT_PX = 320;
 
 /** Breathing room around the territory, in pixels, whenever the camera is fitted. */
 const FIT_PADDING = 48;
@@ -97,6 +116,7 @@ const els = {
   rangeLabel: $('range-label'),
   coverage: $('coverage'),
   legendRamp: $('legend-ramp'),
+  streets: $('street-labels'),
   labels: $('labels'),
   toast: $('toast'),
   panel: $('panel'),
@@ -153,6 +173,8 @@ const machine = createMapState();
 let doors = [];
 /** Doors currently passing the filter, for labelling. */
 let visible = [];
+/** The main streets' names and where to write them, derived from the parcels. */
+let streets = [];
 let range = [0, 100];
 let selectedPin = null;
 let map = null;
@@ -320,6 +342,10 @@ function adoptDoors(features) {
     geometry: feature.geometry,
     centroid: centroidOf(feature.geometry),
   }));
+
+  // Derived once per load, not per frame: the placements are in lng/lat, so
+  // panning and zooming only re-project them.
+  streets = streetLabels(doors, { limit: STREET_LABEL_LIMIT });
 
   const scored = doors.filter((door) => door.properties.score !== null).length;
   els.coverage.textContent = coverageText(scored, doors.length);
@@ -598,10 +624,88 @@ function scheduleLabels() {
   if (labelFrame) return;
   labelFrame = requestAnimationFrame(() => {
     labelFrame = null;
+    renderStreets();
     renderLabels();
     renderRoutePins();
   });
 }
+
+/**
+ * The street names, written in the grey where the streets are.
+ *
+ * HTML over the canvas, like the score labels and the route pins: a MapLibre
+ * symbol layer would need a glyph server, and this page has no external font or
+ * tile dependency to lose (R12).
+ *
+ * Two labels are never allowed to overlap. `streetLabels` returns its
+ * placements best-first, so the loop simply takes what fits and drops what does
+ * not — which at territory zoom means one name per street, and as the rep zooms
+ * in means the repeats along the longer streets come back as room appears.
+ */
+function renderStreets() {
+  if (!map) return;
+  clear(els.streets);
+
+  const canvas = map.getCanvas();
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const fragment = document.createDocumentFragment();
+  const taken = [];
+
+  for (const street of streets) {
+    const point = map.project(street.position);
+    const box = labelBox(point, street);
+    if (box.right < 0 || box.left > width || box.bottom < 0 || box.top > height) continue;
+    if (taken.some((other) => overlaps(other, box) || tooSoonAgain(other, street, point))) {
+      continue;
+    }
+    taken.push({ ...box, name: street.name, x: point.x, y: point.y });
+
+    const label = el('span', 'street-label', street.name);
+    label.style.left = `${Math.round(point.x)}px`;
+    label.style.top = `${Math.round(point.y)}px`;
+    // Screen y grows downward and CSS rotates clockwise, so the geographic
+    // bearing is applied negated — the label lies along the street either way.
+    label.style.transform = `translate(-50%, -50%) rotate(${(-street.bearing).toFixed(1)}deg)`;
+    fragment.appendChild(label);
+  }
+
+  els.streets.appendChild(fragment);
+}
+
+/** The screen box a rotated street name occupies, margin included. */
+function labelBox(point, street) {
+  const radians = (street.bearing * Math.PI) / 180;
+  const sin = Math.abs(Math.sin(radians));
+  const cos = Math.abs(Math.cos(radians));
+  const textWidth = street.name.length * STREET_LABEL_CHAR;
+
+  const halfWidth = (textWidth * cos + STREET_LABEL_HEIGHT * sin) / 2 + STREET_LABEL_MARGIN;
+  const halfHeight = (textWidth * sin + STREET_LABEL_HEIGHT * cos) / 2 + STREET_LABEL_MARGIN;
+
+  return {
+    left: point.x - halfWidth,
+    right: point.x + halfWidth,
+    top: point.y - halfHeight,
+    bottom: point.y + halfHeight,
+  };
+}
+
+const overlaps = (a, b) =>
+  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+/**
+ * A street's name written again too soon after the last time.
+ *
+ * `streetLabels` offers several places to write a long street's name so that
+ * one of them is on screen whatever the rep has zoomed into. How far apart those
+ * read is a matter of pixels, not metres: the same two anchors that are a
+ * welcome second sighting across the whole territory are a stutter once the map
+ * is down to one block.
+ */
+const tooSoonAgain = (other, street, point) =>
+  other.name === street.name &&
+  Math.hypot(other.x - point.x, other.y - point.y) < STREET_REPEAT_PX;
 
 function renderLabels() {
   if (!map) return;

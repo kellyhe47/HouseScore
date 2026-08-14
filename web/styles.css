@@ -227,6 +227,26 @@ button { font-family: inherit; }
 .maparea__canvas .maplibregl-canvas { outline: none; }
 .maparea__labels { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 
+/* Street names in the empty grey. Set in the map's own ground colour as a halo
+   so a name stays readable where a corridor narrows and the type touches a
+   parcel — the convention every paper street map uses, for the same reason. */
+.street-label {
+  position: absolute;
+  transform-origin: 50% 50%;
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .11em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--ink-3);
+  text-shadow:
+     0    1px 2px var(--map-bg),
+     0   -1px 2px var(--map-bg),
+     1px  0    2px var(--map-bg),
+    -1px  0    2px var(--map-bg);
+}
+
 .parcel-label {
   position: absolute;
   transform: translate(-50%, -50%);

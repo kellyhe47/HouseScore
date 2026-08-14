@@ -415,6 +415,87 @@ export function parcelFeature(properties, [lng, lat], half = 0.0004) {
   };
 }
 
+/* ── A street, built to size ─────────────────────────────────────────────── */
+
+/** Ramsey's latitude, and what a metre is worth in degrees there. */
+const FIXTURE_LAT = 41.05;
+const DEG_PER_M_LAT = 1 / 110540;
+const DEG_PER_M_LNG = 1 / (111320 * Math.cos((FIXTURE_LAT * Math.PI) / 180));
+
+/**
+ * A street: two rows of lots facing each other across a roadway.
+ *
+ * Built in metres and converted, because every rule `streets.js` applies is in
+ * metres — how wide a road can be, how far apart two labels of the same street
+ * have to be — and a fixture written in degrees would state its case in units
+ * neither the module nor a reader thinks in.
+ *
+ * The defaults describe a plain residential block running due east, which is
+ * what makes the expected answer statable: the name belongs in the roadway, and
+ * the roadway is level, so the bearing is zero. `lots` is odd on purpose — the
+ * middle lot of each row then faces the middle lot of the other, and the
+ * placement nearest the street's median parcel is that facing pair exactly,
+ * with no coin to toss.
+ *
+ * The 1 m side gaps are the interesting part of the geometry: they are the one
+ * place other than the road where a midpoint between two of the street's own
+ * houses lands on nobody's parcel, and a labeller that mistook one for the road
+ * would write the street's name across it at right angles.
+ */
+export function streetBlock({
+  name = 'MAIN ST',
+  lots = 11,
+  start = [-74.16, FIXTURE_LAT],
+  width = 12,
+  gap = 1,
+  depth = 32,
+  road = 14,
+} = {}) {
+  const [startLng, centreLat] = start;
+  const features = [];
+
+  for (let index = 0; index < lots; index += 1) {
+    const west = (index * (width + gap)) * DEG_PER_M_LNG + startLng;
+    const east = west + width * DEG_PER_M_LNG;
+
+    for (const side of [1, -1]) {
+      const near = centreLat + side * (road / 2) * DEG_PER_M_LAT;
+      const far = centreLat + side * (road / 2 + depth) * DEG_PER_M_LAT;
+      const number = index * 2 + (side > 0 ? 2 : 1);
+
+      features.push({
+        type: 'Feature',
+        properties: {
+          PAMS_PIN: `${name.replace(/\W+/g, '_')}_${number}`,
+          score: 50,
+          situs: `${number} ${name}, Ramsey NJ 07446`,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [west, near],
+              [east, near],
+              [east, far],
+              [west, far],
+              [west, near],
+            ],
+          ],
+        },
+      });
+    }
+  }
+  return features;
+}
+
+/** GeoJSON features as `map.js` holds them once the run is adopted. */
+export function asDoors(features) {
+  return features.map((feature) => ({
+    properties: feature.properties,
+    geometry: feature.geometry,
+  }));
+}
+
 /**
  * The published run as `GET /api/doors.geojson` serves it.
  *
@@ -670,8 +751,20 @@ class FakeMap {
   getBounds() {
     return { contains: () => true };
   }
-  project() {
-    return { x: 0, y: 0 };
+  /**
+   * Flat and unrotated, but honest about the two things that matter: the
+   * viewport's middle is the camera's centre, and the further apart two places
+   * are the further apart their pixels. Anything that lays out over the canvas —
+   * the score labels, the route pins, the street names deciding which of them
+   * collide — is only testable against a projection that answers differently
+   * for different points.
+   */
+  project([lng, lat]) {
+    const pixelsPerDegree = (512 * Math.pow(2, this.zoom)) / 360;
+    return {
+      x: this.size.width / 2 + (lng - this.center[0]) * pixelsPerDegree,
+      y: this.size.height / 2 - (lat - this.center[1]) * pixelsPerDegree,
+    };
   }
   panBy() {}
   zoomIn() {

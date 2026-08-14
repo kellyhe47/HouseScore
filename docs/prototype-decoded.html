@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="519d05c5-88e5-41b0-9975-21a02620f9dd"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ba097bb3-45c7-4228-8182-1cfe1c213683") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("cb0eddca-41e1-4ede-b27d-ea9317eccce9") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("8a73e1f0-0777-4ac8-b1d3-62c6815aaecd") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("e4162029-5b79-4cb8-8634-9d5f83fa570f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ba7cec78-13d7-4838-80f6-85c19b1224a8") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d80da9b0-fb4e-4204-ab50-593ad01e33ab") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("e28e75b8-04d0-450c-91e9-5743ec8587d8") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("2a09c5f6-78da-400c-bced-f2d0f3636da8") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("39ed4c36-f8dd-4eb3-bea7-dcf230de46e9") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("7ccb7875-5c54-4311-bd08-b25b57a9a501") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("5594e65a-f7ba-4d01-a3c1-a8994cb32a19") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("e52ab1cc-fe40-409b-a76f-54f5f2a642e0") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("5e49fe4d-0f30-47e1-8d46-624ceb3002e9") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("853f5bdc-0335-46b9-9931-8a95d7ed8c5a") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("428a637c-60ac-4ff3-ad68-cc57bc493e2c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("6275cb41-51cf-49ac-b197-50f375eb57d4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("5df25834-f6a1-4a9b-8a9a-47d768da3de8") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("bd688341-3346-4c28-87eb-333795fad2c5") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("b32e9658-eb7e-41be-ae3d-ca274702d0d4") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("45f71187-636a-40e5-9cc1-23bf9f677c34") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("8e9232b0-8076-49f4-a866-8173bc6521e9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("6275cb41-51cf-49ac-b197-50f375eb57d4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("5df25834-f6a1-4a9b-8a9a-47d768da3de8") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("bd688341-3346-4c28-87eb-333795fad2c5") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("b32e9658-eb7e-41be-ae3d-ca274702d0d4") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("45f71187-636a-40e5-9cc1-23bf9f677c34") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("8e9232b0-8076-49f4-a866-8173bc6521e9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("6275cb41-51cf-49ac-b197-50f375eb57d4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("5df25834-f6a1-4a9b-8a9a-47d768da3de8") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("bd688341-3346-4c28-87eb-333795fad2c5") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("b32e9658-eb7e-41be-ae3d-ca274702d0d4") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("45f71187-636a-40e5-9cc1-23bf9f677c34") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("8e9232b0-8076-49f4-a866-8173bc6521e9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("6275cb41-51cf-49ac-b197-50f375eb57d4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("5df25834-f6a1-4a9b-8a9a-47d768da3de8") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("bd688341-3346-4c28-87eb-333795fad2c5") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("b32e9658-eb7e-41be-ae3d-ca274702d0d4") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("45f71187-636a-40e5-9cc1-23bf9f677c34") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("8e9232b0-8076-49f4-a866-8173bc6521e9") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+body{margin:0;background:#F2F1ED;font-family:'IBM Plex Sans',system-ui,sans-serif;color:#1B1E23;-webkit-font-smoothing:antialiased}
+a{color:#2A5B8F;text-decoration:none}a:hover{color:#12315E;text-decoration:underline}
+@keyframes haspin{to{transform:rotate(360deg)}}
+@keyframes hapulse{0%,100%{opacity:.55}50%{opacity:1}}
+input[type=range].ha-r{-webkit-appearance:none;appearance:none;background:transparent;pointer-events:none;position:absolute;left:0;top:0;width:100%;height:100%;margin:0}
+input[type=range].ha-r::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid #1B1E23;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer}
+input[type=range].ha-r::-moz-range-thumb{pointer-events:auto;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid #1B1E23;cursor:pointer}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="height:100dvh;display:flex;flex-direction:column;overflow:hidden;background:#F2F1ED" data-screen-label="HouseAccount">
+<sc-if value="{{ isLoading }}" hint-placeholder-val="{{ true }}">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px" data-screen-label="Loading">
+    <div style="font-weight:700;font-size:18px;letter-spacing:-0.01em">HouseAccount</div>
+    <div style="width:min(340px,80vw);height:140px;border-radius:8px;background:linear-gradient(90deg,#E7E5DF,#DEDCD5,#E7E5DF);background-size:200% 100%;animation:hapulse 1.4s ease infinite"></div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6B6E75">loading 540 doors…</div>
+  </div>
+</sc-if>
+<sc-if value="{{ isMap }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;flex-direction:column;flex:1;min-height:0" data-screen-label="Map">
+    <div style="background:#FFFFFF;border-bottom:1px solid #DBD9D2;padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;z-index:5">
+      <div style="display:flex;align-items:baseline;gap:8px;min-width:0">
+        <div style="font-weight:700;font-size:16px;letter-spacing:-0.01em;white-space:nowrap">HouseAccount</div>
+        <sc-if value="{{ showSub }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;color:#6B6E75;white-space:nowrap">Ramsey Territory · NJ</div></sc-if>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;background:#F5F4F0;border:1px solid #DBD9D2;border-radius:6px;padding:6px 10px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#3D414A;white-space:nowrap">score {{ filterLo }}–{{ filterHi }}</span>
+          <div style="position:relative;width:120px;height:20px">
+            <div style="position:absolute;left:0;right:0;top:8px;height:4px;border-radius:2px;background:linear-gradient(90deg,#EDEFF2,#7FA3C9,#12315E)"></div>
+            <input class="ha-r" type="range" min="0" max="100" value="{{ filterLo }}" sc-camel-on-input="{{ onFilterLo }}" style="z-index:2">
+            <input class="ha-r" type="range" min="0" max="100" value="{{ filterHi }}" sc-camel-on-input="{{ onFilterHi }}" style="z-index:3">
+          </div>
+        </div>
+        <button sc-camel-on-click="{{ openRoute }}" style="background:#1B1E23;color:#fff;border:none;border-radius:6px;padding:10px 16px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px">Plan Route</button>
+        <button sc-camel-on-click="{{ openAbout }}" style="background:#fff;border:1px solid #C9C7C0;border-radius:6px;padding:10px 12px;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;color:#3D414A;min-height:44px;white-space:nowrap">{{ aboutLabel }}</button>
+      </div>
+    </div>
+    <sc-if value="{{ hasError }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#7A2E1F;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:12px;font-size:14px">
+        <span style="flex:1">Score data unavailable — the doors layer failed to load.</span>
+        <button sc-camel-on-click="{{ retryData }}" style="background:#fff;color:#7A2E1F;border:none;border-radius:5px;padding:8px 14px;font-weight:600;font-family:inherit;cursor:pointer">Retry</button>
+      </div>
+    </sc-if>
+    <div style="flex:1;position:relative;min-height:0;overflow:hidden;background:#E8E6E0">
+      <canvas ref="{{ canvasRef }}" sc-camel-on-wheel="{{ onWheel }}" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:{{ mapCursor }}"></canvas>
+      <div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.92);border:1px solid #DBD9D2;border-radius:6px;padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#3D414A">537 of 540 scored</div>
+      <div style="position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.92);border:1px solid #DBD9D2;border-radius:6px;padding:8px 10px">
+        <div style="width:130px;height:8px;border-radius:4px;background:linear-gradient(90deg,#EDEFF2,#BFD0E2,#7FA3C9,#41729F,#1E4C7E,#122F55)"></div>
+        <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6B6E75;margin-top:3px"><span>0</span><span>House Score</span><span>100</span></div>
+      </div>
+      <div style="position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px">
+        <button sc-camel-on-click="{{ zoomIn }}" style="width:44px;height:44px;border-radius:6px;background:#fff;border:1px solid #C9C7C0;font-size:20px;cursor:pointer;color:#1B1E23">+</button>
+        <button sc-camel-on-click="{{ zoomOut }}" style="width:44px;height:44px;border-radius:6px;background:#fff;border:1px solid #C9C7C0;font-size:20px;cursor:pointer;color:#1B1E23">−</button>
+      </div>
+      <sc-if value="{{ hasActiveRoute }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #C9C7C0;border-radius:8px;padding:6px 8px;display:flex;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+          <button sc-camel-on-click="{{ reopenRoute }}" style="background:#1B1E23;color:#fff;border:none;border-radius:5px;padding:8px 12px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">Route list</button>
+          <button sc-camel-on-click="{{ clearRoute }}" style="background:none;border:1px solid #DBD9D2;border-radius:5px;padding:8px 12px;font-size:13px;font-family:inherit;cursor:pointer;color:#3D414A">Clear route</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ pickingStart }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#1B1E23;color:#fff;border-radius:6px;padding:9px 16px;font-size:13.5px;white-space:nowrap">Tap the map where you’ll park</div>
+      </sc-if>
+      <sc-if value="{{ hasResume }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:12px;left:12px;background:#fff;border:1px solid #C9C7C0;border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+          <span style="font-size:13px;color:#3D414A">Walk in progress — {{ resumeLabel }}</span>
+          <button sc-camel-on-click="{{ resumeWalk }}" style="background:#1B1E23;color:#fff;border:none;border-radius:5px;padding:8px 12px;font-weight:600;font-family:inherit;cursor:pointer">Resume</button>
+          <button sc-camel-on-click="{{ discardWalk }}" style="background:none;border:none;color:#6B6E75;cursor:pointer;font-size:13px;font-family:inherit">Discard</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;bottom:70px;left:50%;transform:translateX(-50%);background:#1B1E23;color:#fff;border-radius:6px;padding:9px 16px;font-size:13px;white-space:nowrap">{{ toast }}</div>
+      </sc-if>
+    </div>
+    <sc-if value="{{ selected }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ sheetStyle }}" data-screen-label="Evidence panel">
+        <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}"><div style="width:36px;height:4px;border-radius:2px;background:#C9C7C0;margin:8px auto 2px"></div></sc-if>
+        <div style="padding:14px 16px 6px;display:flex;align-items:flex-start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:17px;letter-spacing:-0.01em">{{ selected.addr }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8A8D93;margin-top:2px">PIN {{ selected.pin }}</div>
+          </div>
+          <button sc-camel-on-click="{{ closePanel }}" style="width:36px;height:36px;border-radius:6px;background:#F5F4F0;border:1px solid #DBD9D2;cursor:pointer;font-size:15px;color:#3D414A;flex:none">✕</button>
+        </div>
+        <sc-if value="{{ selected.scored }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:2px 16px 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <div style="font-size:34px;font-weight:700;letter-spacing:-0.02em;color:{{ selScoreColor }}">{{ selected.score }}</div>
+            <div style="font-size:12.5px;color:#6B6E75">confidence: <b style="color:{{ selConfColor }}">{{ selected.conf }}</b></div>
+            <sc-if value="{{ selected.capped }}" hint-placeholder-val="{{ false }}"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6B6E75">raw {{ selected.raw }}, capped</div></sc-if>
+          </div>
+          <sc-if value="{{ selLowConf }}" hint-placeholder-val="{{ false }}">
+            <div style="margin:0 16px 10px;background:#FBF3E4;border:1px solid #E3CFA0;border-radius:6px;padding:10px 12px;font-size:13px;color:#6B4E12;line-height:1.45">Deed date and year built unavailable in county data — score from partial signals.</div>
+          </sc-if>
+          <div style="flex:1;overflow-y:auto;min-height:0;padding:0 16px 14px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#8A8D93;margin:4px 0 8px">Why this score</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ selEvidence }}" as="ev" hint-placeholder-count="3">
+                <div style="display:flex;gap:10px;align-items:flex-start">
+                  <div style="flex:none;min-width:44px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:{{ ev.ptsColor }};padding-top:1px">{{ ev.ptsLabel }}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13.5px;line-height:1.4;color:#1B1E23">{{ ev.text }}</div>
+                    <div style="font-size:11px;color:#8A8D93;margin-top:1px">{{ ev.src }} · fetched {{ ev.date }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ selImagery }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#8A8D93;margin:16px 0 8px">Imagery evidence</div>
+              <div style="display:flex;gap:8px">
+                <sc-for list="{{ selImages }}" as="im" hint-placeholder-count="2">
+                  <div sc-camel-on-click="{{ im.onOpen }}" style="flex:1;border:1px solid #DBD9D2;border-radius:6px;overflow:hidden;background:#fff;cursor:pointer">
+                    <div style="height:64px;background:repeating-linear-gradient(45deg,#E4E7EA,#E4E7EA 6px,#EDEFF1 6px,#EDEFF1 12px);display:flex;align-items:center;justify-content:center"><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6B6E75">{{ im.ph }}</span></div>
+                    <div style="padding:6px 8px;font-size:10.5px;color:#3D414A;line-height:1.35">{{ im.label }}<br><span style="color:#8A8D93">{{ im.meta }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ selNoImagery }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:14px;font-size:12px;color:#8A8D93;border-top:1px dashed #DBD9D2;padding-top:10px">No imagery signals for this parcel</div>
+            </sc-if>
+            <div style="margin-top:14px;background:#F0F3F7;border:1px solid #D5DEE9;border-radius:6px;padding:11px 12px">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#41729F;margin-bottom:4px">Rep talk track</div>
+              <div style="font-size:14px;line-height:1.45;color:#1B2A3D">“{{ selected.talk }}”</div>
+            </div>
+            <sc-if value="{{ showMath }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:14px;border:1px solid #DBD9D2;border-radius:8px;padding:12px;background:#FCFCFA">
+                <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#8A8D93;margin-bottom:10px">Score breakdown</div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ selGroups }}" as="g" hint-placeholder-count="4">
+                    <div>
+                      <div style="display:flex;justify-content:space-between;align-items:baseline">
+                        <span style="font-size:12px;font-weight:600;color:#3D414A">{{ g.name }}</span>
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#3D414A">{{ g.valLabel }}</span>
+                      </div>
+                      <div style="height:8px;border-radius:4px;background:#E7E5DF;margin-top:4px;overflow:hidden"><div style="height:100%;border-radius:4px;background:{{ g.barColor }};width:{{ g.pct }}"></div></div>
+                      <div style="font-size:11.5px;color:#8A8D93;margin-top:3px">{{ g.rule }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="margin-top:12px;border-top:1px solid #E7E5DF;padding-top:8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#1B1E23">{{ selMathLine }}</div>
+              </div>
+            </sc-if>
+          </div>
+          <div style="padding:10px 16px;border-top:1px solid #E7E5DF;display:flex;gap:8px;background:#fff">
+            <button sc-camel-on-click="{{ copyAddress }}" style="flex:1;background:#fff;border:1px solid #C9C7C0;border-radius:6px;padding:11px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;color:#1B1E23;min-height:44px">Copy address</button>
+            <button sc-camel-on-click="{{ toggleMath }}" style="flex:1;background:#F5F4F0;border:1px solid #C9C7C0;border-radius:6px;padding:11px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;color:#1B1E23;min-height:44px">{{ mathBtnLabel }}</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ selUnscored }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:6px 16px 18px;font-size:13.5px;color:#6B6E75;line-height:1.5">Not scored — parcel record incomplete in county data. This door is one of the 3 excluded from the 537-door coverage count.</div>
+        </sc-if>
+      </div>
+    </sc-if>
+    <sc-if value="{{ routeOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="{{ routeStyle }}" data-screen-label="Route planner">
+        <div style="padding:14px 16px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #E7E5DF">
+          <div style="font-weight:700;font-size:16px;flex:1">Plan route</div>
+          <button sc-camel-on-click="{{ closeRoute }}" style="width:36px;height:36px;border-radius:6px;background:#F5F4F0;border:1px solid #DBD9D2;cursor:pointer;font-size:15px;color:#3D414A">✕</button>
+        </div>
+        <div style="padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;border-bottom:1px solid #E7E5DF">
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B6E75;font-weight:600">HOURS
+            <div style="display:flex;border:1px solid #C9C7C0;border-radius:6px;overflow:hidden;background:#fff">
+              <sc-for list="{{ hourOpts }}" as="h" hint-placeholder-count="5">
+                <button sc-camel-on-click="{{ h.onPick }}" style="border:none;border-right:1px solid #E7E5DF;background:{{ h.bg }};color:{{ h.fg }};padding:0 12px;min-height:42px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer">{{ h.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B6E75;font-weight:600">DOORS
+            <input type="number" min="1" max="60" value="{{ routeDoors }}" sc-camel-on-change="{{ onDoors }}" style="border:1px solid #C9C7C0;border-radius:6px;padding:10px;font-family:inherit;font-size:14px;width:74px;min-height:44px">
+          </label>
+          <button sc-camel-on-click="{{ pickStart }}" style="background:#fff;border:1px solid #C9C7C0;border-radius:6px;padding:10px 12px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;color:#1B1E23;min-height:44px">{{ startBtnLabel }}</button>
+          <button sc-camel-on-click="{{ planRoute }}" disabled="{{ planDisabled }}" style="background:{{ planBg }};color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px">{{ planBtnLabel }}</button>
+          <sc-if value="{{ computing }}" hint-placeholder-val="{{ false }}"><button sc-camel-on-click="{{ cancelPlan }}" style="background:none;border:1px solid #C9C7C0;border-radius:6px;padding:10px 14px;font-size:13px;font-family:inherit;cursor:pointer;color:#3D414A;min-height:44px">Cancel</button></sc-if>
+        </div>
+        <sc-if value="{{ routeEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:20px 16px;font-size:13.5px;color:#6B4E12;background:#FBF3E4;margin:12px 16px;border:1px solid #E3CFA0;border-radius:6px;line-height:1.5">No doors reachable in {{ routeHours }}h from this start — widen hours or move the start point.</div>
+        </sc-if>
+        <sc-if value="{{ hasRoute }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow-y:auto;min-height:0;padding:8px 8px 8px 16px">
+            <sc-for list="{{ routeRows }}" as="r" hint-placeholder-count="4">
+              <div sc-camel-on-click="{{ r.onTap }}" style="display:flex;gap:10px;padding:10px 8px;border-bottom:1px solid #EFEDE7;cursor:pointer;align-items:flex-start" style-hover="background:#F7F6F2">
+                <div style="flex:none;width:26px;height:26px;border-radius:50%;background:#1B1E23;color:#fff;font-size:12.5px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ r.n }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;gap:8px;align-items:baseline"><span style="font-weight:600;font-size:14px">{{ r.addr }}</span><span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;color:{{ r.color }}">{{ r.score }}</span></div>
+                  <div style="display:inline-block;background:#EDF2F8;border:1px solid #D5DEE9;color:#2A5B8F;border-radius:10px;padding:1px 8px;font-size:11px;margin:3px 0">{{ r.chip }}</div>
+                  <div style="font-size:12px;color:#6B6E75;line-height:1.4">{{ r.talk }}</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8A8D93;margin-top:2px">+{{ r.elapsed }} min into route · {{ r.walk }} min walk from prev</div>
+                </div>
+                <button sc-camel-on-click="{{ r.onExclude }}" title="Exclude this door and recompute" style="flex:none;width:32px;height:32px;border-radius:6px;background:none;border:1px solid #DBD9D2;cursor:pointer;color:#8A8D93;font-size:12px">✕</button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:10px 16px;border-top:1px solid #E7E5DF;background:#fff">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#3D414A;margin-bottom:8px">{{ routeSummary }}</div>
+            <div style="display:flex;gap:8px">
+              <button sc-camel-on-click="{{ copyRoute }}" style="flex:1;background:#fff;border:1px solid #C9C7C0;border-radius:6px;padding:11px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px;color:#1B1E23">Copy as text</button>
+              <button sc-camel-on-click="{{ shareRoute }}" style="flex:1;background:#fff;border:1px solid #C9C7C0;border-radius:6px;padding:11px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px;color:#1B1E23">Share link</button>
+              <button sc-camel-on-click="{{ startWalk }}" style="flex:1.4;background:#12315E;color:#fff;border:none;border-radius:6px;padding:11px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;min-height:44px">Start walk mode</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+    <sc-if value="{{ imgView }}" hint-placeholder-val="{{ false }}">
+      <div sc-camel-on-click="{{ closeImg }}" style="position:fixed;inset:0;z-index:70;background:rgba(20,22,26,.7);display:flex;align-items:center;justify-content:center;padding:24px" data-screen-label="Imagery detail">
+        <div style="background:#fff;border-radius:10px;max-width:520px;width:100%;overflow:hidden">
+          <div style="position:relative;height:300px;background:repeating-linear-gradient(45deg,#E4E7EA,#E4E7EA 10px,#EDEFF1 10px,#EDEFF1 20px);display:flex;align-items:center;justify-content:center">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6B6E75">{{ imgView.ph }} — full size</span>
+            <sc-if value="{{ imgView.bbox }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:34%;top:30%;width:30%;height:34%;border:2.5px solid #E8791A;border-radius:3px"><div style="position:absolute;top:-22px;left:-2px;background:#E8791A;color:#fff;font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:2px 6px;border-radius:3px;white-space:nowrap">detection</div></div></sc-if>
+          </div>
+          <div style="padding:12px 16px;display:flex;align-items:center;gap:10px">
+            <div style="flex:1"><div style="font-weight:600;font-size:14px">{{ imgView.label }}</div><div style="font-size:12px;color:#6B6E75">{{ imgView.meta }}</div></div>
+            <button sc-camel-on-click="{{ closeImg }}" style="width:36px;height:36px;border-radius:6px;background:#F5F4F0;border:1px solid #DBD9D2;cursor:pointer;font-size:14px;color:#3D414A">✕</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ walkMode }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;inset:0;z-index:60;background:#E3E1DB;display:flex;flex-direction:column" data-screen-label="Walk mode"><div style="flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:560px;margin:0 auto;background:#F7F6F2;box-shadow:0 0 40px rgba(0,0,0,.12)">
+        <div style="background:#1B1E23;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px">
+          <div style="font-weight:700;font-size:15px;flex:1">{{ walkProgress }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#B9BCC2">{{ walkLeft }}</div>
+          <button sc-camel-on-click="{{ exitWalk }}" style="background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:6px;padding:9px 12px;font-size:13px;font-family:inherit;cursor:pointer">Exit</button>
+        </div>
+        <div style="height:6px;background:#E0DED8"><div style="height:100%;background:#12315E;width:{{ walkPct }}"></div></div>
+        <sc-if value="{{ walkStop }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:22px 20px 10px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6B6E75">STOP {{ walkStop.n }} · score <b style="color:{{ walkStop.color }}">{{ walkStop.score }}</b> · {{ walkStop.walk }} min walk</div>
+            <div style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1.15;margin-top:6px">{{ walkStop.addr }}</div>
+            <div style="display:inline-block;background:#EDF2F8;border:1px solid #D5DEE9;color:#2A5B8F;border-radius:12px;padding:3px 12px;font-size:13px;margin-top:10px">{{ walkStop.chip }}</div>
+            <div style="margin-top:14px;background:#fff;border:1px solid #DBD9D2;border-radius:8px;padding:14px 16px;font-size:17px;line-height:1.5;color:#1B2A3D">“{{ walkStop.talk }}”</div>
+          </div>
+          <div style="padding:8px 20px;display:flex;gap:12px">
+            <button sc-camel-on-click="{{ walkSkip }}" style="flex:1;background:#fff;border:2px solid #C9C7C0;border-radius:10px;padding:18px;font-size:17px;font-weight:600;font-family:inherit;cursor:pointer;color:#3D414A;min-height:64px">Skip</button>
+            <button sc-camel-on-click="{{ walkDone }}" style="flex:2;background:#12315E;color:#fff;border:none;border-radius:10px;padding:18px;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer;min-height:64px">Done — next stop</button>
+          </div>
+          <div style="flex:1;overflow-y:auto;min-height:0;padding:6px 20px 20px">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#8A8D93;margin:10px 0 6px">Up next</div>
+            <sc-for list="{{ walkUpcoming }}" as="u" hint-placeholder-count="3">
+              <div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #EAE8E2;align-items:baseline">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8A8D93;width:22px">{{ u.n }}</span>
+                <span style="font-size:14px;font-weight:500;flex:1">{{ u.addr }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:{{ u.color }}">{{ u.score }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ walkFinished }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px">
+            <div style="font-size:26px;font-weight:700">Route complete</div>
+            <div style="font-size:14px;color:#6B6E75">{{ walkSummary }}</div>
+            <button sc-camel-on-click="{{ exitWalk }}" style="background:#1B1E23;color:#fff;border:none;border-radius:8px;padding:14px 26px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:8px">Back to map</button>
+          </div>
+        </sc-if>
+      </div></div>
+    </sc-if>
+  </div>
+</sc-if>
+<sc-if value="{{ isAbout }}" hint-placeholder-val="{{ false }}">
+  <div style="flex:1;overflow-y:auto;background:#F7F6F2" data-screen-label="Data and Ethics">
+    <div style="max-width:760px;margin:0 auto;padding:28px 20px 80px">
+      <button sc-camel-on-click="{{ backToMap }}" style="background:#fff;border:1px solid #C9C7C0;border-radius:6px;padding:9px 14px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;color:#1B1E23;margin-bottom:22px">← Back to map</button>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#41729F;letter-spacing:.08em">HOUSEACCOUNT · RAMSEY TERRITORY</div>
+      <h1 style="font-size:30px;font-weight:700;letter-spacing:-0.02em;margin:8px 0 6px">Data &amp; Ethics — how the House Score works</h1>
+      <p style="font-size:15px;line-height:1.6;color:#3D414A;margin:0 0 26px">This page is the score's one-page rationale: what we predict, which signals we use, the exact weights, what we deliberately do not do, and how the pipeline was evaluated.</p>
+      <h2 style="font-size:18px;font-weight:700;margin:26px 0 8px">Who the score finds (ICP)</h2>
+      <p style="font-size:14.5px;line-height:1.6;color:#3D414A;margin:0 0 12px">The best concierge customer: <b>recently moved in</b>, <b>hires out rather than DIYs</b>, has <b>capacity to pay for years of service</b>, and has <b>near-term service need</b>. Each signal below traces to one of those four traits — nothing in the score exists without an ICP reason.</p>
+      <div style="border:1px solid #DBD9D2;border-radius:8px;overflow:hidden;background:#fff">
+        <sc-for list="{{ icpRows }}" as="row" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:110px 64px 1fr;gap:12px;padding:11px 14px;border-bottom:1px solid #EFEDE7;font-size:13px;align-items:baseline">
+            <span style="font-weight:600">{{ row.g }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:#41729F">{{ row.max }}</span>
+            <span style="color:#3D414A;line-height:1.5">{{ row.d }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <p style="font-size:13px;color:#6B6E75;line-height:1.55;margin:10px 0 0">score = clamp(mover + hires-out + capacity + need + modifier, 0, 100). Deterministic, fixture-tested (12 golden fixtures, run by <code style="font-family:'IBM Plex Mono',monospace">make eval</code>). Missing fields degrade gracefully to <b>confidence: low</b> with an explicit data-gap evidence line — never a crash, never a guess.</p>
+      <h2 style="font-size:18px;font-weight:700;margin:28px 0 8px">What we deliberately do not do</h2>
+      <div style="background:#fff;border:1px solid #DBD9D2;border-radius:8px;padding:16px 18px">
+        <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.7;color:#3D414A">
+          <li><b>Daniel's Law:</b> owner names and mailing addresses arrive redacted from NJ MOD-IV and stay that way. We never attempt identity reconstruction — no deed-book name mining, no broker data. Nothing in this UI ever shows who lives at a door.</li>
+          <li><b>No household inference from Census data:</b> ACS evidence is always phrased as neighborhood context ("block group: 41% dual-income"), never as a claim about a household.</li>
+          <li><b>Street View ToS:</b> Google Maps Platform ToS §3.2.3 prohibits derived datasets, so bulk imagery signals come from public-domain NJ orthophotos and NAIP. Street View is used at demo scale (~50 doors) with this position published. Zillow/Redfin excluded (ToS), cited.</li>
+          <li><b>Absentee detection</b> uses only a municipal rental-registration match — a mild −15, because rental households still buy services. Never identity-derived.</li>
+        </ul>
+      </div>
+      <h2 style="font-size:18px;font-weight:700;margin:28px 0 8px">Data sources</h2>
+      <div style="border:1px solid #DBD9D2;border-radius:8px;overflow:hidden;background:#fff">
+        <sc-for list="{{ srcRows }}" as="s" hint-placeholder-count="5">
+          <div style="display:grid;grid-template-columns:1fr 130px;gap:12px;padding:10px 14px;border-bottom:1px solid #EFEDE7;font-size:13px">
+            <span style="color:#1B1E23">{{ s.n }} <span style="color:#8A8D93">— {{ s.d }}</span></span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:#6B6E75;text-align:right">{{ s.date }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <h2 style="font-size:18px;font-weight:700;margin:28px 0 8px">Evaluation results</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+        <sc-for list="{{ evalRows }}" as="e" hint-placeholder-count="6">
+          <div style="background:#fff;border:1px solid #DBD9D2;border-radius:8px;padding:12px 14px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:#12315E">{{ e.v }}</div>
+            <div style="font-size:12px;color:#6B6E75;margin-top:2px;line-height:1.4">{{ e.k }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <p style="font-size:13px;color:#6B6E75;line-height:1.55;margin:10px 0 0">Pool detection measured on 40 hand-labeled parcels; hallucination rate on a separate 20-image verified-negative probe set. Arithmetic pinned by fixture 09.</p>
+      <h2 style="font-size:18px;font-weight:700;margin:28px 0 8px">Validation plan</h2>
+      <p style="font-size:14.5px;line-height:1.6;color:#3D414A;margin:0">No engagement outcomes exist yet, so weights are <b>pre-registered</b> (this document, dated) and ICP-traceable rather than fit to hidden ground truth. When knock outcomes accrue: validate by score-decile lift curve and calibration — a working score shows monotonically higher engagement per decile.</p>
+      <h2 style="font-size:18px;font-weight:700;margin:28px 0 8px">MCP server</h2>
+      <div style="background:#fff;border:1px solid #DBD9D2;border-radius:8px;padding:14px 18px;font-size:13.5px;line-height:1.7;color:#3D414A">
+        <div style="font-family:'IBM Plex Mono',monospace;color:#12315E">https://houseaccount-mcp.fly.dev/mcp</div>
+        <div><code style="font-family:'IBM Plex Mono',monospace">get_door_score(address)</code> → score, confidence, evidence[]</div>
+        <div><code style="font-family:'IBM Plex Mono',monospace">explain_score(address)</code> → full breakdown incl. group math</div>
+        <div><code style="font-family:'IBM Plex Mono',monospace">plan_route(hours, start_point, max_doors?)</code> → ordered stops with talk tracks</div>
+      </div>
+      <div style="margin-top:32px;border-top:1px dashed #C9C7C0;padding-top:14px;font-size:12px;color:#8A8D93">Prototype demo: <a href="#" sc-camel-on-click="{{ simulateError }}">simulate a data-fetch error</a> on the map (frame 6 state).</div>
+    </div>
+  </div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;},&quot;dwellMinutes&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:3.5,&quot;min&quot;:1,&quot;max&quot;:8,&quot;step&quot;:0.5,&quot;unit&quot;:&quot;min&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Route&quot;},&quot;labelZoom&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:2.1,&quot;min&quot;:1.2,&quot;max&quot;:4,&quot;step&quot;:0.1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Map&quot;},&quot;highContrast&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Map&quot;}}">
+class Component extends DCLogic {
+  state = { w: window.innerWidth, h: window.innerHeight, view: 'loading', error: false,
+    selPin: null, showMath: false, fLo: 0, fHi: 100, zoom: 1, pan: {x:0,y:0},
+    routeOpen: false, pickingStart: false, start: null, routeHours: '2', routeDoors: 20,
+    computing: false, route: null, routeEmpty: false,
+    walkMode: false, walkIdx: 0, walkDone: [], toast: null, resume: null };
+
+  componentDidMount() {
+    this.canvas = null;
+    this.buildDoors();
+    this._onResize = () => { this.setState({ w: window.innerWidth, h: window.innerHeight }, () => this.fitMap()); };
+    window.addEventListener('resize', this._onResize);
+    setTimeout(() => {
+      let resume = null;
+      try { const s = localStorage.getItem('ha_walk_v1'); if (s) { const p = JSON.parse(s); if (p && p.pins && p.idx < p.pins.length) resume = p; } } catch(e) {}
+      // shared route from URL fragment (#route=pin,pin,…&s=x,y)
+      let shared = null;
+      try {
+        const m = location.hash.match(/route=([^&]+)/), ms = location.hash.match(/s=([\d.]+),([\d.]+)/);
+        if (m) {
+          const pins = decodeURIComponent(m[1]).split(',').filter(p => this.byPin(p));
+          if (pins.length) {
+            const start = ms ? { x: +ms[1], y: +ms[2] } : { x: this.byPin(pins[0]).cx, y: this.byPin(pins[0]).cy };
+            let cur = { cx: start.x, cy: start.y }, elapsed = 0;
+            const stops = pins.map(pin => { const d = this.byPin(pin); const w = Math.hypot(d.cx-cur.cx, d.cy-cur.cy)*2.2/80*1.3; elapsed += w + 3.5; cur = d; return { pin, walk: Math.max(1, Math.round(w)), elapsed: Math.round(elapsed) }; });
+            const avg = Math.round(stops.reduce((a,s) => a + this.byPin(s.pin).score, 0) / stops.length);
+            shared = { start, stops, total: Math.round(elapsed), avg };
+          }
+        }
+      } catch(e) {}
+      this.setState({ view: 'map', resume, route: shared, routeOpen: !!shared, start: shared ? shared.start : null }, () => this.fitMap());
+    }, 1300);
+    this._raf = () => this.draw();
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this._onResize); }
+  componentDidUpdate() { this.draw(); }
+
+  // ---------- data ----------
+  buildDoors() {
+    let seed = 42; const rng = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const streets = [
+      { name: 'Fawn Hill Rd', pts: [[40,90],[300,60],[620,80],[960,140]] },
+      { name: 'Crescent Dr', pts: [[60,205],[350,175],[700,205],[950,265]] },
+      { name: 'Island Rd', pts: [[40,325],[400,295],[760,325],[960,385]] },
+      { name: 'Lakeside Dr', pts: [[60,445],[380,415],[720,445],[950,505]] },
+      { name: 'Mackay Ave', pts: [[80,565],[400,535],[740,565],[940,625]] },
+      { name: 'Brookside Ter', pts: [[60,685],[420,655],[760,685],[950,725]] },
+      { name: 'Golf Club Ct', pts: [[520,50],[540,300],[520,600]] },
+      { name: 'Dogwood Ln', pts: [[210,70],[190,330],[210,600]] },
+      { name: 'Wyckoff Way', pts: [[810,110],[830,370],[810,640]] },
+      { name: 'Orchard Ln', pts: [[370,240],[360,470],[375,640]] },
+      { name: 'Pine Hollow Rd', pts: [[660,120],[675,350],[660,520]] }
+    ];
+    // sample polylines
+    const samplePath = (pts, step) => {
+      const out = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x1,y1] = pts[i], [x2,y2] = pts[i+1];
+        const len = Math.hypot(x2-x1, y2-y1), n = Math.max(1, Math.floor(len/step));
+        for (let j = 0; j < n; j++) { const t = j/n; out.push({ x: x1+(x2-x1)*t, y: y1+(y2-y1)*t, ang: Math.atan2(y2-y1, x2-x1) }); }
+      }
+      return out;
+    };
+    this.streets = streets.map(s => ({ ...s, path: samplePath(s.pts, 8) }));
+    const allSamples = [];
+    this.streets.forEach((s, si) => s.path.forEach(p => allSamples.push({ ...p, si })));
+    const clusters = [{x:300,y:90,r:170,b:1},{x:720,y:460,r:150,b:.85},{x:170,y:620,r:130,b:.75}];
+    const heatAt = (x,y) => { let h = 0; clusters.forEach(c => { const d = Math.hypot(x-c.x,y-c.y); if (d < c.r) h = Math.max(h, c.b*(1-d/c.r)); }); return h; };
+    const doors = [];
+    streets.forEach((s, si) => {
+      const lots = samplePath(s.pts, 26);
+      [1,-1].forEach((side, k) => {
+        let num = side === 1 ? 2 + Math.floor(rng()*4)*2 : 3 + Math.floor(rng()*4)*2;
+        lots.forEach(p => {
+          const nx = Math.cos(p.ang + Math.PI/2)*side, ny = Math.sin(p.ang + Math.PI/2)*side;
+          const cx = p.x + nx*20, cy = p.y + ny*20;
+          if (cx < 25 || cx > 975 || cy < 30 || cy > 745) return;
+          // skip near other streets' centerlines and any already-placed lot
+          for (const q of allSamples) { if (q.si !== si && Math.hypot(q.x-cx, q.y-cy) < 27) return; }
+          for (const o of doors) { if (Math.hypot(o.cx-cx, o.cy-cy) < 23) return; }
+          doors.push({ cx, cy, w: 19, h: 24, rot: p.ang, nx, ny, street: s.name, num });
+          num += 2 + (rng() < .1 ? 2 : 0);
+        });
+      });
+    });
+    // pad (second row, further from street, collision-checked) or trim to exactly 540
+    let pad = 0, guard = 0;
+    while (doors.length < 540 && guard < 4000) {
+      guard++;
+      const src = doors[pad % doors.length]; pad++;
+      const cx = src.cx + src.nx*27, cy = src.cy + src.ny*27;
+      if (cx < 25 || cx > 975 || cy < 30 || cy > 745) continue;
+      let ok = true;
+      for (const q of allSamples) { if (Math.hypot(q.x-cx, q.y-cy) < 20) { ok = false; break; } }
+      if (ok) for (const o of doors) { if (Math.hypot(o.cx-cx, o.cy-cy) < 23) { ok = false; break; } }
+      if (ok) doors.push({ ...src, cx, cy, num: src.num + 200 });
+    }
+    while (doors.length > 540) doors.splice(Math.floor(rng()*doors.length), 1);
+    const median = 500000;
+    doors.forEach((d, i) => {
+      d.pin = '0248_' + (1500 + (i % 40)) + '_' + (1 + Math.floor(i / 40));
+      d.addr = d.num + ' ' + d.street;
+      const h = heatAt(d.cx, d.cy);
+      // groups
+      let mover = 0, moverDays = null;
+      if (rng() < 0.03 + 0.3*h) { const r = rng(); if (r < .35) { mover = 100; moverDays = 5 + Math.floor(rng()*25); } else if (r < .75) { mover = 85; moverDays = 31 + Math.floor(rng()*29); } else { mover = 70; moverDays = 61 + Math.floor(rng()*29); } }
+      let permits = 0; const pr = rng() - h*.25; permits = pr < .06 ? 3 : pr < .18 ? 2 : pr < .40 ? 1 : 0;
+      const churn = permits >= 2 && rng() < .5;
+      const hires = Math.min(permits*20, 40) + (churn ? 20 : 0);
+      const value = Math.round((380 + rng()*rng()*520) * 1000);
+      const dual = rng() < .35;
+      let capacity = (value >= median*1.5 ? 25 : value >= median ? 15 : 0) + (dual ? 5 : 0);
+      const yr = 1952 + Math.floor(rng()*54);
+      const age = 2026 - yr;
+      const pool = rng() < .12, bigLot = rng() < .15, decline = rng() < .07;
+      let need = (age >= 30 ? 8 : 0) + (pool ? 8 : 0) + (bigLot ? 4 : 0) + (decline ? 6 : 0);
+      const combo = age >= 30 && permits === 0 && decline; if (combo) need += 4;
+      const rental = rng() < .06;
+      const mod = rental ? -15 : 0;
+      let conf = 'normal', gap = false, dYr = yr, dAge = age, dDecline = decline, dCombo = combo;
+      if (rng() < .035) { conf = 'low'; gap = true; mover = 0; moverDays = null; dYr = 0; dAge = null; dDecline = false; dCombo = false; need = (pool?8:0)+(bigLot?4:0); }
+      const raw = mover + hires + capacity + need + mod;
+      d.g = { mover, hires, capacity, need, mod };
+      d.conf = conf; d.raw = raw; d.score = Math.max(0, Math.min(100, raw));
+      d.vision = pool || dDecline;
+      d.detail = { moverDays, permits, churn, value, yr: dYr, age: dAge, pool, bigLot, decline: dDecline, combo: dCombo, rental, dual, gap };
+      d.scored = true;
+    });
+    // 3 unscored
+    [0.25, 0.56, 0.87].forEach(k => { const d = doors[Math.floor(doors.length*k)]; if (d) { d.scored = false; d.score = null; } });
+    // fixture overrides
+    const fx = (street, num, o) => {
+      const d = doors.find(x => x.scored && x.street === street) || doors[0];
+      Object.assign(d, o, { num, addr: num + ' ' + street, street, scored: true });
+      return d;
+    };
+    fx('Fawn Hill Rd', 27, { pin: '0248_1503_7', score: 100, raw: 108, conf: 'normal', g: {mover:85,hires:0,capacity:15,need:8,mod:0}, vision: false,
+      detail: {moverDays:47,permits:0,churn:false,value:520000,yr:1995,age:31,pool:false,bigLot:false,decline:false,combo:false,rental:false,dual:false} });
+    fx('Fawn Hill Rd', 5, { pin: '0248_1501_2', score: 85, raw: 85, conf: 'normal', g: {mover:100,hires:0,capacity:0,need:0,mod:-15}, vision: false,
+      detail: {moverDays:20,permits:0,churn:false,value:480000,yr:2001,age:25,pool:false,bigLot:false,decline:false,combo:false,rental:true,dual:false} });
+    fx('Crescent Dr', 42, { pin: '0248_1509_4', score: 100, raw: 100, conf: 'normal', g: {mover:0,hires:60,capacity:20,need:20,mod:0}, vision: true,
+      detail: {moverDays:null,permits:3,churn:true,value:690000,yr:1978,age:48,pool:true,bigLot:true,decline:false,combo:false,rental:false,dual:true,
+        permitList: [{no:'B-2024-0871',type:'roofing',date:'2024-12-01',by:'ABC Roofing LLC'},{no:'B-2025-0342',type:'HVAC',date:'2025-06-15',by:'Bergen HVAC Inc'},{no:'B-2025-0518',type:'electrical',date:'2025-09-20',by:'Sparks Electric'}]} });
+    fx('Crescent Dr', 8, { pin: '0248_1508_1', score: 15, raw: 15, conf: 'low', g: {mover:0,hires:0,capacity:15,need:0,mod:0}, vision: false,
+      detail: {moverDays:null,permits:0,churn:false,value:510000,yr:0,age:null,pool:false,bigLot:false,decline:false,combo:false,rental:false,dual:false,gap:true} });
+    fx('Island Rd', 118, { pin: '0248_1514_9', score: 28, raw: 28, conf: 'normal', g: {mover:0,hires:20,capacity:15,need:8,mod:-15}, vision: false,
+      detail: {moverDays:null,permits:1,churn:false,value:505000,yr:1985,age:41,pool:false,bigLot:false,decline:false,combo:false,rental:true,dual:false,
+        permitList: [{no:'B-2025-0044',type:'plumbing',date:'2025-01-10',by:'Valley Plumbing'}]} });
+    fx('Mackay Ave', 61, { pin: '0248_1521_3', score: 8, raw: 8, conf: 'normal', g: {mover:0,hires:0,capacity:0,need:8,mod:0}, vision: false,
+      detail: {moverDays:null,permits:0,churn:false,value:395000,yr:1961,age:65,pool:false,bigLot:false,decline:false,combo:false,rental:false,dual:false,tenure:28} });
+    fx('Brookside Ter', 33, { pin: '0248_1526_6', score: 38, raw: 38, conf: 'normal', g: {mover:0,hires:0,capacity:20,need:18,mod:0}, vision: true,
+      detail: {moverDays:null,permits:0,churn:false,value:545000,yr:1968,age:58,pool:false,bigLot:false,decline:true,combo:true,rental:false,dual:true} });
+    fx('Lakeside Dr', 14, { pin: '0248_1518_5', score: 23, raw: 23, conf: 'normal', g: {mover:0,hires:0,capacity:15,need:8,mod:0}, vision: false,
+      detail: {moverDays:91,moverExpired:true,permits:0,churn:false,value:560000,yr:1988,age:38,pool:false,bigLot:false,decline:false,combo:false,rental:false,dual:false} });
+    this.doors = doors;
+  }
+
+  evidenceFor(d) {
+    const t = d.detail, ev = [];
+    const P = (pts, text, src, date, extra) => ev.push(Object.assign({ pts, text, src, date }, extra));
+    const parcel = 'NJ parcel / MOD-IV record', pdate = '2026-08-10';
+    if (!t.gap && d.g.mover > 0) {
+      const deed = t.moverDays === 47 ? '2026-06-15' : t.moverDays === 20 ? '2026-07-12' : '2026-0' + (8 - Math.ceil(t.moverDays/30)) + '-' + String(1 + (t.moverDays % 27)).padStart(2,'0');
+      P(d.g.mover, 'Moved in ' + t.moverDays + ' days ago (deed ' + deed + ')', parcel, pdate);
+    }
+    if (t.permitList) t.permitList.forEach((p, i) => P(i < 2 ? 20 : 0, 'Permit ' + p.no + ' · ' + p.type + ' · issued ' + p.date + ' · contractor "' + p.by + '"' + (i >= 2 ? ' (permit cap 40 reached)' : ''), 'NJ construction permits (data.nj.gov)', pdate));
+    else if (t.permits > 0) P(Math.min(t.permits*20, 40), t.permits + ' contractor permit' + (t.permits > 1 ? 's' : '') + ' in the last 2 years' + (t.permits > 2 ? ' (capped at 40)' : ''), 'NJ construction permits (data.nj.gov)', pdate);
+    if (t.churn) P(20, t.permits + ' distinct contractors, no repeat — no incumbent provider to displace', 'NJ construction permits (data.nj.gov)', pdate);
+    if (d.g.capacity >= 15) P(t.value >= 750000 ? 25 : 15, 'Assessed $' + Math.round(t.value/1000) + 'k ' + (t.value >= 750000 ? '≥ 1.5× territory median' : '≥ territory median ($500k)'), parcel, pdate);
+    if (t.dual) P(5, 'Block group: 41% dual-income households — neighborhood context, not a household claim', 'Census ACS 5-yr (B23007)', '2026-08-09');
+    if (!t.gap && t.age !== null && t.age >= 30) P(8, 'Home built ' + t.yr + ' (' + t.age + ' yrs)', parcel, pdate);
+    if (t.pool) P(8, 'Pool detected on 2020 aerial', 'NJ 2020 orthophoto', '2026-08-08');
+    if (t.bigLot) P(4, 'Lot ≥ 0.5 acre', parcel, pdate);
+    if (t.decline) P(6, 'Exterior condition good → fair between 2015 and 2020 aerials', 'NJ orthos 2015 + 2020', '2026-08-08');
+    if (t.combo) P(4, 'Deferred-maintenance combo: ' + t.age + '-year-old home, zero permits in 2 yrs, declining condition', 'derived (multiple sources)', pdate);
+    if (t.rental) P(-15, 'Matches municipal rental registration — occupant likely tenant', 'Ramsey rental registration', '2026-08-05');
+    if (t.tenure) P(0, t.tenure + '-year tenure with no permit activity — settled/DIY household', parcel, pdate);
+    if (t.gap) P(0, 'Data gap — deed date and year built unavailable in county data', parcel, pdate);
+    if (t.moverExpired) P(0, 'Deed 91 days ago — outside the 90-day mover window', parcel, pdate);
+    if (ev.length === 0) P(0, 'No qualifying signals for this parcel', parcel, pdate);
+    return ev;
+  }
+  talkFor(d) {
+    const t = d.detail;
+    if (t.gap) return "Hi — we're the neighborhood home-services concierge; a lot of your neighbors on this block use us for seasonal upkeep.";
+    if (d.g.mover >= 85) return "Welcome to the neighborhood — most new owners here line up their core home services in the first two months, and we handle all of it with one call.";
+    if (d.g.mover > 0) return "Congrats on the new place — we coordinate trusted local pros for everything the house needs, so you never chase contractors.";
+    if (t.churn) return "You've had " + (t.permits === 2 ? 'two' : 'three') + " different contractors out in two years — we give you one accountable team for all of it.";
+    if (t.permits > 0) return "Looks like you take care of this place — we coordinate vetted pros so projects like your recent work run themselves.";
+    if (t.rental) return "We work with several property owners on this street — one point of contact for tenant repairs and seasonal upkeep.";
+    if (t.decline || t.combo) return "Older homes on this street need steady upkeep — we put yours on a plan so nothing gets deferred.";
+    if (t.pool) return "Pool homes have the longest to-do lists in town — we bundle pool, lawn, and house care under one plan.";
+    return "We're the local home-services concierge — one call for every repair and seasonal job, trusted by your neighbors.";
+  }
+  chipFor(d) {
+    const t = d.detail;
+    if (t.gap) return 'partial data';
+    if (d.g.mover >= 100) return 'moved in ' + t.moverDays + ' days ago';
+    if (d.g.mover > 0) return 'moved in ' + (t.moverDays >= 42 ? Math.round(t.moverDays/7) + ' wks' : t.moverDays + ' days') + ' ago';
+    if (t.churn) return t.permits + ' permits, no repeat contractor';
+    if (t.permits > 0) return t.permits + ' permit' + (t.permits > 1 ? 's' : '') + ' in 2 yrs';
+    if (t.rental) return 'registered rental';
+    if (t.combo) return 'deferred maintenance';
+    if (t.pool) return 'pool home';
+    return 'capacity signals';
+  }
+
+  // ---------- color ----------
+  ramp(s) {
+    const stops = [[0,237,239,242],[25,191,208,226],[45,127,163,201],[65,65,114,159],[85,30,76,126],[100,18,47,85]];
+    for (let i = 0; i < stops.length - 1; i++) {
+      const [a,...c1] = stops[i], [b,...c2] = stops[i+1];
+      if (s <= b) { const t = (s-a)/(b-a); return 'rgb(' + c1.map((v,j) => Math.round(v + (c2[j]-v)*t)).join(',') + ')'; }
+    }
+    return 'rgb(18,47,85)';
+  }
+
+  // ---------- map ----------
+  fitMap() {
+    const c = this.canvasEl; if (!c) return;
+    const r = c.getBoundingClientRect();
+    const z = Math.min(r.width/1000, r.height/780) * 0.96;
+    this.setState({ zoom: z, pan: { x: (r.width - 1000*z)/2, y: (r.height - 760*z)/2 } });
+  }
+  toWorld(px, py) { const { zoom, pan } = this.state; return { x: (px - pan.x)/zoom, y: (py - pan.y)/zoom }; }
+  draw() {
+    const c = this.canvasEl; if (!c || this.state.view !== 'map') return;
+    const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (c.width !== Math.round(r.width*dpr)) { c.width = Math.round(r.width*dpr); c.height = Math.round(r.height*dpr); }
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle = '#E8E6E0'; ctx.fillRect(0,0,r.width,r.height);
+    const { zoom, pan, fLo, fHi, selPin, route } = this.state;
+    ctx.translate(pan.x, pan.y); ctx.scale(zoom, zoom);
+    // streets
+    ctx.strokeStyle = '#F7F6F2'; ctx.lineWidth = 13; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    this.streets.forEach(s => { ctx.beginPath(); s.pts.forEach((p,i) => i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1])); ctx.stroke(); });
+    ctx.strokeStyle = '#D8D5CD'; ctx.lineWidth = 1;
+    this.streets.forEach(s => { ctx.beginPath(); s.pts.forEach((p,i) => i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1])); ctx.stroke(); });
+    // street names at zoom
+    if (zoom > 1.3) {
+      ctx.fillStyle = '#9A978E'; ctx.font = '500 9px "IBM Plex Mono", monospace';
+      this.streets.forEach(s => { const m = s.pts[Math.floor(s.pts.length/2)]; ctx.fillText(s.name.toUpperCase(), m[0]-30, m[1]-8); });
+    }
+    const routePins = route ? new Set(route.stops.map(s => s.pin)) : null;
+    const doneSet = new Set(this.state.walkDone || []);
+    this.doors.forEach(d => {
+      ctx.save(); ctx.translate(d.cx, d.cy); ctx.rotate(d.rot);
+      const inFilter = d.scored && d.score >= fLo && d.score <= fHi;
+      let fill = !d.scored ? '#D6D3CB' : this.ramp(d.score);
+      let alpha = 1;
+      if (d.scored && !inFilter) alpha = 0.14;
+      if (routePins && !routePins.has(d.pin)) alpha = Math.min(alpha, 0.28);
+      if (doneSet.has(d.pin)) { fill = '#B9BCC2'; alpha = 0.6; }
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = fill;
+      ctx.beginPath(); ctx.roundRect(-d.w/2, -d.h/2, d.w, d.h, 2); ctx.fill();
+      ctx.globalAlpha = Math.min(1, alpha + .1);
+      ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 0.7; ctx.stroke();
+      if (!d.scored) { ctx.strokeStyle = '#B4B1A8'; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(-d.w/2+3,-d.h/2+3); ctx.lineTo(d.w/2-3,d.h/2-3); ctx.stroke(); }
+      if (d.pin === selPin) { ctx.globalAlpha = 1; ctx.strokeStyle = '#E8791A'; ctx.lineWidth = 2.4/zoom + 1; ctx.stroke(); }
+      // labels at high zoom
+      if (zoom >= 2.1 && d.scored && inFilter) {
+        ctx.rotate(-d.rot); ctx.globalAlpha = 1;
+        ctx.fillStyle = d.score > 55 ? '#fff' : '#1B1E23';
+        ctx.font = '600 7px "IBM Plex Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(d.score), 0, 0);
+      }
+      ctx.restore();
+    });
+    // route path + pins
+    if (route) {
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#E8791A'; ctx.lineWidth = 2.5/zoom + 1; ctx.setLineDash([8/zoom, 6/zoom]);
+      ctx.beginPath();
+      if (route.start) ctx.moveTo(route.start.x, route.start.y);
+      route.stops.forEach((s,i) => { const d = this.byPin(s.pin); if (!route.start && i === 0) ctx.moveTo(d.cx,d.cy); else ctx.lineTo(d.cx, d.cy); });
+      ctx.stroke(); ctx.setLineDash([]);
+      if (route.start) { ctx.fillStyle = '#1B1E23'; ctx.beginPath(); ctx.arc(route.start.x, route.start.y, 7/zoom+3, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '600 ' + (9/zoom+4) + 'px "IBM Plex Sans"'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('P', route.start.x, route.start.y); }
+      route.stops.forEach((s,i) => {
+        const d = this.byPin(s.pin), done = doneSet.has(s.pin), rr = 8/zoom + 3.5;
+        ctx.fillStyle = done ? '#B9BCC2' : '#E8791A';
+        ctx.beginPath(); ctx.arc(d.cx, d.cy - d.h/2 - rr*0.9, rr, 0, 7); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2/zoom; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.font = '700 ' + (9/zoom + 4) + 'px "IBM Plex Sans"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i+1), d.cx, d.cy - d.h/2 - rr*0.9);
+      });
+    }
+    if (this.state.start && !route) { const s = this.state.start; ctx.fillStyle = '#1B1E23'; ctx.beginPath(); ctx.arc(s.x, s.y, 7/zoom+3, 0, 7); ctx.fill(); ctx.fillStyle='#fff'; ctx.font='600 ' + (9/zoom+4) + 'px "IBM Plex Sans"'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('P', s.x, s.y); }
+  }
+  byPin(pin) { return this.doors.find(d => d.pin === pin); }
+  hitTest(wx, wy) {
+    for (const d of this.doors) {
+      const dx = wx - d.cx, dy = wy - d.cy, cos = Math.cos(-d.rot), sin = Math.sin(-d.rot);
+      const lx = dx*cos - dy*sin, ly = dx*sin + dy*cos;
+      if (Math.abs(lx) <= d.w/2 + 2 && Math.abs(ly) <= d.h/2 + 2) return d;
+    }
+    return null;
+  }
+
+  // ---------- route ----------
+  computeRoute() {
+    const { start, routeHours, routeDoors, fLo, fHi } = this.state;
+    const hours = parseFloat(routeHours), budget = hours*60, dwell = 3.5;
+    const excluded = this._excluded || new Set();
+    let cand = this.doors.filter(d => d.scored && d.score > 0 && !excluded.has(d.pin) && d.score >= fLo && d.score <= fHi);
+    let cur = { cx: start.x, cy: start.y }, elapsed = 0;
+    const stops = [];
+    while (stops.length < routeDoors && cand.length) {
+      let best = null, bestV = -1, bestW = 0;
+      for (const d of cand) {
+        const w = Math.hypot(d.cx-cur.cx, d.cy-cur.cy) * 2.2 / 80 * 1.3;
+        const v = d.score / (w + dwell);
+        if (v > bestV || (v === bestV && best && d.pin < best.pin)) { bestV = v; best = d; bestW = w; }
+      }
+      if (!best || elapsed + bestW + dwell > budget) break;
+      elapsed += bestW + dwell;
+      stops.push({ pin: best.pin, walk: Math.max(1, Math.round(bestW)), elapsed: Math.round(elapsed) });
+      cur = best; cand = cand.filter(d => d.pin !== best.pin);
+    }
+    if (!stops.length) { this.setState({ route: null, routeEmpty: true, computing: false }); return; }
+    const total = Math.round(elapsed);
+    const avg = Math.round(stops.reduce((a,s) => a + this.byPin(s.pin).score, 0) / stops.length);
+    this.setState({ route: { start, stops, total, avg }, routeEmpty: false, computing: false });
+  }
+
+  // ---------- render ----------
+  renderVals() {
+    const st = this.state, isMobile = st.w < 760;
+    const sel = st.selPin ? this.byPin(st.selPin) : null;
+    const sheetBase = 'z-index:40;background:#FFFFFF;display:flex;flex-direction:column;box-shadow:0 -6px 30px rgba(0,0,0,.14);';
+    const sheetStyle = isMobile
+      ? 'position:fixed;left:0;right:0;bottom:0;max-height:72dvh;border-radius:14px 14px 0 0;' + sheetBase
+      : 'position:absolute;top:74px;right:12px;width:390px;max-height:calc(100% - 140px);border-radius:10px;border:1px solid #DBD9D2;' + sheetBase;
+    const routeStyle = isMobile
+      ? 'position:fixed;left:0;right:0;bottom:0;max-height:78dvh;border-radius:14px 14px 0 0;z-index:45;background:#fff;display:flex;flex-direction:column;box-shadow:0 -6px 30px rgba(0,0,0,.16)'
+      : 'position:absolute;top:74px;left:12px;width:400px;max-height:calc(100% - 140px);border-radius:10px;border:1px solid #DBD9D2;z-index:45;background:#fff;display:flex;flex-direction:column;box-shadow:0 6px 30px rgba(0,0,0,.12)';
+    let selEvidence = [], selGroups = [], selMathLine = '', selImages = [];
+    if (sel && sel.scored) {
+      selEvidence = this.evidenceFor(sel).map(ev => ({ ...ev,
+        ptsLabel: ev.pts > 0 ? '+' + ev.pts : ev.pts < 0 ? String(ev.pts) : '·',
+        ptsColor: ev.pts > 0 ? '#1E4C7E' : ev.pts < 0 ? '#A4442C' : '#8A8D93' }));
+      const gdef = [['Mover','mover',100],['Hires-out','hires',60],['Capacity','capacity',30],['Need','need',30]];
+      const rules = {
+        mover: sel.detail.moverDays != null && sel.g.mover > 0 ? ('deed ' + sel.detail.moverDays + ' days ' + (sel.detail.moverDays <= 30 ? '≤ 30 → 100' : sel.detail.moverDays <= 60 ? '≤ 60 → 85' : '≤ 90 → 70')) : sel.detail.gap ? 'skipped — deed date unavailable' : 'no deed in the last 90 days → 0',
+        hires: sel.detail.permits > 0 ? (sel.detail.permits + ' permit(s) × 20, cap 40' + (sel.detail.churn ? ' · churn +20' : '')) : 'no permits in rolling 2-yr window → 0',
+        capacity: sel.g.capacity > 0 ? ('assessed ' + (sel.detail.value >= 750000 ? '≥ 1.5× median → 25' : '≥ $500k median → 15') + (sel.detail.dual ? ' · ACS block-group prior +5' : '')) : 'below territory median → 0',
+        need: sel.g.need > 0 ? [sel.detail.age >= 30 ? 'age ≥ 30yr: 8' : null, sel.detail.pool ? 'pool: 8' : null, sel.detail.bigLot ? 'lot ≥ 0.5ac: 4' : null, sel.detail.decline ? 'decline: 6' : null, sel.detail.combo ? 'combo: 4' : null].filter(Boolean).join(' · ') : sel.detail.gap ? 'age components skipped — year built unavailable' : 'no need signals → 0'
+      };
+      selGroups = gdef.map(([name,k,max]) => ({ name, valLabel: sel.g[k] + ' / ' + max, pct: Math.round(sel.g[k]/max*100) + '%', barColor: this.ramp(40 + sel.g[k]/max*60), rule: rules[k] }));
+      if (sel.g.mod) selGroups.push({ name: 'Modifier', valLabel: String(sel.g.mod), pct: '100%', barColor: '#A4442C', rule: 'absentee-likely (rental-registration match): −15' });
+      selMathLine = 'raw ' + sel.raw + (sel.raw > 100 ? ' → capped 100' : sel.raw < 0 ? ' → floored 0' : ' = score ' + sel.score);
+      if (sel.vision) {
+        selImages = (sel.detail.pool ? [
+          { ph: '2020 ortho tile', label: 'Pool detected', meta: 'conf 0.91 · captured 2020', bbox: true },
+          { ph: '2015 ortho tile', label: 'Baseline vintage', meta: 'captured 2015', bbox: false }
+        ] : [
+          { ph: '2015 ortho tile', label: 'Condition: good', meta: 'conf 0.84 · captured 2015', bbox: true },
+          { ph: '2020 ortho tile', label: 'Condition: fair', meta: 'conf 0.79 · captured 2020', bbox: true }
+        ]).map(im => ({ ...im, onOpen: () => this.setState({ imgView: im }) }));
+      }
+    }
+    const route = st.route;
+    const routeRows = route ? route.stops.map((s, i) => {
+      const d = this.byPin(s.pin);
+      return { n: i+1, addr: d.addr, score: d.score, color: this.ramp(Math.max(35, d.score)), chip: this.chipFor(d), talk: this.talkFor(d), elapsed: s.elapsed, walk: s.walk,
+        onTap: () => this.setState({ selPin: d.pin, showMath: false }),
+        onExclude: (e) => { e.stopPropagation(); this._excluded = this._excluded || new Set(); this._excluded.add(d.pin); this.computeRoute(); } };
+    }) : [];
+    const fmtH = m => Math.floor(m/60) + 'h' + String(m%60).padStart(2,'0') + 'm';
+    // walk
+    const wRoute = st.route, wStops = wRoute ? wRoute.stops : [];
+    const remaining = wStops.slice(st.walkIdx);
+    const curStop = st.walkMode && st.walkIdx < wStops.length ? wStops[st.walkIdx] : null;
+    let walkStop = false, walkUpcoming = [];
+    if (curStop) {
+      const d = this.byPin(curStop.pin);
+      walkStop = { n: st.walkIdx + 1, addr: d.addr, score: d.score, color: this.ramp(Math.max(35,d.score)), chip: this.chipFor(d), talk: this.talkFor(d), walk: curStop.walk };
+      walkUpcoming = wStops.slice(st.walkIdx + 1, st.walkIdx + 6).map((s, i) => { const dd = this.byPin(s.pin); return { n: st.walkIdx + 2 + i, addr: dd.addr, score: dd.score, color: this.ramp(Math.max(35,dd.score)) }; });
+    }
+    const minLeft = wRoute && curStop ? Math.max(0, wRoute.total - (st.walkIdx > 0 ? wStops[st.walkIdx-1].elapsed : 0)) : 0;
+    const persistWalk = () => { try { localStorage.setItem('ha_walk_v1', JSON.stringify({ pins: wStops.map(s=>s.pin), stops: wStops, idx: this.state.walkIdx, done: this.state.walkDone, total: wRoute.total, start: wRoute.start, avg: wRoute.avg })); } catch(e) {} };
+    const advance = (markDone) => {
+      const s = wStops[this.state.walkIdx];
+      const done = markDone ? [...this.state.walkDone, s.pin] : this.state.walkDone;
+      this.setState({ walkIdx: this.state.walkIdx + 1, walkDone: done }, () => { persistWalk(); });
+    };
+    const toast = (msg) => { this.setState({ toast: msg }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: null }), 1800); };
+    const full = a => a + ', Ramsey NJ 07446';
+    return {
+      isLoading: st.view === 'loading', isMap: st.view === 'map', isAbout: st.view === 'about',
+      isMobile, showSub: !isMobile, hasError: st.error, retryData: () => this.setState({ error: false }),
+      simulateError: (e) => { e.preventDefault(); this.setState({ view: 'map', error: true }); },
+      openAbout: () => this.setState({ view: 'about' }), backToMap: () => this.setState({ view: 'map' }, () => this.fitMap()),
+      filterLo: st.fLo, filterHi: st.fHi,
+      onFilterLo: e => { const v = Math.min(+e.target.value, this.state.fHi - 1); this.setState({ fLo: v }, () => { if (this.state.route) this.computeRoute(); }); },
+      onFilterHi: e => { const v = Math.max(+e.target.value, this.state.fLo + 1); this.setState({ fHi: v }, () => { if (this.state.route) this.computeRoute(); }); },
+      canvasRef: el => {
+        this.canvasEl = el;
+        if (el && !el.__haBound) {
+          el.__haBound = true;
+          el.addEventListener('pointerdown', e => { this._drag = { x: e.clientX, y: e.clientY, px: this.state.pan.x, py: this.state.pan.y, moved: false }; });
+          window.addEventListener('pointermove', e => { const d = this._drag; if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; if (Math.abs(dx) + Math.abs(dy) > 6) d.moved = true; if (d.moved) this.setState({ pan: { x: d.px + dx, y: d.py + dy } }); });
+          window.addEventListener('pointerup', () => { const d = this._drag; this._drag = null; this._justMoved = !!(d && d.moved); });
+          el.addEventListener('click', e => {
+            if (this._justMoved) { this._justMoved = false; return; }
+            const rect = el.getBoundingClientRect();
+            const w = this.toWorld(e.clientX - rect.left, e.clientY - rect.top);
+            if (this.state.pickingStart) {
+              if (w.x < 0 || w.x > 1000 || w.y < 0 || w.y > 780) { this.setState({ toast: 'Start must be near the territory' }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: null }), 1800); return; }
+              this.setState({ pickingStart: false, start: { x: w.x, y: w.y }, routeOpen: true });
+              return;
+            }
+            const hit = this.hitTest(w.x, w.y);
+            if (hit) this.setState({ selPin: hit.pin, showMath: false }); else this.setState({ selPin: null });
+          });
+        }
+        if (el && !this._fitted) { this._fitted = true; setTimeout(() => { this.fitMap(); }, 30); }
+        if (el) requestAnimationFrame(() => this.draw());
+      },
+      mapCursor: st.pickingStart ? 'crosshair' : 'grab',
+      aboutLabel: isMobile ? 'About' : 'Data & Ethics',
+      onWheel: e => { e.preventDefault(); const f = e.deltaY < 0 ? 1.15 : 0.87; const z = Math.max(.4, Math.min(6, st.zoom * f)); const rect = this.canvasEl.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top; this.setState({ zoom: z, pan: { x: mx - (mx - st.pan.x) * z / st.zoom, y: my - (my - st.pan.y) * z / st.zoom } }); },
+      zoomIn: () => this.setState({ zoom: Math.min(6, st.zoom * 1.35) }),
+      zoomOut: () => this.setState({ zoom: Math.max(.4, st.zoom / 1.35) }),
+      // evidence panel
+      selected: sel ? { ...sel, scored: sel.scored, capped: sel.scored && sel.raw > 100, talk: sel.scored ? this.talkFor(sel) : '' } : false,
+      selUnscored: sel ? !sel.scored : false,
+      selScoreColor: sel && sel.scored ? this.ramp(Math.max(30, sel.score)) : '#8A8D93',
+      selConfColor: sel && sel.conf === 'low' ? '#A4442C' : '#3D414A',
+      selLowConf: sel ? sel.conf === 'low' : false,
+      selEvidence, selGroups, selMathLine,
+      selImagery: sel && sel.scored && sel.vision, selImages,
+      selNoImagery: sel && sel.scored && !sel.vision,
+      sheetStyle, closePanel: () => this.setState({ selPin: null }),
+      copyAddress: () => { navigator.clipboard && navigator.clipboard.writeText(full(sel.addr)); toast('Address copied'); },
+      showMath: st.showMath, toggleMath: () => this.setState({ showMath: !st.showMath }),
+      mathBtnLabel: st.showMath ? 'Hide math' : 'Show math',
+      // route
+      routeOpen: st.routeOpen, routeStyle,
+      openRoute: () => this.setState({ routeOpen: true, selPin: null, walkMode: false }),
+      closeRoute: () => { this._excluded = null; this.setState({ routeOpen: false, route: null, routeEmpty: false, pickingStart: false }); },
+      routeHours: st.routeHours, routeDoors: st.routeDoors,
+      hourOpts: ['0.5','1','1.5','2','3'].map(h => ({ label: h, bg: h === st.routeHours ? '#1B1E23' : '#fff', fg: h === st.routeHours ? '#fff' : '#3D414A',
+        onPick: () => this.setState({ routeHours: h }, () => { if (this.state.route || this.state.routeEmpty) this.computeRoute(); }) })),
+      onDoors: e => this.setState({ routeDoors: Math.max(1, Math.min(60, +e.target.value || 20)) }, () => { if (this.state.route) this.computeRoute(); }),
+      pickStart: () => this.setState({ pickingStart: true, routeOpen: false }),
+      startBtnLabel: st.start ? 'Start ✓ (move)' : 'Set start on map',
+      pickingStart: st.pickingStart,
+      planDisabled: !st.start || st.computing,
+      planBg: !st.start ? '#B9BCC2' : '#1B1E23',
+      planBtnLabel: st.computing ? 'Routing 540 candidates…' : 'Plan',
+      planRoute: () => { this._excluded = null; this.setState({ computing: true }); this._planT = setTimeout(() => { if (this.state.computing) this.computeRoute(); }, 450); },
+      computing: st.computing,
+      routeEmpty: st.routeEmpty, hasRoute: !!route, routeRows,
+      routeSummary: route ? ('doors ' + route.stops.length + ' · est total ' + fmtH(route.total) + ' (walking estimate) · avg score ' + route.avg) : '',
+      copyRoute: () => { if (!route) return; const txt = route.stops.map((s,i) => { const d = this.byPin(s.pin); return (i+1) + '. ' + full(d.addr) + ' — score ' + d.score + ' — ' + this.chipFor(d) + ' — +' + s.elapsed + ' min'; }).join('\n'); navigator.clipboard && navigator.clipboard.writeText(txt); toast('Route copied as text'); },
+      // walk
+      startWalk: () => { this.setState({ walkMode: true, walkIdx: 0, walkDone: [], routeOpen: false }, () => { try { localStorage.setItem('ha_walk_v1', JSON.stringify({ pins: wStops.map(s=>s.pin), stops: wStops, idx: 0, done: [], total: wRoute.total, start: wRoute.start, avg: wRoute.avg })); } catch(e) {} }); },
+      walkMode: st.walkMode, walkStop,
+      walkFinished: st.walkMode && st.walkIdx >= wStops.length && wStops.length > 0,
+      walkProgress: wStops.length ? Math.min(st.walkIdx + 1, wStops.length) + ' of ' + wStops.length : '',
+      walkLeft: minLeft ? minLeft + ' min left' : '',
+      walkPct: wStops.length ? Math.round(st.walkIdx / wStops.length * 100) + '%' : '0%',
+      walkUpcoming,
+      walkDone: () => advance(true), walkSkip: () => advance(false),
+      walkSummary: st.route ? (st.walkDone.length + ' doors knocked · ' + (wStops.length - st.walkDone.length) + ' skipped') : '',
+      exitWalk: () => { try { localStorage.removeItem('ha_walk_v1'); } catch(e) {} this._excluded = null; this.setState({ walkMode: false, resume: null, route: null, routeOpen: false, walkDone: [] }); },
+      hasActiveRoute: !!route && !st.routeOpen && !st.walkMode,
+      clearRoute: () => { this._excluded = null; this.setState({ route: null, routeEmpty: false }); },
+      reopenRoute: () => this.setState({ routeOpen: true }),
+      cancelPlan: () => { clearTimeout(this._planT); this.setState({ computing: false }); },
+      shareRoute: () => { if (!route) return; const url = location.origin + location.pathname + '#route=' + route.stops.map(s => s.pin).join(',') + '&s=' + Math.round(route.start.x) + ',' + Math.round(route.start.y); navigator.clipboard && navigator.clipboard.writeText(url); toast('Share link copied'); },
+      imgView: st.imgView || false, closeImg: () => this.setState({ imgView: null }),
+      // resume
+      hasResume: !!st.resume && !st.walkMode,
+      resumeLabel: st.resume ? ('stop ' + (st.resume.idx + 1) + ' of ' + st.resume.pins.length) : '',
+      resumeWalk: () => { const r = st.resume; this.setState({ route: { start: r.start, stops: r.stops, total: r.total, avg: r.avg }, walkMode: true, walkIdx: r.idx, walkDone: r.done || [], resume: null }); },
+      discardWalk: () => { try { localStorage.removeItem('ha_walk_v1'); } catch(e) {} this.setState({ resume: null }); },
+      toast: st.toast,
+      // about content
+      icpRows: [
+        { g: 'Mover', max: 'max 100', d: 'Deed ≤30 days: 100 · ≤60: 85 · ≤90: 70 · older: 0. Non-arm\u2019s-length deeds (price ≤ $100 or MOD-IV sales code) earn 0. Recently-moved is the #1 stated best-customer trait.' },
+        { g: 'Hires-out', max: 'max 60', d: 'Each permit in a rolling 2-yr window: 20 (cap 40) · provider churn +20 when ≥2 distinct contractors and no repeats. Demonstrated hires-out-not-DIY behaviour.' },
+        { g: 'Capacity', max: 'max 30', d: 'Assessed value ≥ territory median: 15 (≥1.5×: 25) · ACS block-group dual-income prior ≥35%: +5. Capacity to pay for years of service.' },
+        { g: 'Need', max: 'max 30', d: 'Home age ≥30 yrs: 8 · pool: 8 · lot ≥0.5 ac: 4 · condition decline 2015→2020: 6 · deferred-maintenance combo: 4. Near-term service demand.' },
+        { g: 'Modifier', max: '−15', d: 'Absentee-likely via rental-registration match only. Mild demotion — rental households still buy services.' }
+      ],
+      srcRows: [
+        { n: 'NJ statewide parcels / MOD-IV', d: 'ArcGIS FeatureServer, PCL_MUN 0248', date: '2026-08-10' },
+        { n: 'NJ construction permits', d: 'Socrata data.nj.gov w9se-dmra', date: '2026-08-10' },
+        { n: 'Census ACS 5-yr', d: 'B23007, B19013, B08303 · block group', date: '2026-08-09' },
+        { n: 'NJ orthophotos 2015 + 2020', d: 'maps.nj.gov · public domain', date: '2026-08-08' },
+        { n: 'Ramsey rental registration', d: 'municipal record (OPRA)', date: '2026-08-05' },
+        { n: 'Street View (demo scale)', d: '~50 doors · ToS position published', date: '2026-08-07' }
+      ],
+      evalRows: [
+        { v: '0.818', k: 'pool-detection precision' }, { v: '0.90', k: 'pool-detection recall' },
+        { v: '5.0%', k: 'hallucination rate (20-image probe)' }, { v: '96.4%', k: 'permit→parcel match rate' },
+        { v: '537/540', k: 'doors scored (99.4% coverage)' }, { v: '$0.006', k: 'cost per door (total $3.20)' }
+      ]
+    };
+  }
+}
+</script>
+
+
+</body></html>

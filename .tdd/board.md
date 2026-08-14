@@ -1,0 +1,59 @@
+# HouseAccount — TDD run board
+
+**Resume procedure:** "Read this board + `git log --oneline` + `python3 eval/verify_claims.py`.
+Trust disk over any prior summary. Continue with the first ticket not marked done/blocked."
+
+Also read `.tdd/config.md` — it holds the verified test commands, the toolchain decisions, and the
+live ground-truth findings from Phase 0, so a resumed session never re-derives them.
+
+**Working branch:** `main`. Commits are local only — **never push.**
+**Unattended run:** never pause for approval. Genuine ambiguity → mark the ticket `blocked` with a
+one-line question here and move to the next ticket. Per-ticket cap: 5 implementation iterations
+(handoff says 3; the skill's cap is 5 — we use 5 and record every attempt), then `blocked` with the
+failing output in the ticket file.
+
+## Definition of done (from docs/handoff-prompt.md)
+
+- `make pipeline` — harvest→resolve→vision→score→publish, fresh clone, documented env vars only.
+- `make eval` — 12 golden fixtures green via the **real** engine + vision P/R + hallucination +
+  cost-per-door + entity-resolution match rate ≥95%.
+- Map UI + MCP server (tools exactly `get_door_score`, `explain_score`, `plan_route`) deploy-ready
+  and publicly reachable; Data & Ethics page live.
+- API spend ≤ $50 (projected $0–5); caching/batching visible in code.
+- README end-to-end; no hardcoded secrets.
+
+## Invariant
+
+No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only in
+`tests/test_redaction.py`. Guard test lands in T001 and runs in every regression gate thereafter.
+
+## Board
+
+| # | Ticket | Status | Iters | Depends | Wave |
+|---|---|---|---|---|---|
+| 001 | Foundation: config, cache, HTTP, cost ledger, redaction guard | pending | 0 | — | W1 seq |
+| 002 | Normalizers: deed YYMMDD, address, join keys | pending | 0 | 001 | W2 batch |
+| 003 | Score engine + evidence (R6/R7) — 12 fixtures | pending | 0 | 001,002 | W2 batch |
+| 004 | Harvest: parcels + territory bootstrap (R1) | pending | 0 | 001 | W3 par |
+| 005 | Harvest: permits + ACS + rental seam (R2.1/R11.3) | pending | 0 | 001 | W3 par |
+| 006 | Entity resolution + match rate (R3) | pending | 0 | 002,004,005 | W4 seq |
+| 007 | Vision: schema, provider seam, ortho tiles (R4) | pending | 0 | 001 | W3 par |
+| 008 | Eval harness (R5/R14) | pending | 0 | 003,007 | W5 par |
+| 009 | Publish + pipeline orchestrator (R2.2) | pending | 0 | 003,004,005,006,007 | W6 seq |
+| 010 | Route planner module (R10.1–10.3) | pending | 0 | 003 | W5 par |
+| 011 | MCP server + HTTP API (R8) | pending | 0 | 009,010 | W7 seq |
+| 012 | Map UI core (R9) | pending | 0 | 009,011 | W8 seq |
+| 013 | Route UI + walk mode (R10 frames 4–4d) | pending | 0 | 010,011,012 | W8 seq |
+| 014 | Data & Ethics page (R11.4) | pending | 0 | 008,012 | W9 batch |
+| 015 | README + reproducibility + cost report (R13/R14) | pending | 0 | 009,011 | W9 batch |
+| 016 | Deploy readiness (R12) — expected blocked-on-human | pending | 0 | 011,012 | W10 |
+
+## Wave plan
+
+W1 `001` seq · W2 `002`+`003` batched seq · W3 `004`‖`005`‖`007` worktrees ·
+W4 `006` seq · W5 `008`‖`010` worktrees · W6 `009` seq · W7 `011` seq ·
+W8 `012`→`013` seq (same agents, web area) · W9 `014`+`015` batched · W10 `016`.
+
+## Open questions raised during the run
+
+_(none yet — appended here when a ticket is marked blocked)_

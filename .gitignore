@@ -6,8 +6,6 @@ node_modules/
 cache/
 .tdd/worktrees/
 .DS_Store
-data/doors.geojson
-data/houseaccount.sqlite
 data/tiles/
 .env
 scratchpad/

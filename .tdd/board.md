@@ -39,7 +39,7 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 006 | Entity resolution + match rate (R3) | green | 1 | 002,004,005 | W4 seq |
 | 007 | Vision: schema, provider seam, ortho tiles (R4) | green | 1 | 001 | W3 par |
 | 008 | Eval harness (R5/R14) | green | 1 | 003,007 | W5 par |
-| 009 | Publish + pipeline orchestrator (R2.2) | tests-written | 0 | 003,004,005,006,007 | W6 seq |
+| 009 | Publish + pipeline orchestrator (R2.2) | green | 1 | 003,004,005,006,007 | W6 seq |
 | 010 | Route planner module (R10.1–10.3) | pending | 0 | 003 | W5 par |
 | 011 | MCP server + HTTP API (R8) | pending | 0 | 009,010 | W7 seq |
 | 012 | Map UI core (R9) | pending | 0 | 009,011 | W8 seq |
@@ -47,12 +47,21 @@ No identity data, ever. `OWNER_NAME` / `ST_ADDRESS` / `CITY_STATE` appear only i
 | 014 | Data & Ethics page (R11.4) | pending | 0 | 008,012 | W9 batch |
 | 015 | README + reproducibility + cost report (R13/R14) | pending | 0 | 009,011 | W9 batch |
 | 016 | Deploy readiness (R12) — expected blocked-on-human | pending | 0 | 011,012 | W10 |
+| 017 | R3.2 match rate: municipal denominator, not territory blocks | pending | 0 | 006,008,009 | W6b seq |
 
 ## Wave plan
 
 W1 `001` seq · W2 `002`+`003` batched seq · W3 `004`‖`005`‖`007` worktrees ·
 W4 `006` seq · W5 `008`‖`010` worktrees · W6 `009` seq · W7 `011` seq ·
 W8 `012`→`013` seq (same agents, web area) · W9 `014`+`015` batched · W10 `016`.
+
+## Findings from the first live pipeline run (2026-08-14)
+
+`make pipeline` completes against the real services in **12 seconds**, publishing **540 of 540**
+doors. Territory median NET_VALUE = $743,350. Score spread: max 77, min 8, with 11 doors ≥60 —
+the score separates doors rather than rating everyone warm, which is what fixture 05 demanded.
+ACS, rental and vision all declined for missing credentials and were logged as degradations; the
+run still published every door. The permit match-rate defect this surfaced became ticket 017.
 
 ## Open questions raised during the run
 

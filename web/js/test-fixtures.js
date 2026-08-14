@@ -296,6 +296,15 @@ export function runManifest(overrides = {}) {
     doors_scored: 540,
     doors_unscored: 0,
     coverage: 1.0,
+    // T019: measured from the harvest, never hardcoded. The live Ramsey extract's
+    // newest deed is ~20 months before `as_of`, so no door is inside the mover
+    // window and the run says so rather than leaving a reader to guess whether
+    // the rule is broken.
+    deed_vintage: {
+      latest_deed_date: '2024-12-06',
+      mover_window_days: 90,
+      doors_in_mover_window: 0,
+    },
     degradations: [
       'CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so '
       + 'block-group statistics were not fetched',
@@ -303,6 +312,9 @@ export function runManifest(overrides = {}) {
       'ANTHROPIC_API_KEY is not set, so the vision stage was skipped. Pool, solar '
       + 'and exterior-condition signals are unavailable; every door still scores, '
       + 'but without the R4 imagery terms.',
+      'no door in this territory has a deed inside the 90-day mover window — the '
+      + 'newest deed in the MOD-IV extract is dated 2024-12-06 — so the Mover group '
+      + 'could not fire on this extract vintage',
     ],
     resolve: {
       doors_total: 540,
@@ -335,6 +347,13 @@ export function healthyManifest(overrides = {}) {
   return {
     ...manifest,
     degradations: [],
+    // The other half of the T019 path: an extract fresh enough for the Mover
+    // group to fire, so nothing is disclaimed.
+    deed_vintage: {
+      latest_deed_date: '2026-07-30',
+      mover_window_days: 90,
+      doors_in_mover_window: 12,
+    },
     resolve: {
       ...manifest.resolve,
       doors_with_block_group: 512,

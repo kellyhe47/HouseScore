@@ -405,9 +405,12 @@ test('every declined provider is listed with the reason it declined', () => {
   const rows = signalAvailability(runManifest());
   const declined = rows.filter((row) => !row.live);
 
+  // T019 widened this list: the MOD-IV deed vintage is reported here too, in the
+  // same voice as a provider that refused, because "the Mover group could not
+  // fire on this extract" is the same kind of fact as "the ACS declined".
   assert.deepEqual(
     declined.map((row) => row.key).sort(),
-    ['acs', 'rental_registration', 'vision']
+    ['acs', 'mover_deed_vintage', 'rental_registration', 'vision']
   );
   for (const row of declined) {
     assert.ok(row.reason.trim(), `${row.key} declined without saying why`);
@@ -431,6 +434,99 @@ test('a manifest with no resolve block does not crash', () => {
 
 test('a missing manifest does not crash', () => {
   assert.ok(Array.isArray(signalAvailability(null)));
+});
+
+/* ── The MOD-IV deed vintage (T019) ──────────────────────────────────────────
+ *
+ * The Mover group is the heaviest signal in the model and it is unearnable on
+ * the published extract: the newest deed in the feed is ~20 months before
+ * `as_of`, so no door is inside the 90-day window. A reviewer looking at the map
+ * cannot otherwise tell "no movers here right now" from "the mover rule is
+ * broken".
+ *
+ * Where it goes, and why: the vintage is a fourth row of `signalAvailability`
+ * rather than a section of its own. The row shape — {key, label, live, reason} —
+ * already says exactly what has to be said, the "What ran, and what declined"
+ * section already renders that list without knowing what is in it, and a source
+ * limitation belongs in the same list as a declined provider precisely because a
+ * reader is asking one question of both: which of these numbers is real?
+ */
+
+const moverRow = (manifest) =>
+  signalAvailability(manifest).find((row) => row.key === 'mover_deed_vintage');
+
+test('the availability list reports the deed vintage beside the providers', () => {
+  const keys = (manifest) => signalAvailability(manifest).map((row) => row.key);
+
+  assert.deepEqual(keys(runManifest()), [
+    'acs',
+    'rental_registration',
+    'vision',
+    'mover_deed_vintage',
+  ]);
+  assert.deepEqual(keys(null), keys(runManifest()), 'a missing run drops no row');
+});
+
+test('an extract with no door in the mover window reports the mover signal as not live', () => {
+  const row = moverRow(runManifest());
+
+  assert.equal(row.live, false);
+  assert.match(row.label, /mover|deed/i);
+  assert.match(row.reason, /mover/i);
+  assert.ok(row.reason.includes('2024-12-06'), row.reason);
+});
+
+test('the mover row quotes the run’s own note rather than one written here', () => {
+  const manifest = runManifest();
+  const recorded = manifest.degradations.find((note) => /mover/i.test(note));
+
+  assert.equal(moverRow(manifest).reason, recorded);
+});
+
+test('a run with doors inside the mover window reports the signal live', () => {
+  const row = moverRow(healthyManifest());
+
+  assert.equal(row.live, true);
+  assert.equal(row.reason, null);
+});
+
+test('the vintage is read from the manifest, not from a date written into the page', () => {
+  // Same page, a different extract — and the note stripped, so the only place
+  // the date can come from is the recorded block.
+  const row = moverRow(
+    runManifest({
+      degradations: [],
+      deed_vintage: {
+        latest_deed_date: '2025-03-04',
+        mover_window_days: 90,
+        doors_in_mover_window: 0,
+      },
+    })
+  );
+
+  assert.equal(row.live, false);
+  assert.ok(row.reason.includes('2025-03-04'), row.reason);
+  assert.doesNotMatch(row.reason, /2024-12-06/);
+});
+
+test('an older manifest with no deed vintage claims nothing and does not break', () => {
+  const older = runManifest({ deed_vintage: undefined, degradations: [] });
+
+  const row = moverRow(older);
+  assert.equal(row.live, false, 'a run that recorded no vintage cannot be called live');
+  assert.ok(row.reason.trim());
+  assert.doesNotMatch(row.reason, /undefined|null|NaN/);
+  assert.ok(buildEthicsPage({ report: evalReport(), manifest: older }).availability.length);
+});
+
+test('the page surfaces the vintage in its what-ran section', () => {
+  const rows = page().availability;
+  const mover = rows.find((row) => /mover|deed/i.test(row.label));
+
+  assert.equal(rows.length, 4);
+  assert.ok(mover, rows.map((row) => row.label));
+  assert.equal(mover.live, false);
+  assert.ok(mover.reason.includes('2024-12-06'), mover.reason);
 });
 
 test('the municipal and permit match rates are not confused for each other', () => {

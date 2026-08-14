@@ -59,6 +59,7 @@ from houseaccount.publish import (
 )
 from houseaccount.resolve import DoorFacts, ResolveReport
 from houseaccount.scoring.engine import score_door
+from houseaccount.scoring.weights import THRESHOLDS
 
 AS_OF = date(2026, 8, 14)
 RUN_AT = datetime(2026, 8, 14, 6, 30, 0, tzinfo=timezone.utc)
@@ -497,6 +498,87 @@ def test_manifest_publishes_the_degradations_it_was_given(data_dir):
     run([scored(facts())], data_dir=data_dir, manifest_=manifest(degradations=reasons))
 
     assert read_manifest(data_dir)["degradations"] == list(reasons)
+
+
+# --- the MOD-IV deed vintage (T019) -------------------------------------------
+#
+# The Mover group is the highest-weighted signal in the model, and on the Ramsey
+# extract it is structurally unearnable: the newest deed in the whole feed is
+# roughly 20 months before `as_of`, so no door is inside the 90-day window. That
+# is a property of the source, not a defect in the engine, and the manifest has
+# to say which.
+#
+# The seam is split deliberately. `publish` *writes* what the run measured — the
+# `deed_vintage` block — and copies `degradations` through verbatim; the sentence
+# that says the Mover group could not fire is the pipeline's to record, because
+# `manifest["degradations"] == list(result.degradations)` is a contract the
+# pipeline suite already pins and a note invented here would break it.
+
+#: The window the disclosure describes is the window the engine scores on. Read,
+#: never re-typed, so the two cannot drift apart.
+MOVER_WINDOW_DAYS = THRESHOLDS["mover_90d_days"]
+
+
+def read_deed_vintage(data_dir):
+    return read_manifest(data_dir)["deed_vintage"]
+
+
+def test_manifest_publishes_the_deed_vintage_the_run_measured(data_dir):
+    """Both numbers, under one named block: the newest deed anywhere in the
+    municipal extract, and how many territory doors that leaves in the window."""
+    run(
+        [scored(facts())],
+        data_dir=data_dir,
+        manifest_=manifest(latest_deed_date=date(2024, 12, 6), doors_in_mover_window=0),
+    )
+
+    block = read_deed_vintage(data_dir)
+    assert set(block) == {"latest_deed_date", "mover_window_days", "doors_in_mover_window"}
+    assert block["latest_deed_date"] == "2024-12-06"
+    assert block["doors_in_mover_window"] == 0
+
+
+def test_the_disclosed_mover_window_is_the_rule_it_describes(data_dir):
+    """`90` is written once, in `THRESHOLDS`. A disclosure carrying its own copy
+    would keep saying "90-day window" after the rule moved."""
+    run(
+        [scored(facts())],
+        data_dir=data_dir,
+        manifest_=manifest(latest_deed_date=date(2026, 6, 15), doors_in_mover_window=1),
+    )
+
+    block = read_deed_vintage(data_dir)
+    assert block["mover_window_days"] == MOVER_WINDOW_DAYS
+    assert block["doors_in_mover_window"] == 1
+
+
+def test_an_extract_with_no_parseable_deed_publishes_a_null_vintage(data_dir):
+    """Every deed null or unreadable is a real state — there is no latest date to
+    report, and `null` says that where a fabricated date would not."""
+    run(
+        [scored(facts(deed=None))],
+        data_dir=data_dir,
+        manifest_=manifest(latest_deed_date=None, doors_in_mover_window=0),
+    )
+
+    block = read_deed_vintage(data_dir)
+    assert block["latest_deed_date"] is None
+    assert block["doors_in_mover_window"] == 0
+
+
+def test_publish_copies_the_degradations_it_was_given_and_invents_none(data_dir):
+    """The zero-mover note is recorded by the run, not synthesised at write time:
+    a second copy made here would double it in the published manifest."""
+    given = ("CENSUS_API_KEY is not set",)
+    run(
+        [scored(facts())],
+        data_dir=data_dir,
+        manifest_=manifest(
+            degradations=given, latest_deed_date=date(2024, 12, 6), doors_in_mover_window=0
+        ),
+    )
+
+    assert read_manifest(data_dir)["degradations"] == list(given)
 
 
 # --- the unscorable rule ------------------------------------------------------

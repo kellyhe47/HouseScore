@@ -53,6 +53,7 @@ from houseaccount.pipeline import (
 from houseaccount.publish import DOORS_GEOJSON_NAME, EXCLUSION_REASON, RUN_MANIFEST_NAME
 from houseaccount.resolve import ResolveReport
 from houseaccount.scoring.engine import SOURCE_ACS, SOURCE_IMAGERY
+from houseaccount.scoring.weights import THRESHOLDS
 from houseaccount.sources import parcels as parcels_module
 from houseaccount.sources import permits as permits_module
 from houseaccount.sources import tiger as tiger_module
@@ -607,6 +608,230 @@ def test_the_parcel_harvest_failing_stops_the_run(tmp_path):
 
     with pytest.raises(SourceError):
         go(config, RoutingTransport(parcels=refused()))
+
+
+# --- the MOD-IV deed vintage (T019) -------------------------------------------
+#
+# On the live Ramsey extract the newest deed is roughly 20 months old, so no door
+# is inside the 90-day mover window and the model's highest-weighted group cannot
+# fire at all. A reviewer reading the map cannot otherwise tell "no movers here
+# right now" from "the mover rule is broken", so the run says which.
+#
+# Everything below is measured from the scripted harvest. Nothing is asserted
+# against a constant the pipeline could have hardcoded: each test that pins a
+# vintage also changes the deeds the transport serves, so a hardcoded answer
+# fails at least one of them.
+
+#: Read, never re-typed — the disclosure describes the rule the engine scores on.
+MOVER_WINDOW_DAYS = THRESHOLDS["mover_90d_days"]
+
+#: 90 days before AS_OF, and one day older: the inclusive edge of the window.
+DEED_AT_THE_EDGE = "2026-05-16"
+DEED_ONE_DAY_PAST = "2026-05-15"
+
+#: The vintage the live extract actually has — every deed months out of window.
+STALE_DEED = "2024-12-06"
+
+#: The same three MAPLE doors as `PARCEL_FEATURES`, with nothing recent on them.
+STALE_PARCEL_FEATURES = [
+    parcel_feature(PIN_MOVER, lot="3", loc="3 MAPLE ST", deed=STALE_DEED, lon=LON, lat=LAT),
+    parcel_feature(
+        PIN_STEADY,
+        lot="5",
+        loc="5 MAPLE ST",
+        deed="2004-03-15",
+        net_value=620000.0,
+        yr_constr=1958,
+        lon=LON + STEP,
+        lat=LAT,
+    ),
+    parcel_feature(
+        PIN_INCOMPLETE,
+        lot="7",
+        loc="7 MAPLE ST",
+        deed=None,
+        sale_price=0.0,
+        yr_constr=0,
+        net_value=0.0,
+        acre=0.0,
+        lon=LON + 2 * STEP,
+        lat=LAT,
+    ),
+]
+
+
+def deed_vintage(config):
+    return manifest(config)["deed_vintage"]
+
+
+def mover_notes(reasons):
+    """Every recorded degradation that is about the mover group."""
+    return [note for note in reasons if re.search(r"mover", note, re.I)]
+
+
+def evidence_types(config):
+    return {item["type"] for props in by_pin(config).values() for item in props["evidence"]}
+
+
+def test_the_manifest_discloses_the_deed_vintage_the_harvest_actually_saw(tmp_path):
+    """The default extract has one 60-day-old deed among the three doors, so the
+    Mover group can fire and there is nothing to disclaim."""
+    config = config_for(tmp_path)
+
+    result = go(config, RoutingTransport())
+
+    block = deed_vintage(config)
+    assert block["latest_deed_date"] == "2026-06-15"
+    assert block["doors_in_mover_window"] == 1
+    assert block["mover_window_days"] == MOVER_WINDOW_DAYS
+    assert mover_notes(result.degradations) == []
+    assert mover_notes(manifest(config)["degradations"]) == []
+
+
+def test_the_counted_doors_are_the_doors_the_engine_scored_as_movers(tmp_path):
+    """The disclosure and the score have to be talking about the same doors: a
+    count that disagreed with the evidence trail would be its own defect."""
+    config = config_for(tmp_path)
+
+    go(config, RoutingTransport())
+
+    movers = [
+        pin
+        for pin, props in by_pin(config).items()
+        if any(item["type"] == "deed_recency" for item in props["evidence"])
+    ]
+    assert movers == [PIN_MOVER]
+    assert deed_vintage(config)["doors_in_mover_window"] == len(movers)
+
+
+def test_a_different_extract_reports_a_different_vintage_and_says_the_mover_group_could_not_fire(
+    tmp_path,
+):
+    """The load-bearing "never hardcoded" test: same code, older deeds, a
+    different published date — and the note the live run needs."""
+    config = config_for(tmp_path)
+
+    result = go(config, RoutingTransport(parcels=collection(STALE_PARCEL_FEATURES)))
+
+    block = deed_vintage(config)
+    assert block["latest_deed_date"] == STALE_DEED
+    assert block["doors_in_mover_window"] == 0
+    assert "deed_recency" not in evidence_types(config), "the group is unearnable here"
+
+    notes = mover_notes(result.degradations)
+    assert len(notes) == 1, notes
+    note = notes[0]
+    assert isinstance(note, str)
+    assert str(int(MOVER_WINDOW_DAYS)) in note, note
+    assert STALE_DEED in note, note
+    # Recorded in the same voice, and the same list, as a declined provider.
+    assert manifest(config)["degradations"] == list(result.degradations)
+    assert note in manifest(config)["degradations"]
+
+
+def test_the_latest_deed_is_measured_across_the_municipality_not_the_territory(tmp_path):
+    """The vintage is a statement about the extract, so it is measured over every
+    municipal parcel the harvest holds — while the count that decides the note
+    stays territory-scoped."""
+    config = config_for(tmp_path)
+    fresh_but_far = parcel_feature(
+        PIN_FAR,
+        block="2200",
+        lot="1",
+        loc="1 ELM ST",
+        deed="2026-07-01",
+        net_value=5000000.0,
+        lon=LON + 0.03,
+        lat=LAT,
+    )
+
+    result = go(
+        config, RoutingTransport(parcels=collection([*STALE_PARCEL_FEATURES, fresh_but_far]))
+    )
+
+    assert set(by_pin(config)) == {PIN_MOVER, PIN_STEADY, PIN_INCOMPLETE}
+    block = deed_vintage(config)
+    assert block["latest_deed_date"] == "2026-07-01"
+    assert block["doors_in_mover_window"] == 0
+    assert len(mover_notes(result.degradations)) == 1
+
+
+def test_the_counted_window_is_inclusive_at_its_edge(tmp_path):
+    """A deed exactly `mover_90d_days` old is inside the window the engine scores
+    on, so it is inside the window the manifest counts."""
+    config = config_for(tmp_path)
+    edge = [
+        parcel_feature("0248_01101_00011", lot="11", loc="11 MAPLE ST", deed=DEED_AT_THE_EDGE),
+        parcel_feature(
+            "0248_01101_00013",
+            lot="13",
+            loc="13 MAPLE ST",
+            deed=DEED_ONE_DAY_PAST,
+            lon=LON + STEP,
+            lat=LAT,
+        ),
+    ]
+
+    result = go(config, RoutingTransport(parcels=collection(edge)), target=2)
+
+    block = deed_vintage(config)
+    assert block["latest_deed_date"] == DEED_AT_THE_EDGE
+    assert block["doors_in_mover_window"] == 1
+    assert mover_notes(result.degradations) == []
+
+
+def test_an_extract_with_no_readable_deed_reports_no_vintage_at_all(tmp_path):
+    """Sad path: every deed unparseable. There is no latest date, and the note
+    must not print a placeholder where a date would go."""
+    config = config_for(tmp_path)
+    unreadable = [
+        parcel_feature(PIN_MOVER, lot="3", loc="3 MAPLE ST", deed="not a date"),
+        parcel_feature(
+            PIN_STEADY, lot="5", loc="5 MAPLE ST", deed="", lon=LON + STEP, lat=LAT
+        ),
+    ]
+
+    result = go(config, RoutingTransport(parcels=collection(unreadable)), target=2)
+
+    block = deed_vintage(config)
+    assert block["latest_deed_date"] is None
+    assert block["doors_in_mover_window"] == 0
+
+    notes = mover_notes(result.degradations)
+    assert len(notes) == 1, notes
+    assert not re.search(r"\bNone\b|\bnull\b|\bundefined\b", notes[0]), notes[0]
+
+
+def test_an_empty_territory_discloses_the_gap_without_crashing(tmp_path):
+    """No parcels is a publishable run (see above), so it is also a disclosable
+    one: nothing measured, and the note that nothing could fire."""
+    config = config_for(tmp_path)
+
+    result = go(config, RoutingTransport(parcels=collection([])))
+
+    block = deed_vintage(config)
+    assert block["latest_deed_date"] is None
+    assert block["doors_in_mover_window"] == 0
+    assert block["mover_window_days"] == MOVER_WINDOW_DAYS
+    assert result.published.doors_total == 0
+    assert len(mover_notes(manifest(config)["degradations"])) == 1
+
+
+def test_the_disclosure_never_reaches_a_door(tmp_path):
+    """This ticket is disclosure, not rescoring. Nothing about the vintage may
+    become an evidence line or move a point — the twelve golden fixtures still
+    own the mover rule."""
+    config = config_for(tmp_path)
+
+    go(config, RoutingTransport(parcels=collection(STALE_PARCEL_FEATURES)))
+
+    for props in by_pin(config).values():
+        if props["score"] is None:
+            continue
+        points = sum(item["points"] for item in props["evidence"])
+        assert props["score"] == max(0, min(100, points))
+        for item in props["evidence"]:
+            assert not re.search(r"vintage|extract|could not fire", item["sentence"], re.I), item
 
 
 # --- the command line ---------------------------------------------------------

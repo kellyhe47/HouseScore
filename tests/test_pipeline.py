@@ -377,6 +377,29 @@ class FakeVisionClient:
         self.chat = _Chat(self)
 
 
+class _UnreadableCompletions:
+    def __init__(self, client):
+        self._client = client
+
+    def create(self, **kwargs):
+        self._client.calls.append(kwargs)
+        return _Reply("I looked at the tiles, but this sentence is not a detections object.")
+
+
+class _UnreadableChat:
+    def __init__(self, client):
+        self.completions = _UnreadableCompletions(client)
+
+
+class UnreadableVisionClient:
+    """The published run's actual failure mode (T023): the stage ran and the
+    model answered — the answers just could not be read as detections."""
+
+    def __init__(self):
+        self.calls = []
+        self.chat = _UnreadableChat(self)
+
+
 class _ExplodingCompletions:
     def create(self, **kwargs):
         raise AssertionError("the model was called — cached detections were not consulted")
@@ -596,6 +619,68 @@ def test_a_missing_openai_key_skips_vision_without_fetching_a_single_tile(tmp_pa
     assert VISION_NO_KEY_REASON in result.degradations
     assert VISION_NO_KEY_REASON in manifest(config)["degradations"]
     assert by_pin(config)[PIN_MOVER]["score"] is not None
+
+
+# --- what the run says about its own vision stage (T023) ----------------------
+#
+# The manifest recorded the vision stage's fate as a sentence in `degradations`
+# and nothing more, so the published run — 270 answers, 31 of them unreadable,
+# imagery evidence on 119 of 540 doors — read as a flat declination to anything
+# downstream. These three tests pin the wiring end to end: the run measures the
+# stage and the artifact states it, so no reader has to infer it from prose.
+
+
+def vision_block(config):
+    return manifest(config).get("vision")
+
+
+def imagery_doors(config):
+    return [
+        pin
+        for pin, properties in by_pin(config).items()
+        if any(item["imagery"] for item in properties["evidence"])
+    ]
+
+
+def test_a_vision_stage_that_answered_publishes_itself_as_available(tmp_path):
+    config = config_for(tmp_path)
+    client = FakeVisionClient()
+
+    go(config, RoutingTransport(), client=client)
+
+    block = vision_block(config)
+    # One answer per request — 270 of them on the published run.
+    assert block["answers_total"] == len(client.calls) > 0
+    assert block["available"] is True
+    assert block["declination_reason"] is None
+    assert block["answers_lost"] == 0
+    assert block["doors_with_imagery"] == len(imagery_doors(config)) > 0
+
+
+def test_answers_that_could_not_be_read_are_a_loss_and_not_a_declination(tmp_path):
+    """The bug, end to end: a stage that ran and lost answers must not publish
+    itself the way a stage with no key does."""
+    config = config_for(tmp_path)
+    client = UnreadableVisionClient()
+
+    result = go(config, RoutingTransport(), client=client)
+
+    block = vision_block(config)
+    assert block["available"] is True, "the stage ran; the answers were the problem"
+    assert block["declination_reason"] is None
+    assert block["answers_lost"] == block["answers_total"] == len(client.calls) > 0
+    assert any("could not be read" in note for note in result.degradations)
+
+
+def test_a_missing_openai_key_publishes_the_refusal_in_the_vision_block(tmp_path):
+    config = config_for(tmp_path, openai=None)
+
+    go(config, RoutingTransport(), client=ExplodingVisionClient())
+
+    block = vision_block(config)
+    assert block["available"] is False
+    assert block["declination_reason"] == VISION_NO_KEY_REASON
+    assert (block["answers_total"], block["answers_lost"], block["doors_with_imagery"]) == (0, 0, 0)
 
 
 def test_the_absent_rental_register_is_declared_on_every_run(tmp_path):
@@ -862,8 +947,8 @@ def test_an_empty_territory_discloses_the_gap_without_crashing(tmp_path):
 
 def test_the_disclosure_never_reaches_a_door(tmp_path):
     """This ticket is disclosure, not rescoring. Nothing about the vintage may
-    become an evidence line or move a point — the twelve golden fixtures still
-    own the mover rule."""
+    become an evidence line or move a point — the golden fixtures still own the
+    mover rule."""
     config = config_for(tmp_path)
 
     go(config, RoutingTransport(parcels=collection(STALE_PARCEL_FEATURES)))

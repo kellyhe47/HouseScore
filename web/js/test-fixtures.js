@@ -262,8 +262,11 @@ export function memoryStorage(initial = {}) {
 /** `eval/report.json` as `make eval` writes it today. */
 export function evalReport(overrides = {}) {
   return {
-    fixtures_total: 12,
-    fixtures_passed: 12,
+    // T025: the published `eval/report.json` reports thirteen fixtures, and the
+    // harness pins that count (`tests/test_harness.py`). This fixture said twelve,
+    // which is the same stale number the page had spelled into its prose.
+    fixtures_total: 13,
+    fixtures_passed: 13,
     fixture_failures: [],
     precision: 0.8181818181818182,
     recall: 0.9,
@@ -366,3 +369,63 @@ export function healthyManifest(overrides = {}) {
     ...overrides,
   };
 }
+
+// --- T023 ---------------------------------------------------------------------
+// `runManifest()` and `healthyManifest()` above are older publishes: they carry no
+// `vision` block, and the page has to keep reading them. This one is the shape the
+// run publishes now, and its numbers are the published run's own, read off
+// data/run_manifest.json and data/doors.geojson rather than invented:
+// 270 vision requests, 31 answers that could not be parsed, and 119 of 540 doors
+// carrying an imagery-backed evidence line. That run is a *partial* loss — the
+// stage ran and 119 doors have its evidence — which is the whole distinction the
+// page has to be able to draw.
+
+/** `data/run_manifest.json` from a run whose vision stage ran and partly failed. */
+export function visionManifest(overrides = {}) {
+  const manifest = healthyManifest();
+  return {
+    ...manifest,
+    degradations: [
+      '31 vision answers could not be read as detections; the doors they covered '
+      + 'scored without their imagery signals',
+    ],
+    vision: {
+      available: true,
+      declination_reason: null,
+      answers_total: 270,
+      answers_lost: 31,
+      doors_with_imagery: 119,
+    },
+    ...overrides,
+  };
+}
+
+/** The same block for a stage that ran clean — nothing lost, nothing to disclaim. */
+export function visionRanClean(overrides = {}) {
+  return {
+    available: true,
+    declination_reason: null,
+    answers_total: 270,
+    answers_lost: 0,
+    doors_with_imagery: 119,
+    ...overrides,
+  };
+}
+
+/** The same block for a stage that never ran, because there was no key for it. */
+export function visionDeclined(overrides = {}) {
+  return {
+    available: false,
+    declination_reason: VISION_NO_KEY_REASON,
+    answers_total: 0,
+    answers_lost: 0,
+    doors_with_imagery: 0,
+    ...overrides,
+  };
+}
+
+/** The pipeline's own wording for a vision stage with no key to run on. */
+export const VISION_NO_KEY_REASON =
+  'OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar '
+  + 'and exterior-condition signals are unavailable; every door still scores, '
+  + 'but without the R4 imagery terms.';

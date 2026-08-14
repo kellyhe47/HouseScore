@@ -39,6 +39,8 @@ from pathlib import Path
 
 import pytest
 
+from houseaccount.server.app import MCP_PATH
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DOCKERFILE = REPO_ROOT / "Dockerfile"
@@ -47,6 +49,10 @@ VERCEL_JSON = REPO_ROOT / "vercel.json"
 DEPLOY_MD = REPO_ROOT / "docs" / "DEPLOY.md"
 ENV_EXAMPLE = REPO_ROOT / ".env.example"
 MAKEFILE = REPO_ROOT / "Makefile"
+
+#: The static site Vercel serves. Where the MCP endpoint is advertised to a
+#: reviewer, and therefore where a wrong hostname is published.
+WEB_DIR = REPO_ROOT / "web"
 
 #: Every file this ticket ships. All four are scanned for secrets.
 DEPLOY_FILES = (DOCKERFILE, FLY_TOML, VERCEL_JSON, DEPLOY_MD)
@@ -418,6 +424,90 @@ def test_every_make_target_named_in_deploy_md_exists(deploy_md):
     named = named_make_targets(deploy_md)
 
     assert named <= defined, f"DEPLOY.md names undefined targets: {sorted(named - defined)}"
+
+
+# --- the advertised MCP endpoint (T024) ---------------------------------------
+#
+# The ethics page publishes the MCP endpoint a reviewer is expected to call, and
+# it published `https://houseaccount-mcp.fly.dev/mcp` — an app no step in
+# `docs/DEPLOY.md` ever creates, on a run whose `fly.toml` declares one app named
+# `houseaccount` and whose server already mounts the MCP transport at `/mcp`.
+# After a by-the-book deploy that hostname does not resolve.
+#
+# So none of this is written down twice here. The host comes from `fly.toml`, the
+# path comes from the module that mounts it, and the page is checked against the
+# two — which is what the ticket asks for: the page and the deploy config cannot
+# disagree without a test failing, whichever of them moves.
+
+
+def web_sources():
+    """Every file `web/` ships to a browser. Small tree; no build output in it."""
+    return tuple(
+        path
+        for path in sorted(WEB_DIR.rglob("*"))
+        if path.is_file() and path.suffix.lower() in {".html", ".js", ".css", ".json"}
+    )
+
+
+def advertised_mcp_urls():
+    """`(file, url)` for every MCP endpoint the shipped web files advertise."""
+    found = []
+    for path in web_sources():
+        text = path.read_text(encoding="utf-8")
+        for url in re.findall(r"https?://[^\s\"'`<>)\\]+", text):
+            if url.rstrip("/").endswith(MCP_PATH):
+                found.append((path.relative_to(REPO_ROOT).as_posix(), url))
+    return found
+
+
+def fly_hostnames(text):
+    """Every `<app>.fly.dev` host named in a blob of text, as app names."""
+    return re.findall(r"([A-Za-z0-9][A-Za-z0-9-]*)\.fly\.dev", text)
+
+
+def test_the_web_ui_advertises_an_mcp_endpoint_at_all():
+    """A guard on the two tests below: they must have something to check."""
+    assert advertised_mcp_urls(), "no file under web/ publishes an MCP endpoint"
+
+
+def test_the_advertised_mcp_url_is_the_app_fly_toml_declares(fly_config):
+    """Derived on both sides: rename the Fly app or edit the page and this fails."""
+    expected = f"https://{fly_config['app']}.fly.dev{MCP_PATH}"
+
+    wrong = [(where, url) for where, url in advertised_mcp_urls() if url != expected]
+    assert wrong == [], f"the UI advertises an endpoint the deploy never creates; want {expected}"
+
+
+def test_no_web_file_names_a_fly_app_the_deploy_never_creates(fly_config):
+    """Catches the half-finished edit: one corrected URL and a stale one beside it."""
+    declared = fly_config["app"]
+    stray = sorted(
+        {
+            (path.relative_to(REPO_ROOT).as_posix(), host)
+            for path in web_sources()
+            for host in fly_hostnames(path.read_text(encoding="utf-8"))
+            if host != declared
+        }
+    )
+    assert stray == [], f"fly.toml declares only {declared!r}"
+
+
+def test_the_advertised_origin_is_the_host_the_runbook_verifies(deploy_md, fly_config):
+    """`docs/DEPLOY.md` curls this origin after the deploy; the page has to name
+    the same one, or the runbook verifies a server nobody was pointed at."""
+    origin = f"https://{fly_config['app']}.fly.dev"
+    assert origin in deploy_md, f"the runbook never verifies {origin}"
+
+    wrong = [(where, url) for where, url in advertised_mcp_urls() if not url.startswith(origin)]
+    assert wrong == [], f"advertised outside the origin the runbook verifies ({origin})"
+
+
+def test_the_advertised_path_is_the_path_the_server_mounts():
+    """`MCP_PATH` is the app's own constant, so a remount moves the page with it."""
+    wrong = [
+        (where, url) for where, url in advertised_mcp_urls() if not url.endswith(MCP_PATH)
+    ]
+    assert wrong == [], f"the server mounts the transport at {MCP_PATH}"
 
 
 # --- no secret values anywhere (R12/R13) --------------------------------------

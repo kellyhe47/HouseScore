@@ -60,6 +60,7 @@ from houseaccount.publish import (
 from houseaccount.resolve import DoorFacts, ResolveReport
 from houseaccount.scoring.engine import score_door
 from houseaccount.scoring.weights import THRESHOLDS
+from houseaccount.vision.run import NO_KEY_REASON as VISION_NO_KEY_REASON
 
 AS_OF = date(2026, 8, 14)
 RUN_AT = datetime(2026, 8, 14, 6, 30, 0, tzinfo=timezone.utc)
@@ -593,6 +594,199 @@ def test_publish_copies_the_degradations_it_was_given_and_invents_none(data_dir)
     )
 
     assert read_manifest(data_dir)["degradations"] == list(given)
+
+
+# --- the vision stage's own state (T023) --------------------------------------
+#
+# The published run's Data & Ethics page printed **DECLINED** beside a vision
+# stage that had answered 270 of 270 requests and left imagery evidence on 119 of
+# its 540 doors. It had nothing better to go on: the manifest records a *sentence*
+# ("31 vision answers could not be read as detections") and nothing else, so a
+# reader — page or human — has to pattern-match prose to decide whether the stage
+# refused, ran, or ran badly. Prose cannot carry that distinction, and the loss it
+# describes has no denominator anywhere in the file.
+#
+# So the run states it. Three outcomes, told apart from the block alone:
+#
+#   ran clean      available=True,  declination_reason=None, answers_lost == 0
+#   ran, lost some available=True,  declination_reason=None, 0 < answers_lost
+#   declined       available=False, declination_reason=<the refusal>, no counts
+#
+# `answers_*` counts vision *requests* — one answer per request, 270 on the
+# published run — and is what the run measured, so it is carried through
+# unchanged. `doors_with_imagery` is counted here instead, off the features being
+# written, exactly like `doors_scored`: it is a fact about the artifact, and a
+# number counted from what was published cannot disagree with `doors.geojson`
+# sitting beside it. Against the real run that rule yields 119, and `doors_total`
+# is already published as its denominator.
+#
+# A run that never measured any of this publishes no block. An unmeasured stage
+# reported as `available: true, answers_total: 0` would be a claim nobody made,
+# on the same principle as the null `latest_deed_date` above.
+
+
+def read_vision(data_dir):
+    return read_manifest(data_dir).get("vision")
+
+
+def imagery_doors(data_dir):
+    """Published doors carrying at least one evidence line with a frame."""
+    return [
+        feature
+        for feature in read_geojson(data_dir)["features"]
+        if any(item["imagery"] for item in feature["properties"]["evidence"])
+    ]
+
+
+def test_manifest_publishes_the_vision_state_the_run_measured(data_dir):
+    """The partial run — the state this ticket exists to make expressible."""
+    run(
+        [scored(facts(), vision=POOL_VISION)],
+        data_dir=data_dir,
+        manifest_=manifest(
+            vision_available=True,
+            vision_answers_total=270,
+            vision_answers_lost=31,
+            degradations=(
+                "31 vision answers could not be read as detections; the doors they "
+                "covered scored without their imagery signals",
+            ),
+        ),
+    )
+
+    block = read_vision(data_dir)
+    assert set(block) == {
+        "available",
+        "declination_reason",
+        "answers_total",
+        "answers_lost",
+        "doors_with_imagery",
+    }
+    assert block["available"] is True
+    assert block["declination_reason"] is None
+    assert (block["answers_total"], block["answers_lost"]) == (270, 31)
+
+
+def test_a_partial_vision_run_is_not_published_as_a_declination(data_dir):
+    """The bug in one assertion: a recorded parse-failure sentence must not turn
+    a stage that answered into a stage that refused."""
+    run(
+        [scored(facts(), vision=POOL_VISION)],
+        data_dir=data_dir,
+        manifest_=manifest(
+            vision_available=True,
+            vision_answers_total=270,
+            vision_answers_lost=31,
+            degradations=("31 vision answers could not be read as detections",),
+        ),
+    )
+
+    block = read_vision(data_dir)
+    assert block["available"] is True
+    assert block["declination_reason"] is None
+    assert block["answers_lost"] > 0, "a partial loss that reports no loss is invisible"
+    assert block["doors_with_imagery"] > 0, "this stage's evidence reached the map"
+
+
+def test_a_clean_vision_run_reports_no_loss_to_disclaim(data_dir):
+    run(
+        [scored(facts(), vision=POOL_VISION)],
+        data_dir=data_dir,
+        manifest_=manifest(
+            vision_available=True, vision_answers_total=270, vision_answers_lost=0
+        ),
+    )
+
+    block = read_vision(data_dir)
+    assert (block["available"], block["declination_reason"]) == (True, None)
+    assert block["answers_lost"] == 0
+    assert block["answers_total"] == 270
+
+
+def test_a_declined_vision_stage_publishes_the_refusal_and_counts_nothing(data_dir):
+    """No key, so nothing ran — and the refusal is printed, as it always was."""
+    run(
+        [scored(facts())],
+        data_dir=data_dir,
+        manifest_=manifest(
+            vision_available=False,
+            vision_declination_reason=VISION_NO_KEY_REASON,
+            degradations=(VISION_NO_KEY_REASON,),
+        ),
+    )
+
+    block = read_vision(data_dir)
+    assert block["available"] is False
+    assert block["declination_reason"] == VISION_NO_KEY_REASON
+    assert (block["answers_total"], block["answers_lost"]) == (0, 0)
+    assert block["doors_with_imagery"] == 0
+
+
+def test_the_three_vision_outcomes_are_told_apart_by_the_block_alone(tmp_path):
+    """No reader of this manifest should have to parse a sentence to know which
+    of the three happened."""
+    states = {}
+    for name, fields in {
+        "clean": dict(vision_available=True, vision_answers_total=270, vision_answers_lost=0),
+        "partial": dict(vision_available=True, vision_answers_total=270, vision_answers_lost=31),
+        "declined": dict(
+            vision_available=False, vision_declination_reason=VISION_NO_KEY_REASON
+        ),
+    }.items():
+        target = tmp_path / name
+        run([scored(facts(), vision=POOL_VISION)], data_dir=target, manifest_=manifest(**fields))
+        states[name] = read_vision(target)
+
+    assert len({json.dumps(block, sort_keys=True) for block in states.values()}) == 3
+    assert states["partial"] != states["declined"]
+    assert states["partial"]["available"] is not states["declined"]["available"]
+    assert states["partial"]["answers_lost"] != states["clean"]["answers_lost"]
+
+
+def test_the_doors_carrying_imagery_are_counted_from_what_was_published(data_dir):
+    """The numerator of "119 of 540", counted off the features rather than passed
+    in: a hand-supplied count could disagree with `doors.geojson` next to it."""
+    pairs = [
+        scored(facts("0248_01101_00003", lot="3"), vision=POOL_VISION),
+        scored(facts("0248_01101_00005", lot="5"), vision=POOL_VISION),
+        scored(facts("0248_01101_00006", lot="6")),
+    ]
+    run(
+        pairs,
+        data_dir=data_dir,
+        manifest_=manifest(
+            vision_available=True, vision_answers_total=6, vision_answers_lost=1
+        ),
+    )
+
+    payload = read_manifest(data_dir)
+    assert payload["vision"]["doors_with_imagery"] == len(imagery_doors(data_dir)) == 2
+    assert payload["doors_total"] == 3
+
+
+def test_the_published_loss_is_quantifiable_without_inventing_a_denominator(data_dir):
+    """Both fractions the page prints — 31 of 270 answers, 119 of 540 doors — are
+    readable from this file and nowhere else."""
+    run(
+        [scored(facts(), vision=POOL_VISION)],
+        data_dir=data_dir,
+        manifest_=manifest(
+            vision_available=True, vision_answers_total=270, vision_answers_lost=31
+        ),
+    )
+
+    payload = read_manifest(data_dir)
+    block = payload["vision"]
+    assert 0 < block["answers_lost"] < block["answers_total"]
+    assert 0 < block["doors_with_imagery"] <= payload["doors_total"]
+
+
+def test_a_run_that_never_measured_the_vision_stage_claims_nothing(data_dir):
+    """Every artifact published before this was measured, and every caller that
+    still constructs a `RunManifest` without it."""
+    run([scored(facts(), vision=POOL_VISION)], data_dir=data_dir)
+
+    assert not read_vision(data_dir), "an unmeasured stage must not publish a state"
 
 
 # --- the unscorable rule ------------------------------------------------------

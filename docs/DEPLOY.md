@@ -28,11 +28,22 @@ is one shared-cpu-1x machine with 512 MB, and the UI is static files.
 Rehearse locally first — it costs nothing and catches a stale run:
 
 ```sh
+cp .env.example .env    # then fill in whichever keys you have
 make pipeline    # publishes data/doors.geojson + data/houseaccount.sqlite
 make eval        # writes eval/report.json, which the Data & Ethics page reads
 make test        # Python + JS suites
 make serve       # http://127.0.0.1:8000/health should report the door count
 ```
+
+`make pipeline` and `make eval` source `.env` themselves when it exists, so
+there is nothing to export by hand. **Check `degradations[]` in
+`data/run_manifest.json` before you build the image.** Every credential is
+optional and a missing one degrades a stage instead of failing the run, so a
+keyless `make pipeline` exits 0 having published a complete, internally
+consistent, three-signals-poorer territory — no vision terms, no ACS prior — and
+the image build below will bake exactly that in. A run that used its keys
+reports `"vision": {"available": true, ...}` and lists only the two structural
+degradations (no OPRA rental list, no door in the 30-day mover band).
 
 `make pipeline` is what puts the artifacts in `data/`, and the `Dockerfile`
 copies that directory into the image. **Deploying without a current `data/` ships
@@ -169,8 +180,10 @@ Open `https://houseaccount.vercel.app`. In order:
 
 ## Redeploying
 
-- **New scoring run:** `make pipeline && make eval`, then `flyctl deploy`. The
-  artifacts live inside the image, so the server changes only when it is rebuilt.
+- **New scoring run:** `make pipeline && make eval`, then check
+  `degradations[]` in `data/run_manifest.json`, then `flyctl deploy`. The
+  artifacts live inside the image, so the server changes only when it is rebuilt
+  — and a degraded run deploys just as cleanly as a complete one.
 - **UI change only:** `vercel --prod`. Nothing on Fly.io needs to move.
 - **Rotating a credential:** `flyctl secrets set` again; Fly restarts the
   machines for you.

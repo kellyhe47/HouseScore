@@ -1,7 +1,7 @@
 {
-  "run_at": "2026-08-15T01:02:31.500099+00:00",
+  "run_at": "2026-08-15T01:06:13.983360+00:00",
   "as_of": "2026-08-15",
-  "code_version": "c0c51cd",
+  "code_version": "f6b3fb9",
   "territory_median_value": 743350.0,
   "acs_dual_income_threshold": 0.35,
   "retrieved": {
@@ -31,22 +31,20 @@
     }
   },
   "vision": {
-    "available": false,
-    "declination_reason": "OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms.",
+    "available": true,
+    "declination_reason": null,
     "answers_total": 0,
     "answers_lost": 0,
-    "doors_with_imagery": 0
+    "doors_with_imagery": 119
   },
   "degradations": [
-    "CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so block-group statistics were not fetched",
     "municipal rental registration not obtained via OPRA",
-    "no door is inside the 30-day top mover band: the freshest sale in the SR1A register closed 2026-06-15, 61 days ago, because a deed reaches the published register only after county recording and the state's next file release. The Mover group did fire in the wider 90-day window; the 30-day tier is unreachable at this source's publication cadence, not because the rule failed.",
-    "OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms."
+    "no door is inside the 30-day top mover band: the freshest sale in the SR1A register closed 2026-06-15, 61 days ago, because a deed reaches the published register only after county recording and the state's next file release. The Mover group did fire in the wider 90-day window; the 30-day tier is unreachable at this source's publication cadence, not because the rule failed."
   ],
   "resolve": {
     "doors_total": 540,
-    "doors_with_signal": 115,
-    "coverage": 0.21296296296296297,
+    "doors_with_signal": 540,
+    "coverage": 1.0,
     "permits_total": 1740,
     "permits_in_territory": 232,
     "permits_matched": 144,
@@ -57,9 +55,9 @@
     "municipal_match_rate": 0.9741379310344828,
     "block_lot_match_rate": 0.6206896551724138,
     "address_match_rate": 0.0,
-    "doors_with_block_group": 0,
-    "acs_available": false,
-    "acs_reason": "CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so block-group statistics were not fetched",
+    "doors_with_block_group": 540,
+    "acs_available": true,
+    "acs_reason": null,
     "rental_declination_reason": "municipal rental registration not obtained via OPRA"
   }
 }

@@ -6,10 +6,10 @@
   "recall": 0.9,
   "hallucination_rate": 0.05,
   "metrics_source": "frozen fixture 09 (hand labels not yet collected)",
-  "cost_total_usd": 0.7331319000000003,
+  "cost_total_usd": 0.0,
   "doors_scored": 540,
-  "cost_per_door": 0.0013576516666666673,
-  "resolve_match_rate": 0.974152785755313,
+  "cost_per_door": 0.0,
+  "resolve_match_rate": 0.9741379310344828,
   "resolve_match_rate_threshold": 0.95,
   "ok": true
 }

@@ -862,13 +862,24 @@ function webFiles(dir = WEB_DIR, trail = 'web') {
   });
 }
 
-test('the MCP section advertises the endpoint on the app the deploy creates', () => {
+test('the MCP section derives its endpoint instead of pinning a host', () => {
   const markup = readFileSync(ETHICS_HTML, 'utf8');
 
-  assert.ok(
-    markup.includes(`https://${flyAppName()}.fly.dev/mcp`),
-    `the page must publish the MCP endpoint on ${flyAppName()}.fly.dev`
+  // The transport is mounted at `/mcp` on whichever server answers the API, and
+  // `HOUSEACCOUNT_API_BASE` names that server on both topologies. Deriving from
+  // it is what makes the published endpoint correct on Railway (one origin) and
+  // on Fly + Vercel (two) without a per-deploy edit.
+  assert.match(
+    markup,
+    /HOUSEACCOUNT_API_BASE/,
+    'the endpoint must be derived from the configured API base'
   );
+  assert.match(markup, /new URL\(\s*'\/mcp'/, 'the endpoint must resolve /mcp against that base');
+
+  // A published absolute endpoint is a hostname that can rot. There is exactly
+  // one deploy this repo can no longer guess, so there must be no literal.
+  const pinned = [...markup.matchAll(/https?:\/\/[A-Za-z0-9.-]+\/mcp/g)].map((m) => m[0]);
+  assert.deepEqual(pinned, [], 'the MCP endpoint is hardcoded to a host that may not exist');
 });
 
 test('no file under web/ still names a Fly app the deploy never creates', () => {

@@ -46,6 +46,22 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY data ./data
 COPY eval/report.json ./eval/report.json
 
+# The Map UI, served by this same process (Railway: one service, one origin).
+# `houseaccount.server.app` mounts `web/` only when the directory is present, so
+# copying it here is the whole difference between the one-host and two-host
+# deployments — a Fly build that omits these two lines leaves Vercel serving the
+# same files, and nothing else changes.
+COPY web ./web
+COPY scripts ./scripts
+
+# Point the UI at a same-origin API. The script is named for Vercel because that
+# is where it runs in the two-host deploy, but it is just "write the two globals
+# into web/js/config.js", and `/api` is the correct answer when the API and the
+# UI are the same server. Without this the ethics page resolves its artifact
+# base to `/` and renders the "no published run" fallback against a server that
+# has the run right there.
+RUN sh scripts/vercel-build.sh /api /api
+
 # A web process that is root inside its own image is one container escape away
 # from being root on the host. Nothing here writes to the filesystem, so the
 # account owns nothing and needs no shell.

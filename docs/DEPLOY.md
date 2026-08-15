@@ -1,19 +1,83 @@
 # Deploying HouseAccount
 
-Two surfaces, two hosts (R12):
+Two surfaces — the server and the Map UI — and two supported ways to host them:
 
-| Surface | Host | What it is |
+| Topology | Hosts | Use when |
 | --- | --- | --- |
-| Server | Fly.io | `houseaccount.server.app:create_app` — the REST endpoints the map calls, the artifact endpoints the Data & Ethics page reads, and the MCP transport at `/mcp`. |
-| Map UI | Vercel | `web/` as static files. No bundler, no framework — hand-written ES modules plus one generated config script. |
+| **One service** | Railway | The default. One container serves the API, the MCP transport and the static UI from a single origin. |
+| **Two hosts** | Fly.io + Vercel | The split deploy. The server on Fly, `web/` on Vercel as static files. |
 
-Everything the two hosts need is committed and correct: `Dockerfile` builds the
-server image with the published run baked in, `fly.toml` exposes it on port 8000
-with a `/health` check, `vercel.json` publishes `web/` and injects the API
-origin, and `scripts/vercel-build.sh` is the injection step.
+Both ship from the same `Dockerfile`. It copies `web/` into the image and
+generates a same-origin `js/config.js`, and `houseaccount.server.app` mounts the
+directory when it is present — so the container serves the UI on its own origin
+either way. On Railway that mounted copy *is* the UI. On Fly it is an unused
+duplicate, because Vercel serves the same files from its own origin and
+`scripts/vercel-build.sh` regenerates `config.js` there pointing at the Fly
+hostname, across origins, against the `UI_ORIGINS` allowlist.
+
+The mount is added last and cannot shadow the API: Starlette matches routes in
+order, so `/api/*` and `/mcp` are claimed before the catch-all sees them.
+
+Everything either topology needs is committed and correct: `Dockerfile` builds
+the image with the published run baked in, `railway.json` sets the builder and
+the `/health` check, `fly.toml` exposes port 8000 with the same check,
+`vercel.json` publishes `web/` and injects the API origin, and
+`scripts/vercel-build.sh` is the injection step.
 
 What is **not** committed, and cannot be, is anybody's credentials. That is the
 line this runbook stops at and hands over.
+
+## Railway (one service)
+
+This is the short path. Railway builds the committed `Dockerfile`, and because
+the image carries `web/`, the deployed URL is the map — there is no second host,
+no CORS preflight and no API base to configure.
+
+Connect the repo once, in the dashboard: **New Project → Deploy from GitHub
+repo → `kellyhe47/HouseScore`**. Railway reads `railway.json`, builds the
+Dockerfile, and every push to `main` redeploys. Then **Settings → Networking →
+Generate Domain** to get a public hostname.
+
+Or from the CLI, in this directory:
+
+```sh
+railway login                                      # ← your credentials
+railway link                                       # pick the project
+railway up
+```
+
+Nothing needs to be set for the server to serve doors: it answers from
+`data/doors.geojson` and `data/houseaccount.sqlite` and makes no outbound calls.
+The three pipeline credentials are optional and belong in **Variables** in the
+dashboard, never in `railway.json` — see the table below.
+
+Two things Railway supplies on its own, which is why neither is configured here:
+
+- **`PORT`.** Railway injects it and the container's `CMD` expands it. Nothing
+  in `railway.json` sets it.
+- **The health gate.** `healthcheckPath` is `/health`, so a container that boots
+  into an empty territory fails the deploy instead of replacing a working one.
+
+Verify, substituting your generated domain:
+
+```sh
+curl https://<your-app>.up.railway.app/health
+#   {"status":"ok","doors":540}          ← a door count of 0 means a stale data/
+```
+
+Then open the domain itself. The map is served at `/`, the Data & Ethics page at
+`/ethics.html`, and both read the API at `/api` on that same origin. Skip to
+[Verify the whole thing](#3-verify-the-whole-thing) for what to click.
+
+**Redeploying:** push to `main`, or `railway up`. A new scoring run means
+`make pipeline && make eval`, committing the changed artifacts, then pushing —
+Railway builds from the repo, so an uncommitted `data/` is a run the deploy
+never sees.
+
+---
+
+The rest of this runbook is the two-host Fly + Vercel deploy. Nothing below is
+needed for Railway.
 
 ## Before you start
 

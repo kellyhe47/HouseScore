@@ -32,7 +32,9 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from houseaccount.config import Config
 from houseaccount.server.api import build_router
 from houseaccount.server.mcp_tools import mcp_server_for
 from houseaccount.server.published import DataUnavailable, load_territory
@@ -47,6 +49,16 @@ UI_ORIGINS: tuple[str, ...] = (
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 )
+
+#: The static Map UI, served by this same process when the directory is present.
+#:
+#: Two hosts (Fly + Vercel) and one host (Railway) are both supported, and the
+#: difference is entirely whether `web/` is in the image. On Railway the
+#: Dockerfile copies it, this mount serves it, and the UI calls a same-origin
+#: `/api` — so there is no CORS preflight, no `HOUSEACCOUNT_API_BASE` to set and
+#: no second dashboard. On Fly the directory is absent, the mount is skipped,
+#: and Vercel serves the same files against the allowlist below.
+WEB_DIR_NAME = "web"
 
 #: Where MCP clients connect. The transport's route is adopted at exactly this
 #: path rather than mounted under it: a `Mount` only matches the prefix *with* a
@@ -105,4 +117,16 @@ def create_app(data_dir: Path | None = None, eval_report: Path | None = None) ->
     # assert that the routes and `web/ethics.html`'s fetches are one decision.
     app.routes.extend(build_router(territory, eval_report=eval_report).routes)
     app.routes.extend(mcp_app.routes)
+
+    # Mounted *last*, and only if the directory shipped. Starlette matches
+    # routes in order, so a catch-all at "/" added after the API and MCP routes
+    # cannot shadow them — `/api/doors.geojson` still reaches its endpoint and
+    # only what nothing else claimed falls through to a file. Added first it
+    # would swallow the entire server.
+    #
+    # `html=True` serves `index.html` at `/`, which is what makes the bare
+    # deployment URL the map rather than a 404.
+    web_dir = Config.from_env().repo_root / WEB_DIR_NAME
+    if web_dir.is_dir():
+        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
     return app

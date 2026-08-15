@@ -465,17 +465,34 @@ def fly_hostnames(text):
     return re.findall(r"([A-Za-z0-9][A-Za-z0-9-]*)\.fly\.dev", text)
 
 
-def test_the_web_ui_advertises_an_mcp_endpoint_at_all():
-    """A guard on the two tests below: they must have something to check."""
-    assert advertised_mcp_urls(), "no file under web/ publishes an MCP endpoint"
+def test_no_web_file_advertises_an_absolute_mcp_endpoint():
+    """The host is no longer a fact this repo knows.
+
+    Two topologies ship from this tree — Railway serving the page and the
+    transport from one origin, Fly + Vercel serving them from two — so any
+    absolute URL burned into `web/` is wrong for one of them. The page resolves
+    the endpoint at runtime instead; see the test below.
+    """
+    assert advertised_mcp_urls() == [], (
+        "an absolute MCP endpoint is a hostname that rots on the other topology"
+    )
 
 
-def test_the_advertised_mcp_url_is_the_app_fly_toml_declares(fly_config):
-    """Derived on both sides: rename the Fly app or edit the page and this fails."""
-    expected = f"https://{fly_config['app']}.fly.dev{MCP_PATH}"
+def test_the_web_ui_derives_the_mcp_endpoint_from_the_api_base():
+    """The replacement contract, and the guard that the tests here still bite.
 
-    wrong = [(where, url) for where, url in advertised_mcp_urls() if url != expected]
-    assert wrong == [], f"the UI advertises an endpoint the deploy never creates; want {expected}"
+    `HOUSEACCOUNT_API_BASE` names whichever server answers the API — an absolute
+    origin when the UI is hosted apart from it, a same-origin `/api` when it is
+    not — and the transport is mounted at `MCP_PATH` on that same server. So the
+    page has to resolve one against the other, and `MCP_PATH` is the app's own
+    constant here, which is what moves the page if the transport is remounted.
+    """
+    markup = (WEB_DIR / "ethics.html").read_text(encoding="utf-8")
+
+    assert "HOUSEACCOUNT_API_BASE" in markup, "the page derives the endpoint from nothing"
+    assert f"'{MCP_PATH}'" in markup or f'"{MCP_PATH}"' in markup, (
+        f"the page never resolves {MCP_PATH}, the path the server mounts"
+    )
 
 
 def test_no_web_file_names_a_fly_app_the_deploy_never_creates(fly_config):
@@ -492,22 +509,10 @@ def test_no_web_file_names_a_fly_app_the_deploy_never_creates(fly_config):
     assert stray == [], f"fly.toml declares only {declared!r}"
 
 
-def test_the_advertised_origin_is_the_host_the_runbook_verifies(deploy_md, fly_config):
-    """`docs/DEPLOY.md` curls this origin after the deploy; the page has to name
-    the same one, or the runbook verifies a server nobody was pointed at."""
+def test_the_runbook_verifies_the_origin_the_fly_deploy_creates(deploy_md, fly_config):
+    """The Fly path still names one host, and the runbook still has to curl it."""
     origin = f"https://{fly_config['app']}.fly.dev"
     assert origin in deploy_md, f"the runbook never verifies {origin}"
-
-    wrong = [(where, url) for where, url in advertised_mcp_urls() if not url.startswith(origin)]
-    assert wrong == [], f"advertised outside the origin the runbook verifies ({origin})"
-
-
-def test_the_advertised_path_is_the_path_the_server_mounts():
-    """`MCP_PATH` is the app's own constant, so a remount moves the page with it."""
-    wrong = [
-        (where, url) for where, url in advertised_mcp_urls() if not url.endswith(MCP_PATH)
-    ]
-    assert wrong == [], f"the server mounts the transport at {MCP_PATH}"
 
 
 # --- no secret values anywhere (R12/R13) --------------------------------------

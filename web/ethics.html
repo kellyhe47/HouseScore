@@ -303,13 +303,33 @@ function validationSection(page) {
   );
 }
 
+/**
+ * The MCP endpoint this page publishes, derived rather than pinned.
+ *
+ * The host is a deploy-time choice now: Railway serves this page and the MCP
+ * transport from one origin, while the Fly + Vercel split serves the page from
+ * one host and the transport from another. Any literal here is wrong for one of
+ * those two, and this line has already drifted once — it named a `-mcp` host no
+ * documented step ever created.
+ *
+ * So: the transport is mounted at `/mcp` on whichever server answers the API,
+ * and `HOUSEACCOUNT_API_BASE` already names that server (absolute when the UI
+ * is hosted apart from it, a same-origin `/api` when it is not). Swapping the
+ * path on that base is the endpoint, on both topologies, with nothing to keep
+ * in sync.
+ */
+function mcpEndpoint() {
+  const base = String(window.HOUSEACCOUNT_API_BASE ?? '').trim() || '/api';
+  try {
+    return new URL('/mcp', new URL(base, window.location.href)).href;
+  } catch {
+    return new URL('/mcp', window.location.href).href;
+  }
+}
+
 function mcpSection() {
   const box = el('div', 'card card--plain');
-  // The one app `fly.toml` declares, with the transport mounted where
-  // `houseaccount.server.app` mounts it. The runbook verifies this origin after
-  // the deploy, so a reviewer who curls what this page prints reaches a server
-  // that exists — the previous `-mcp` host was one no documented step creates.
-  box.appendChild(el('div', 'formula', 'https://houseaccount.fly.dev/mcp'));
+  box.appendChild(el('div', 'formula', mcpEndpoint()));
   for (const [tool, description] of [
     ['get_door_score(address)', 'score, confidence and the full evidence trail'],
     ['explain_score(address)', 'the same, plus the group-by-group arithmetic'],

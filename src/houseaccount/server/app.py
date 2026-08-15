@@ -27,12 +27,14 @@ what makes adding a credentialed endpoint later a deliberate act.
 from __future__ import annotations
 
 import contextlib
+import os
 from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from mcp.server.transport_security import TransportSecuritySettings
 
 from houseaccount.config import Config
 from houseaccount.server.api import build_router
@@ -66,6 +68,58 @@ WEB_DIR_NAME = "web"
 #: re-POST on redirect would see an empty body instead of a session.
 MCP_PATH = "/mcp"
 
+#: The loopback spellings the MCP transport answers to in development.
+_LOCAL_HOSTS = ("127.0.0.1:*", "localhost:*", "[::1]:*")
+_LOCAL_ORIGINS = ("http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*")
+
+
+def _deployed_hosts() -> list[str]:
+    """The public hostnames this process is reachable at, read off the platform.
+
+    Railway injects `RAILWAY_PUBLIC_DOMAIN` and Fly injects `FLY_APP_NAME`, so
+    neither deployment needs its own hostname typed into a config file — which
+    matters because the hostname is not knowable until the platform hands one
+    out. `HOUSEACCOUNT_PUBLIC_HOST` is the escape hatch for anywhere else (and
+    accepts a comma-separated list, for a custom domain beside the generated
+    one).
+    """
+    hosts = [
+        host.strip()
+        for host in os.environ.get("HOUSEACCOUNT_PUBLIC_HOST", "").split(",")
+        if host.strip()
+    ]
+    if railway := os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip():
+        hosts.append(railway)
+    if fly := os.environ.get("FLY_APP_NAME", "").strip():
+        hosts.append(f"{fly}.fly.dev")
+    return hosts
+
+
+def _transport_security() -> TransportSecuritySettings:
+    """Which `Host` headers the MCP transport will answer to.
+
+    The SDK turns DNS-rebinding protection on by itself whenever the bind host
+    looks like loopback, and `streamable_http_app` defaults that argument to
+    `127.0.0.1` — so a server that never mentions a host at all ships with
+    protection *enabled* and a *localhost-only* allowlist. Deployed, that is a
+    421 on `initialize` for every client: the map and the REST API work, the
+    health check is green, and only the MCP surface is dark.
+
+    So the allowlist is built here rather than left to that default. Loopback
+    stays on it (a `make serve` session is exactly the case the protection is
+    for), and the deployed hostname is added from the platform's own variable.
+    """
+    hosts = list(_LOCAL_HOSTS)
+    origins = list(_LOCAL_ORIGINS) + list(UI_ORIGINS)
+    for host in _deployed_hosts():
+        hosts += [host, f"{host}:*"]
+        origins.append(f"https://{host}")
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=origins,
+    )
+
 
 def create_app(data_dir: Path | None = None, eval_report: Path | None = None) -> FastAPI:
     """Build the app that serves the run published under `data_dir`.
@@ -81,7 +135,10 @@ def create_app(data_dir: Path | None = None, eval_report: Path | None = None) ->
     """
     territory = load_territory(data_dir)
     mcp_server = mcp_server_for(territory)
-    mcp_app = mcp_server.streamable_http_app(streamable_http_path=MCP_PATH)
+    mcp_app = mcp_server.streamable_http_app(
+        streamable_http_path=MCP_PATH,
+        transport_security=_transport_security(),
+    )
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

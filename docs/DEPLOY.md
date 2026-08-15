@@ -57,6 +57,16 @@ Two things Railway supplies on its own, which is why neither is configured here:
   in `railway.json` sets it.
 - **The health gate.** `healthcheckPath` is `/health`, so a container that boots
   into an empty territory fails the deploy instead of replacing a working one.
+- **`RAILWAY_PUBLIC_DOMAIN`.** The MCP transport validates the `Host` header, so
+  it has to know the hostname it is reached at, and the platform is the only
+  thing that knows it. `houseaccount.server.app` reads that variable (and
+  `FLY_APP_NAME` on Fly) to build the allowlist.
+
+  If `initialize` ever answers **421 Misdirected Request**, that variable was not
+  present: set `HOUSEACCOUNT_PUBLIC_HOST` to the domain by hand in **Variables**
+  (comma-separated for a custom domain beside the generated one) and redeploy.
+  It is the one symptom that leaves `/health` green and the map working while
+  every MCP client is refused.
 
 Verify, substituting your generated domain:
 

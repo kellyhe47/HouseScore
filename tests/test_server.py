@@ -38,6 +38,7 @@ No network, no live uvicorn process, no fixtures on disk: every door is built
 in-module and every artifact is written under `tmp_path`.
 """
 
+import contextlib
 import json
 import re
 from dataclasses import fields
@@ -53,7 +54,7 @@ from houseaccount.publish import DOORS_GEOJSON_NAME, RunManifest, publish
 from houseaccount.resolve import DoorFacts, ResolveReport
 from houseaccount.route import Stop, decode_share
 from houseaccount.scoring.engine import score_door
-from houseaccount.server.app import UI_ORIGINS, DataUnavailable, create_app
+from houseaccount.server.app import MCP_PATH, UI_ORIGINS, DataUnavailable, create_app
 from houseaccount.server.mcp_tools import create_mcp_server
 from houseaccount.server.published import Door, door_payload
 
@@ -725,3 +726,107 @@ def test_cors_allows_the_ui_origin(client):
 
     simple = client.get("/api/doors.geojson", headers={"Origin": origin})
     assert simple.headers["access-control-allow-origin"] in {origin, "*"}
+
+
+# --- the MCP transport answers to the host the platform hands out -------------
+#
+# The regression these guard is a deployment that looks entirely healthy and is
+# half dark. `streamable_http_app`'s `host` argument defaults to `127.0.0.1`, and
+# the SDK reads a loopback bind as "this is a local server" and switches DNS
+# rebinding protection on with a localhost-only allowlist. Deployed, `/health` is
+# green, the map draws, every REST endpoint answers — and `initialize` is a 421
+# for every MCP client, because the platform's hostname is not on that list.
+#
+# It survived a full suite because nothing here had ever POSTed to `/mcp`; the
+# mount was asserted by route introspection alone. So these drive the transport
+# over HTTP with the `Host` header a real client sends.
+
+MCP_HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/event-stream",
+}
+
+INITIALIZE = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "tests", "version": "1.0"},
+    },
+}
+
+#: The status the transport returns for a `Host` it will not answer to.
+MISDIRECTED = 421
+
+
+def mcp_initialize(client, host):
+    """Open an MCP session as a real client does, from `host`."""
+    return client.post(MCP_PATH, headers={**MCP_HEADERS, "Host": host}, json=INITIALIZE)
+
+
+@contextlib.contextmanager
+def mcp_client(data_dir):
+    """A client whose lifespan has run.
+
+    `TestClient` only fires startup when it is used as a context manager, and the
+    streamable-HTTP transport refuses every request until its session manager is
+    running — so a bare `TestClient(app)` fails these with a task-group error
+    that has nothing to do with the header being tested.
+    """
+    with TestClient(create_app(data_dir=data_dir)) as client:
+        yield client
+
+
+def test_the_mcp_transport_answers_on_the_railway_domain(data_dir, monkeypatch):
+    """Railway injects `RAILWAY_PUBLIC_DOMAIN`; the allowlist is built from it."""
+    domain = "houseaccount-production.up.railway.app"
+    monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", domain)
+
+    with mcp_client(data_dir) as client:
+        response = mcp_initialize(client, domain)
+
+    assert response.status_code != MISDIRECTED, response.text
+    assert response.status_code == 200, response.text
+    assert response.headers.get("mcp-session-id"), "initialize opened no session"
+
+
+def test_the_mcp_transport_answers_on_the_fly_domain(data_dir, monkeypatch):
+    """Fly injects `FLY_APP_NAME`, and the hostname is that plus `.fly.dev`."""
+    monkeypatch.setenv("FLY_APP_NAME", "houseaccount")
+
+    with mcp_client(data_dir) as client:
+        response = mcp_initialize(client, "houseaccount.fly.dev")
+
+    assert response.status_code == 200, response.text
+
+
+def test_the_mcp_transport_answers_on_an_explicitly_configured_host(data_dir, monkeypatch):
+    """The escape hatch, for a custom domain or a platform with no variable."""
+    monkeypatch.setenv("HOUSEACCOUNT_PUBLIC_HOST", "score.example.com, alt.example.com")
+
+    with mcp_client(data_dir) as client:
+        for host in ("score.example.com", "alt.example.com"):
+            assert mcp_initialize(client, host).status_code == 200, host
+
+
+def test_the_mcp_transport_still_answers_on_loopback(data_dir, monkeypatch):
+    """`make serve` is the case the protection is actually for; it keeps working."""
+    monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+    monkeypatch.delenv("HOUSEACCOUNT_PUBLIC_HOST", raising=False)
+
+    with mcp_client(data_dir) as client:
+        for host in ("localhost:8000", "127.0.0.1:8000"):
+            assert mcp_initialize(client, host).status_code == 200, host
+
+
+def test_the_mcp_transport_rejects_a_host_it_was_never_given(data_dir, monkeypatch):
+    """The protection is kept, not traded away: an unlisted host is still 421."""
+    monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", "houseaccount-production.up.railway.app")
+
+    with mcp_client(data_dir) as client:
+        response = mcp_initialize(client, "evil.example.com")
+
+    assert response.status_code == MISDIRECTED, response.text

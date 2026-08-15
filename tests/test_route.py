@@ -16,15 +16,20 @@ anything that has them — a real `DoorFacts` does), and the server builds a
 `RouteDoor` straight from a GeoJSON feature's properties. That is pinned by
 `test_the_planner_does_not_import_the_pipeline`.
 
-**Where the talk track comes from.** R7.2 makes it a one-sentence opener
-generated from the door's *top evidence item*, presentation-layer only: it never
-feeds the score and is never asserted in a golden fixture. The planner receives
-the top evidence item's **sentence as a plain string** on `RouteDoor.top_evidence`
-— not an `EvidenceItem`, not a callback — because the caller has already scored
-the door and holds the item, and a plain string keeps the planner free of the
-scoring stack for a value it only ever renders. `talk_track_for(door)` generates
-the opener and the planner stamps it on every `Stop`. Tests assert its *shape*
-(non-empty, one line, door-specific, differs per door) — never its prose.
+**Where the talk track comes from.** R7.2 makes it presentation-layer only: it
+never feeds the score and is never asserted in a golden fixture. The planner
+receives the top evidence item's **type as a plain string** on
+`RouteDoor.evidence_type` — not the sentence, not an `EvidenceItem`, not a
+callback. The type picks an authored angle out of `route.ANGLES`;
+`talk_track_for(door)` returns the opener that ends on that angle's one open
+question, `talk_track_branches_for(door)` returns what to say after the
+homeowner answers, and the planner stamps both on every `Stop`.
+
+The sentence is deliberately not passed. It is written for the evidence panel
+and recites what the pipeline worked out about a household, which is the one
+thing a rep must never say at a door — so the tests below assert *shape* and
+*safety* (no file words spoken, no evidence sentence spoken, unsayable signals
+falling through to an angle that mentions nothing) rather than prose.
 
 **How a leg is measured.** A rep can only walk along a street, so `plan_route`
 takes a `network` — anything answering `metres_from(origin, destinations)` and
@@ -69,6 +74,7 @@ from houseaccount.route import (
     encode_share,
     plan_route,
     route_door_from_facts,
+    talk_track_branches_for,
     talk_track_for,
 )
 
@@ -101,7 +107,7 @@ def offset(origin, *, north_m=0.0, east_m=0.0):
     return (lon + dlon, lat + dlat)
 
 
-def door(pin, *, north_m=0.0, east_m=0.0, score=50, centroid=..., top_evidence=None, street="FAWN HILL RD"):
+def door(pin, *, north_m=0.0, east_m=0.0, score=50, centroid=..., evidence_type=None, street="FAWN HILL RD"):
     """One candidate door, placed at a known offset from `START`."""
     number = int(pin.rsplit("_", 1)[-1])
     return RouteDoor(
@@ -109,7 +115,7 @@ def door(pin, *, north_m=0.0, east_m=0.0, score=50, centroid=..., top_evidence=N
         address=situs_display(f"{number} {street}", "07446"),
         score=score,
         centroid=offset(START, north_m=north_m, east_m=east_m) if centroid is ... else centroid,
-        top_evidence=top_evidence,
+        evidence_type=evidence_type,
     )
 
 
@@ -669,57 +675,228 @@ def test_exclude_still_respects_max_doors():
     assert len(planned.exclude({PIN_BEST}).stops) == 2
 
 
-# --- talk track (presentation only — shape, never prose) ----------------------
+# --- talk track (presentation only — shape and safety, never prose) -----------
+#
+# The opener used to be the door's top evidence *sentence* folded into a
+# template, which meant the first thing a rep said at a stranger's house was a
+# recitation of what we had worked out about them ("4 permits filed here in the
+# last 24 months (Alteration)"). It is now authored per evidence *type*: the
+# type picks an angle out of `route.ANGLES`, and the sentence never leaves the
+# evidence panel.
+#
+# Two whole classes of bug go with it. Nothing is quoted, so nothing can be cut
+# mid-clause (ticket 021 — the boundary-cutting tests below became assertions
+# that every authored line is whole). And a type the rep could not say without
+# revealing the file falls through to an angle that does not mention the house
+# at all, which is what the "unsayable" tests pin.
 
+#: The engine's own prose, verbatim — a short line and the long permit line that
+#: ticket 021 was filed about. Neither may ever reach a doorstep.
+EVIDENCE_SENTENCES = [
+    "A SKYLIGHT permit was filed 3 weeks after the deed recorded.",
+    "1 permit filed here in the last 24 months (Alteration) — work at this address "
+    "gets contracted out rather than done in-house.",
+    "Assessed at $1,240,000, more than 1.5x the $610,000 territory median — top of "
+    "the range you cover.",
+    "Census block group: 63% dual-income, at or above the 55% threshold.",
+    "Exterior condition read as fair on the 2015 orthoimagery and poor on the 2020 "
+    "pass — the trend is downward, not just low.",
+]
 
-EVIDENCE_SENTENCE = "A SKYLIGHT permit was filed 3 weeks after the deed recorded."
+#: Evidence types the rep cannot speak without telling the homeowner we hold a
+#: file on them, or without insulting them. Every one must land on the angle
+#: that says nothing about the house.
+UNSAYABLE_TYPES = [
+    "assessed_value",
+    "acs_dual_income_prior",
+    "absentee_likely",
+    "data_gap",
+]
 
+#: Words that only appear in prose derived from the parcel record. None of them
+#: belongs in something said out loud on a doorstep.
+FILE_WORDS = [
+    "permit",
+    "assessed",
+    "median",
+    "census",
+    "block group",
+    "dual-income",
+    "orthoimagery",
+    "deed",
+    "parcel",
+    "registration",
+    "score",
+]
 
-@pytest.mark.parametrize(
-    "top_evidence", [EVIDENCE_SENTENCE, None], ids=["from evidence", "no evidence"]
+ALL_ANGLES = sorted(
+    {id(angle): angle for angle in [*route_module.ANGLES.values(), route_module.DEFAULT_ANGLE]}.values(),
+    key=lambda angle: angle.hook,
 )
-def test_a_talk_track_is_a_one_line_opener(top_evidence):
-    track = talk_track_for(door(pin(1), north_m=100, top_evidence=top_evidence))
+
+
+def sentences_of(track):
+    return [part.strip() for part in re.split(r"[.?!]", track) if part.strip()]
+
+
+def test_a_talk_track_is_a_one_line_opener():
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type="deed_recency"))
 
     assert isinstance(track, str)
     assert track.strip()
     assert "\n" not in track
     assert len(track) <= 200
-    assert track.strip().endswith((".", "!", "?"))
+    assert track.strip().endswith("?"), "the opener stops on a question and waits"
 
 
-def test_a_talk_track_speaks_to_the_door_top_evidence():
-    track = talk_track_for(door(pin(1), north_m=100, top_evidence=EVIDENCE_SENTENCE))
+def test_the_opener_ends_on_its_angle_hook():
+    """The last thing the rep says before the homeowner speaks is the hook,
+    verbatim — nothing is appended after the question."""
+    candidate = door(pin(1), north_m=100, evidence_type="provider_churn")
 
-    assert "SKYLIGHT" in track.upper()
+    assert talk_track_for(candidate).endswith(route_module.ANGLES["provider_churn"].hook)
+
+
+@pytest.mark.parametrize("evidence_type", sorted(route_module.ANGLES) + [None, "brand_new_signal"])
+def test_no_opener_ever_recites_the_file(evidence_type):
+    """R7.2, and the whole point of the rewrite: the words a homeowner hears
+    never reveal that the door was chosen from a parcel record."""
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type=evidence_type)).lower()
+
+    for word in FILE_WORDS:
+        assert word not in track, f"{word!r} reached the doorstep for {evidence_type!r}"
+
+
+@pytest.mark.parametrize("sentence", EVIDENCE_SENTENCES, ids=range(len(EVIDENCE_SENTENCES)))
+def test_an_evidence_sentence_is_never_spoken_whole_or_in_part(sentence):
+    """The panel shows the sentence; the rep does not say it. Checked against
+    every angle, on the sentence's longest distinctive run."""
+    body = sentence.strip().rstrip(".!?").lower()
+    run = body[:40]
+
+    for evidence_type in [*route_module.ANGLES, None]:
+        spoken = talk_track_for(door(pin(1), north_m=100, evidence_type=evidence_type)).lower()
+        assert run not in spoken
+
+
+@pytest.mark.parametrize("evidence_type", UNSAYABLE_TYPES)
+def test_an_unsayable_signal_falls_through_to_the_default_angle(evidence_type):
+    """Assessed value, the census prior, the rental flag and a data gap still
+    score and still sort the route — they just never pick the words."""
+    candidate = door(pin(1), north_m=100, evidence_type=evidence_type)
+
+    assert route_module.angle_for(candidate) is route_module.DEFAULT_ANGLE
+
+
+def test_an_unknown_evidence_type_degrades_to_a_safe_opener():
+    """A type added to the engine and not yet to `ANGLES` gets the angle that
+    says nothing about the door, not a crash and not silence."""
+    candidate = door(pin(1), north_m=100, evidence_type="signal_invented_next_quarter")
+
+    assert route_module.angle_for(candidate) is route_module.DEFAULT_ANGLE
+    assert talk_track_for(candidate).strip().endswith("?")
+
+
+def test_a_declining_exterior_never_reaches_the_homeowner():
+    """`condition_trajectory` is a true thing nobody says to someone's face. It
+    opens on tenure instead."""
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type="condition_trajectory")).lower()
+
+    for word in ["condition", "declin", "slipping", "deferred", "put off"]:
+        assert word not in track
+
+
+@pytest.mark.parametrize("angle", ALL_ANGLES, ids=lambda angle: angle.hook[:24])
+def test_no_hook_is_a_tag_question(angle):
+    """"…right?" asks for confirmation, which tells the homeowner the rep
+    already knew. Every hook is genuinely open."""
+    hook = angle.hook.lower().rstrip()
+
+    assert hook.endswith("?")
+    for tag in [", right?", ", yeah?", ", correct?", "aren't you?", "didn't you?"]:
+        assert not hook.endswith(tag)
+
+
+@pytest.mark.parametrize("angle", ALL_ANGLES, ids=lambda angle: angle.hook[:24])
+def test_every_angle_offers_branches_with_distinct_triggers(angle):
+    triggers = [branch.trigger for branch in angle.branches]
+
+    assert len(triggers) >= 2
+    assert len(set(triggers)) == len(triggers)
+
+
+@pytest.mark.parametrize("angle", ALL_ANGLES, ids=lambda angle: angle.hook[:24])
+def test_every_branch_line_is_whole_sentences(angle):
+    """Ticket 021, now by construction rather than by cutting: authored lines
+    have no width limit to collide with, so none of them can dangle."""
+    for branch in angle.branches:
+        assert branch.line.strip().endswith((".", "?", "!"))
+        assert "\n" not in branch.line
+        for sentence in sentences_of(branch.line):
+            assert sentence.split()[-1].lower() not in DANGLING_ENDINGS, sentence
+
+
+@pytest.mark.parametrize("angle", ALL_ANGLES, ids=lambda angle: angle.hook[:24])
+def test_no_branch_opens_on_a_scripted_acknowledgement(angle):
+    """"Figured." in the slot after the hook admits the answer was never in
+    doubt. Every branch reacts to what was actually said instead."""
+    for branch in angle.branches:
+        first = branch.line.split()[0].strip(",.").lower()
+        assert first not in {"figured", "exactly", "thought", "knew"}
 
 
 def test_a_door_with_no_evidence_still_gets_a_door_specific_opener():
-    track = talk_track_for(door(pin(1), north_m=100, top_evidence=None))
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type=None))
 
     assert "FAWN HILL" in track.upper()
 
 
+def test_the_opener_says_the_street_the_way_a_rep_would():
+    """"FAWN HILL RD" is a thing to read off a form; the rep is speaking."""
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type=None))
+
+    assert "Fawn Hill Rd" in track
+    assert "FAWN HILL RD" not in track
+
+
+def test_a_door_with_no_readable_street_still_opens_somewhere_sayable():
+    nameless = replace(door(pin(1), north_m=100), address="")
+
+    assert "this block" in talk_track_for(nameless)
+
+
 def test_two_doors_with_different_evidence_get_different_talk_tracks():
-    first = talk_track_for(door(pin(1), north_m=100, top_evidence="They just moved in."))
-    second = talk_track_for(door(pin(2), north_m=100, top_evidence="The roof is failing."))
+    first = talk_track_for(door(pin(1), north_m=100, evidence_type="deed_recency"))
+    second = talk_track_for(door(pin(2), north_m=100, evidence_type="pool"))
 
     assert first != second
 
 
-def test_every_stop_carries_the_talk_track_the_module_generates():
-    doors = [replace(candidate, top_evidence=EVIDENCE_SENTENCE) for candidate in WORKED_DOORS]
+def test_two_doors_on_one_angle_get_the_same_words():
+    """The opener is drawn from a small authored set, not generated per door —
+    two permit-led doors on one street are opened the same way on purpose."""
+    first = talk_track_for(door(pin(1), north_m=100, evidence_type="permit_history"))
+    second = talk_track_for(door(pin(2), north_m=200, evidence_type="provider_churn"))
+
+    assert first == second
+
+
+def test_every_stop_carries_the_talk_track_and_branches_the_module_generates():
+    doors = [replace(candidate, evidence_type="deed_recency") for candidate in WORKED_DOORS]
     by_pin = {candidate.pams_pin: candidate for candidate in doors}
 
     planned = plan_route(doors, hours=2.0, start_point=START)
 
+    assert planned.stops
     for stop in planned.stops:
         assert stop.talk_track == talk_track_for(by_pin[stop.pams_pin])
+        assert stop.talk_track_branches == talk_track_branches_for(by_pin[stop.pams_pin])
+        assert stop.talk_track_branches
 
 
 def test_the_talk_track_never_moves_the_score_or_the_order():
-    """R7.2: presentation only. Same doors, wildly different evidence prose."""
-    loud = [replace(candidate, top_evidence="A" * 150) for candidate in WORKED_DOORS]
+    """R7.2: presentation only. Same doors, wildly different evidence types."""
+    loud = [replace(candidate, evidence_type="pool") for candidate in WORKED_DOORS]
 
     planned = plan_route(loud, hours=2.0, start_point=START)
     reference = worked_route()
@@ -728,118 +905,22 @@ def test_the_talk_track_never_moves_the_score_or_the_order():
     assert [stop.score for stop in planned.stops] == [stop.score for stop in reference.stops]
 
 
-# --- talk track: a long evidence sentence is still read aloud whole -----------
-#
-# QA found this on a real route: the opener carried the door's evidence only as
-# far as a fixed width, so the rep was handed "…work at this address gets
-# contracted out rather than. Is now a bad time?" — a sentence that stops
-# mid-clause at a stranger's door. 6 of 20 stops on one route were affected, all
-# of them permit-led, because the engine's permit sentence is the long one.
-#
-# The two sentences below are the engine's own `_score_hires_out` prose,
-# verbatim for one permit and for two. Both are over 110 characters and both
-# carry exactly one strong clause boundary — the em dash, 54 and 64 characters
-# in — so a fixed-width cut necessarily lands in the middle of the gloss while a
-# boundary-aware one has somewhere complete to stop.
-
-PERMIT_EVIDENCE = (
-    "1 permit filed here in the last 24 months (Alteration) — work at this address "
-    "gets contracted out rather than done in-house."
-)
-
-PERMIT_EVIDENCE_TWO = (
-    "2 permits filed here in the last 24 months (Alteration, Roofing) — work at this "
-    "address gets contracted out rather than done in-house."
-)
-
-LONG_EVIDENCE = [PERMIT_EVIDENCE, PERMIT_EVIDENCE_TWO]
-
-#: Words no spoken sentence can end on — they leave the listener waiting for the
-#: rest of it. "than" and "out" are the two endings QA actually heard.
+#: Words no sentence a rep reads aloud may end on (ticket 021's original
+#: symptom: "…gets contracted out rather than."). Deliberately only conjunctions,
+#: articles and relatives — English sentences end on a preposition all the time
+#: ("…meaning to get to."), so a list that catches those catches good prose.
 DANGLING_ENDINGS = {
-    "a", "an", "and", "at", "but", "for", "gets", "in", "of", "on", "or", "out",
-    "rather", "than", "the", "to", "with",
+    "and",
+    "or",
+    "but",
+    "than",
+    "rather",
+    "the",
+    "a",
+    "an",
+    "of",
+    "which",
 }
-
-#: Punctuation a *complete* shorter clause may stop in front of. Deliberately
-#: excludes the comma and the hyphen: "(Alteration," is no more sayable than
-#: "rather than".
-CLAUSE_BOUNDARIES = {"—", "–", ";", ":", "."}
-
-
-def sentences_of(track):
-    """The opener's sentences, without their terminal punctuation."""
-    return [part.strip() for part in re.split(r"[.?!]", track) if part.strip()]
-
-
-def carried_evidence(track, evidence):
-    """How much of `evidence`, from its start, the opener actually says.
-
-    The longest leading run of the evidence sentence that survives into the
-    opener — `""` when the opener does not speak to the evidence at all. Matched
-    case-insensitively, because the opener folds the sentence's leading capital
-    into the middle of its own sentence and that is not what is under test here.
-    """
-    body = evidence.strip().rstrip(".!?")
-    spoken = track.lower()
-    for end in range(len(body), 0, -1):
-        if body[:end].lower() in spoken:
-            return body[:end]
-    return ""
-
-
-@pytest.mark.parametrize("evidence", LONG_EVIDENCE, ids=["one permit", "two permits"])
-def test_a_long_evidence_opener_never_ends_a_sentence_mid_clause(evidence):
-    """R7.2 / ticket 021: every sentence the rep reads aloud finishes itself."""
-    track = talk_track_for(door(pin(1), north_m=100, top_evidence=evidence))
-
-    for sentence in sentences_of(track):
-        last_word = sentence.split()[-1].strip("\"'()").lower()
-        assert last_word not in DANGLING_ENDINGS, f"dangling ending in {sentence!r}"
-
-
-@pytest.mark.parametrize("evidence", LONG_EVIDENCE, ids=["one permit", "two permits"])
-def test_long_evidence_is_carried_whole_or_stopped_at_a_clause_boundary(evidence):
-    """Ticket 021: shorten to a complete clause rather than cutting one.
-
-    Either the whole evidence sentence reaches the door, or what reaches it is a
-    leading run of it that stops where the sentence itself has a boundary. The
-    substance — "1 permit filed here in the last 24 months" — is what the rep
-    knocked on, so it is the part that must survive; dropping it for the gloss
-    would leave the opener with no reason in it.
-    """
-    body = evidence.strip().rstrip(".!?")
-    track = talk_track_for(door(pin(1), north_m=100, top_evidence=evidence))
-    carried = carried_evidence(track, evidence)
-
-    assert carried, "the opener has to speak to the door's evidence"
-    if carried != body:
-        remainder = body[len(carried) :].lstrip()
-        assert remainder[:1] in CLAUSE_BOUNDARIES, f"cut mid-clause: {carried!r}"
-
-
-def test_a_permit_led_route_row_reads_as_a_whole_sentence():
-    """The route list is the other surface QA saw it on (R7.2, R10.1)."""
-    doors = [replace(candidate, top_evidence=PERMIT_EVIDENCE) for candidate in WORKED_DOORS]
-
-    planned = plan_route(doors, hours=2.0, start_point=START)
-
-    assert planned.stops
-    for stop in planned.stops:
-        for sentence in sentences_of(stop.talk_track):
-            assert sentence.split()[-1].lower() not in DANGLING_ENDINGS
-
-
-def test_evidence_that_already_fits_reaches_the_door_word_for_word():
-    """Regression guard — green before the fix as well as after.
-
-    Only sentences too long to fit are reworded; a short one is not to be
-    reshaped on the way through. Case-insensitive: folding the leading capital
-    into the opener is deliberate and predates this ticket.
-    """
-    track = talk_track_for(door(pin(1), north_m=100, top_evidence=EVIDENCE_SENTENCE))
-
-    assert EVIDENCE_SENTENCE.rstrip(".").lower() in track.lower()
 
 
 # --- share links --------------------------------------------------------------
@@ -947,11 +1028,11 @@ def facts(**overrides):
         ("address", situs_display("12 FAWN HILL RD", "07446")),
         ("score", 81),
         ("centroid", START),
-        ("top_evidence", EVIDENCE_SENTENCE),
+        ("evidence_type", "deed_recency"),
     ],
 )
 def test_a_door_facts_adapts_into_a_route_door(attribute, expected):
-    adapted = route_door_from_facts(facts(), score=81, top_evidence=EVIDENCE_SENTENCE)
+    adapted = route_door_from_facts(facts(), score=81, evidence_type="deed_recency")
 
     assert getattr(adapted, attribute) == expected
 

@@ -105,15 +105,26 @@ class Door:
         return self.properties["exclusion_reason"]
 
     @property
-    def top_evidence(self) -> str | None:
-        """The sentence the talk track opens from: the highest-scoring line.
+    def top_evidence(self) -> Mapping[str, Any] | None:
+        """The highest-scoring line of the trail.
 
         Ties keep the engine's order, which is the order it built the trail in,
         so the same door always produces the same opener.
         """
         if not self.evidence:
             return None
-        return max(self.evidence, key=lambda item: item["points"])["sentence"]
+        return max(self.evidence, key=lambda item: item["points"])
+
+    @property
+    def top_evidence_type(self) -> str | None:
+        """The *type* of that line — which is all the talk track is allowed.
+
+        The sentence beside it is written for the evidence panel and recites what
+        we worked out about the household; the type names the angle to open on
+        without any of that reaching the doorstep (R7.2).
+        """
+        top = self.top_evidence
+        return top.get("type") if top else None
 
 
 @dataclass(frozen=True)
@@ -304,20 +315,26 @@ def door_payload(door: Door) -> dict[str, Any]:
       draws. It lives in SQLite rather than in `doors.geojson` on purpose: the
       map downloads the allowlist for 540 doors and has no use for arithmetic it
       will never draw 539 of.
-    * `talk_track` — built here through `route.talk_track_for` off the same
-      `RouteDoor` the planner would build, so the opener in the evidence panel
-      and the opener in the route list are one sentence rather than two
+    * `talk_track` / `talk_track_branches` — built here through `route` off the
+      same `RouteDoor` the planner would build, so the opener in the evidence
+      panel and the opener in the route list are one script rather than two
       implementations that agree today.
 
-    All three are `None` for an unscored door: no score, no breakdown, no
-    opener — the panel shows its exclusion instead (R9.4).
+    All are `None` for an unscored door: no score, no breakdown, no opener — the
+    panel shows its exclusion instead (R9.4).
     """
     payload = dict(door.properties)
     scored = door.score is not None
+    candidate = _route_door(door)
 
     payload["groups"] = dict(door.groups) if scored and door.groups else None
     payload["raw_total"] = door.raw_total if scored else None
-    payload["talk_track"] = route_module.talk_track_for(_route_door(door)) if scored else None
+    payload["talk_track"] = route_module.talk_track_for(candidate) if scored else None
+    payload["talk_track_branches"] = (
+        [asdict(branch) for branch in route_module.talk_track_branches_for(candidate)]
+        if scored
+        else None
+    )
     return payload
 
 
@@ -337,7 +354,7 @@ def _route_door(door: Door) -> RouteDoor:
         address=door.situs,
         score=door.score,
         centroid=door.centroid,
-        top_evidence=door.top_evidence,
+        evidence_type=door.top_evidence_type,
     )
 
 

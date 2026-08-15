@@ -300,12 +300,12 @@ def test_capacity_group(net_value, dual_income_pct, expected):
         (dict(calc_acre=0.49), 0, "lot below threshold"),
         (
             dict(vision={"condition_2015": "good", "condition_2020": "fair"}),
-            6,
+            8,
             "one-step decline",
         ),
         (
             dict(vision={"condition_2015": "excellent", "condition_2020": "poor"}),
-            6,
+            8,
             "three-step decline still scores once",
         ),
         (
@@ -321,8 +321,8 @@ def test_capacity_group(net_value, dual_income_pct, expected):
         (dict(vision={"condition_2020": "poor"}), 0, "one vintage only -> no trajectory"),
         (
             dict(yr_constr=1968, vision={"condition_2015": "good", "condition_2020": "fair"}),
-            18,
-            "age 8 + decline 6 + deferred-maintenance combo 4",
+            20,
+            "age 8 + decline 8 + deferred-maintenance combo 4",
         ),
         (
             dict(
@@ -330,12 +330,12 @@ def test_capacity_group(net_value, dual_income_pct, expected):
                 permits=(permit(10),),
                 vision={"condition_2015": "good", "condition_2020": "fair"},
             ),
-            14,
+            16,
             "a permit in the window kills the deferred-maintenance combo",
         ),
         (
             dict(yr_constr=0, calc_acre=0.6, vision={"pool": True, "condition_2015": "good", "condition_2020": "fair"}),
-            18,
+            20,
             "YR_CONSTR=0: pool/lot/decline still score, age and combo do not",
         ),
     ],
@@ -429,7 +429,7 @@ def test_end_to_end_yymmdd_deed_matches_iso_fixture():
         ("need_home_age", 8),
         ("need_pool", 8),
         ("need_lot", 4),
-        ("need_condition_decline", 6),
+        ("need_condition_decline", 8),
         ("need_deferred_maintenance", 4),
         ("absentee_modifier", -15),
     ],

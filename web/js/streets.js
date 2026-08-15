@@ -69,6 +69,20 @@ const RUN_MIN_M = 24;
 const RUN_LIMIT_M = 60;
 
 /**
+ * How many of the street's own houses set the angle its name is written at, and
+ * how far the pair that found the gap may disagree with them.
+ *
+ * The houses are the authority on which way their street runs. A facing pair is
+ * only the instrument that found a gap between two of them, and at a junction —
+ * where a corner lot addressed on this street also fronts the road crossing it —
+ * that instrument reads the cross street instead, which is how a name ends up
+ * written across the street it belongs to. When the two disagree by more than
+ * this the anchor is at a junction, and the next candidate is tried.
+ */
+const LOCAL_HOUSES = 16;
+const MAX_TILT_DEG = 30;
+
+/**
  * How many places one street may be named, and how far apart those have to be.
  *
  * A single label per street reads well over the whole territory and disappears
@@ -169,12 +183,20 @@ function median(values) {
 /**
  * Place one street's labels: midpoints of facing pairs, angled along the road.
  *
- * Every pair of the street's parcels is a candidate. A pair survives if it is
- * neither too close (two neighbours side by side, whose midpoint is a shared lot
- * line) nor too far (diagonally across a block), if its midpoint lands on no
- * parcel at all, and if that midpoint has parcels close by on both sides — the
- * corridor test, which is what separates a road from the open ground at the edge
- * of the territory or the middle of a bend.
+ * Every pair of the street's parcels is a candidate for *where*. A pair survives
+ * if it is neither too close (two neighbours side by side, whose midpoint is a
+ * shared lot line) nor too far (diagonally across a block), if its midpoint
+ * lands on no parcel at all, and if the parcels either side of that midpoint
+ * front this street — which rules out the open ground past the last house, the
+ * space inside a bend, and the next road over.
+ *
+ * The angle is a separate question with a separate answer. A pair points across
+ * itself, and at a junction that is across the wrong road: the two houses either
+ * side of a side street are both on this street and their midpoint is genuinely
+ * in a roadway, so every test above passes while the name comes out written at
+ * right angles to the street it names. So the angle is taken from the street's
+ * own houses instead, whose direction no junction can rotate, and a pair that
+ * disagrees badly with them is a pair standing in the junction — dropped.
  *
  * Of the survivors, the narrowest crossings are the ones genuinely facing each
  * other, and among those the first label goes to the one nearest the street's
@@ -198,10 +220,14 @@ function placeStreet(name, centres, coverAt) {
       const mid = [(ax + bx) / 2, (ay + by) / 2];
       if (coverAt(mid[0], mid[1])) continue;
 
-      // Across the street, as a unit vector; the label runs at right angles to it.
       const across = [dx / span, dy / span];
-      const along = [-across[1], across[0]];
       if (!facesStreet(mid, across, name, coverAt)) continue;
+
+      // The houses either side say which way their street runs; the pair only
+      // found the gap. They agree along a block and part company at a junction,
+      // where the pair has crossed the wrong road and the anchor is no good.
+      const along = localAxis(mid, centres);
+      if (!along || tiltDegrees(along, [-across[1], across[0]]) > MAX_TILT_DEG) continue;
       if (freeRun(mid, along, coverAt) < RUN_MIN_M) continue;
 
       candidates.push({ span, mid, along });
@@ -238,6 +264,61 @@ function placeStreet(name, centres, coverAt) {
     if (clear) placed.push(candidate);
   }
   return placed;
+}
+
+/**
+ * Which way this street runs here, read off its own houses.
+ *
+ * The nearest few of the street's parcels, whichever side they are on, lie in a
+ * long thin cloud pointing down the road — houses are strung along streets, and
+ * a street is far longer than it is wide. The principal axis of that cloud is
+ * therefore the road's direction, and unlike the pair that found the gap it does
+ * not care what other roads happen to meet here.
+ *
+ * Returns null when the cloud has no direction to give: a cul-de-sac head where
+ * the houses ring the anchor answers no more honestly than that, and a candidate
+ * with no local direction is one this street should not be labelled at.
+ */
+function localAxis(point, centres) {
+  const near = [...centres]
+    .sort(
+      (a, b) =>
+        (a[0] - point[0]) ** 2 +
+        (a[1] - point[1]) ** 2 -
+        ((b[0] - point[0]) ** 2 + (b[1] - point[1]) ** 2)
+    )
+    .slice(0, LOCAL_HOUSES);
+  if (near.length < 3) return null;
+
+  let mx = 0;
+  let my = 0;
+  for (const [x, y] of near) {
+    mx += x;
+    my += y;
+  }
+  mx /= near.length;
+  my /= near.length;
+
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (const [x, y] of near) {
+    sxx += (x - mx) ** 2;
+    syy += (y - my) ** 2;
+    sxy += (x - mx) * (y - my);
+  }
+  // No elongation, no direction — a round cloud's principal axis is noise.
+  const spread = Math.hypot(sxx - syy, 2 * sxy);
+  if (spread < 1e-6 || spread < (sxx + syy) * 0.15) return null;
+
+  const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  return [Math.cos(theta), Math.sin(theta)];
+}
+
+/** The angle between two undirected lines: 0–90°, never 180° apart. */
+function tiltDegrees(a, b) {
+  const cosine = Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1]));
+  return (Math.acos(cosine) * 180) / Math.PI;
 }
 
 /**

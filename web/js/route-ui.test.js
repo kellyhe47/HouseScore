@@ -85,8 +85,26 @@ test('a row carries the address, score and talk track the planner sent', async (
   assert.equal(row.address, source.address);
   assert.equal(row.score, source.score);
   assert.equal(row.talkTrack, source.talk_track);
+  assert.deepEqual(row.talkTrackBranches, source.talk_track_branches);
   assert.equal(row.cumulativeMinutes, source.cumulative_minutes);
   assert.equal(row.walkMinutes, source.walk_minutes);
+});
+
+test('every row opens on a question and carries what to say after the answer', async () => {
+  const view = await requestRoute(REQUEST, options());
+
+  for (const row of view.rows) {
+    assert.ok(row.talkTrack.trim().endsWith('?'), row.talkTrack);
+    assert.ok(row.talkTrackBranches.length >= 2, row.pin);
+  }
+});
+
+test('a stop from an older server without branches still renders a row', async () => {
+  const legacy = routePayload();
+  delete legacy.stops[0].talk_track_branches;
+  const view = await requestRoute(REQUEST, options(legacy));
+
+  assert.deepEqual(view.rows[0].talkTrackBranches, []);
 });
 
 test('a row shows an elapsed offset, not a clock time (R10.2)', async () => {

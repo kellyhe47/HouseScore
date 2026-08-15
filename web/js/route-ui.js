@@ -38,6 +38,7 @@ function toRow(stop, index) {
     cumulativeMinutes: stop.cumulative_minutes,
     elapsedLabel: `+${Math.round(stop.cumulative_minutes)} min`,
     talkTrack: stop.talk_track,
+    talkTrackBranches: stop.talk_track_branches ?? [],
     path: stop.path ?? [],
   };
 }

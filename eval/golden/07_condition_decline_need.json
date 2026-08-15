@@ -1,6 +1,6 @@
 {
   "name": "condition_decline_need",
-  "why": "Bonus-layer contract: exterior decline between 2015 and 2020 orthos (+6) plus the deferred-maintenance combo — old home, no permits, declining (+4) — must add exactly 10 vs the identical door without vision signals.",
+  "why": "Bonus-layer contract: exterior decline between 2015 and 2020 orthos (+8) plus the deferred-maintenance combo — old home, no permits, declining (+4) — must add exactly 12 vs the identical door without vision signals.",
   "given": {
     "as_of": "2026-08-01",
     "config": { "territory_median_value": 500000, "acs_dual_income_threshold": 0.35 },
@@ -11,9 +11,9 @@
     "vision": { "condition_2015": "good", "condition_2020": "fair", "pool": false }
   },
   "expect": {
-    "score": 38,
-    "arithmetic": "mover 0 + capacity 20 (545k >= median: 15; dual_income 0.35 >= 0.35: +5) + need 18 (58 yrs: 8; decline: 6; deferred combo: 4) = 38",
-    "comparative": { "baseline": "identical input with vision={}", "baseline_score": 28, "assertion": "score - baseline_score == 10" },
+    "score": 40,
+    "arithmetic": "mover 0 + capacity 20 (545k >= median: 15; dual_income 0.35 >= 0.35: +5) + need 20 (58 yrs: 8; decline: 8; deferred combo: 4) = 40",
+    "comparative": { "baseline": "identical input with vision={}", "baseline_score": 28, "assertion": "score - baseline_score == 12" },
     "evidence_must_include": [
       { "type": "condition_trajectory", "reason": "good to fair decline across ortho vintages" },
       { "type": "deferred_maintenance", "reason": "58-year-old home, zero permits in 2 years, declining condition" }

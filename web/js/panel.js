@@ -148,6 +148,10 @@ export function buildPanel(door) {
     // means "not fetched yet or not applicable", and the panel renders without
     // the section rather than with an empty one.
     talkTrack: door.talk_track ?? null,
+    // The opener stops on one open question and waits. What the rep says next
+    // depends on the answer, so the branches travel as alternatives to pick
+    // from rather than more prose to read out.
+    talkTrackBranches: door.talk_track_branches ?? [],
     breakdown: buildBreakdown(door, scored),
   };
 }

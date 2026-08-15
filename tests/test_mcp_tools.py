@@ -341,7 +341,11 @@ def test_plan_route_returns_ordered_stops_each_with_a_talk_track(server):
     for stop in stops:
         assert set(stop) == STOP_FIELDS
         assert isinstance(stop["talk_track"], str) and stop["talk_track"].strip()
-    assert stops[0]["talk_track"] != stops[1]["talk_track"], "the opener is door-specific"
+        assert stop["talk_track_branches"], "what to say after they answer"
+    # Not per-door: the opener is authored, and two doors on one street opening
+    # on one angle are meant to be opened the same way. These two differ because
+    # they stand on different streets.
+    assert stops[0]["talk_track"] != stops[1]["talk_track"]
 
 
 def test_plan_route_honours_the_max_doors_cap(server):

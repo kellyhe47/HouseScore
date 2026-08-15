@@ -48,11 +48,11 @@ export const WEIGHTS = {
   capacity_median: 15,
   capacity_1_5x: 25,
   capacity_acs_prior: 5,
-  // Need (group max 30).
+  // Need (group max 32).
   need_home_age: 8,
   need_pool: 8,
   need_lot: 4,
-  need_condition_decline: 6,
+  need_condition_decline: 8,
   need_deferred_maintenance: 4,
   // Modifier — mild by design: a registered rental is a demotion, never an
   // exclusion, because tenants and landlords both buy home services.

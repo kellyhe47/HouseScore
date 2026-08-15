@@ -67,7 +67,7 @@ def score(given):
     dual = (given.get("acs_block_group") or {}).get("dual_income_pct")
     if dual is not None and dual >= cfg["acs_dual_income_threshold"]:
         total += 5
-    # Need: age 8, pool 8, lot 4, decline 6, deferred combo 4
+    # Need: age 8, pool 8, lot 4, decline 8, deferred combo 4
     v = given.get("vision", {})
     yr = p.get("YR_CONSTR") or 0
     old = yr > 0 and (as_of.year - yr) >= 30
@@ -75,7 +75,7 @@ def score(given):
     decline = ("condition_2015" in v and "condition_2020" in v
                and order.index(v["condition_2020"]) < order.index(v["condition_2015"]))
     total += 8 * old + 8 * bool(v.get("pool")) + 4 * ((p.get("CALC_ACRE") or 0) >= 0.5)
-    total += 6 * decline + 4 * (old and not permits and decline)
+    total += 8 * decline + 4 * (old and not permits and decline)
     # Modifier
     if given.get("rental_registration_match"):
         total -= 15

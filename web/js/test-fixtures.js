@@ -141,9 +141,29 @@ export function detailedDoor(overrides = {}) {
     groups: { mover: 0, hires_out: 0, capacity: 15, need: 8, modifier: -20 },
     raw_total: 3,
     score: 3,
+    // Assessed value is the top evidence here, and it is one of the signals a
+    // rep can never say out loud — so the opener falls through to the angle
+    // that mentions nothing about the house. The evidence trail above still
+    // shows the number; the doorstep never hears it.
     talk_track:
-      "Hi, I'm working SNYDER AVE today. Quick reason I knocked: " +
-      'assessed at $880,700, at or above the $743,350 territory median. Is now a bad time?',
+      "Hey, I'm with HouseAccount — we're doing work for a few of your neighbors " +
+      'here on Snyder Ave this week. Are you the one who deals with the house stuff, ' +
+      'or is that somebody else?',
+    talk_track_branches: [
+      {
+        trigger: '"That\'s me"',
+        line:
+          "Then you're the one I should be bugging, sorry. HouseAccount's one number " +
+          'for the whole house — mounting a TV up to fixing the roof. Want me to leave a card?',
+      },
+      { trigger: '"My partner"', line: 'Fair enough — want me to leave a card for them?' },
+      {
+        trigger: '"I rent"',
+        line:
+          'Ah, got it. We do work for landlords too. Want to pass the card along, or is ' +
+          'there a better number for the owner?',
+      },
+    ],
     ...overrides,
   };
 }
@@ -163,7 +183,31 @@ export function stop(overrides = {}) {
     score: 100,
     walk_minutes: 0.0,
     cumulative_minutes: 0.0,
-    talk_track: "Hi, I'm working OAK ST today. Is now a bad time?",
+    talk_track:
+      "Hey, I'm with HouseAccount — we're doing work for a few of your neighbors here " +
+      'on Oak St this week. Who do you usually call when something on the house needs doing?',
+    talk_track_branches: [
+      {
+        trigger: 'Names one person',
+        line:
+          "Oh, is he good? That's the thing though — most people have someone for one " +
+          "thing and then they're googling for everything else. HouseAccount's one number " +
+          "for all of it, mounting a TV up to fixing the roof. Want me to leave a card for " +
+          "the stuff he doesn't do?",
+      },
+      {
+        trigger: '"Depends what it is"',
+        line:
+          "Right, that's the annoying part. HouseAccount's one number for all of it — a " +
+          'TV mount up to roofing. Want me to leave a card?',
+      },
+      {
+        trigger: '"I do it myself"',
+        line:
+          "Respect. We're one number for the ones that aren't worth your Saturday — " +
+          'furnaces, roofs, that end of it. Want me to leave a card?',
+      },
+    ],
     path: [
       [-74.156, 41.0447],
       [-74.156, 41.0447],
@@ -192,7 +236,32 @@ export function routePayload(overrides = {}) {
         score: 58,
         walk_minutes: 4.4,
         cumulative_minutes: 4.4,
-        talk_track: "Hi, I'm working MAPLE AVE today. Is now a bad time?",
+        talk_track:
+          "Hey, I'm with HouseAccount — we're doing work for a few of your neighbors " +
+          'here on Maple Ave this week. Have you been here long?',
+        talk_track_branches: [
+          {
+            trigger: 'Just moved in',
+            line:
+              "Oh nice, congrats. HouseAccount's basically one number for the whole house " +
+              '— we handle everything from mounting a TV to fixing the roof. First year in ' +
+              'a place, most people are still working out who to call for what. Want me to ' +
+              'leave a card?',
+          },
+          {
+            trigger: 'A couple of years',
+            line:
+              "Oh okay. HouseAccount's one number for the whole house — a running toilet " +
+              'up to a furnace, same call. Want me to leave a card?',
+          },
+          {
+            trigger: 'A long time',
+            line:
+              "Wow, okay — so you've seen the whole street change. HouseAccount's one " +
+              'number for the whole house, a running toilet up to a furnace. Mostly we end ' +
+              'up doing the stuff people have been meaning to get to. Want me to leave a card?',
+          },
+        ],
         path: [
           [-74.156, 41.0447],
           [-74.1558, 41.0448],
@@ -206,7 +275,24 @@ export function routePayload(overrides = {}) {
         score: 81,
         walk_minutes: 37.9,
         cumulative_minutes: 42.3,
-        talk_track: "Hi, I'm working FAWN HILL RD today. Is now a bad time?",
+        talk_track:
+          "Hey, I'm with HouseAccount — we're doing work for a few of your neighbors " +
+          'here on Fawn Hill Rd this week. Do you have a pool or anything out back?',
+        talk_track_branches: [
+          {
+            trigger: 'Yes',
+            line:
+              "Oh nice. Who's opening it for you? HouseAccount's one number for the whole " +
+              'house — pool openings and filter swaps right up through roofing. Most people ' +
+              'are paying three separate people for that. Want me to leave a card?',
+          },
+          {
+            trigger: 'No',
+            line:
+              "No worries. HouseAccount's one number for the whole house anyway — mounting " +
+              'a TV up to fixing the roof. Want me to leave a card?',
+          },
+        ],
         path: [
           [-74.155, 41.0454],
           [-74.1548, 41.0455],

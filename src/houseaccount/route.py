@@ -36,11 +36,21 @@ at ("that house is vacant"). Deleting the stop would leave the rest of the walk
 detouring around a house nobody is visiting, so `Route` remembers what it was
 planned from and `exclude` plans again without those doors.
 
-**Why the talk track is a plain string.** R7.2 makes the opener presentation-only:
-generated from the door's top evidence sentence, never fed back into the score.
-The caller has already scored the door and holds the evidence item, so it hands
-over the sentence and the planner stays free of the scoring stack for a value it
-only renders.
+**Why the talk track is authored, not quoted.** R7.2 makes the opener
+presentation-only, and the caller hands over the top evidence item's **type** —
+not its sentence. An evidence sentence is written for the audit panel: it recites
+what we worked out about a stranger ("4 permits filed here in the last 24
+months"), which is the one thing a rep must never say out loud at a door. So the
+type selects an *angle* from `ANGLES` — a short authored opener ending in one
+open question, plus the lines to say after the homeowner answers — and the
+sentence itself stays on the panel where it belongs.
+
+Two properties fall out of authoring rather than quoting. Nothing ever needs
+truncating, so the boundary-cutting that ticket 021 fixed is gone rather than
+improved. And an evidence type the rep could not say without revealing the file
+(assessed value, the census prior, a declining exterior) simply maps to an angle
+that never mentions it — the signal still picks the door and the words, it just
+never reaches the doorstep.
 """
 
 from __future__ import annotations
@@ -80,14 +90,203 @@ _SHARE_PREFIX = "r1"
 #: Conservative: everything a PAMS PIN can contain, nothing a URL would mind.
 _PIN_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
 
-#: Keep a long evidence sentence from swallowing the opener — but only ever by
-#: stopping where the sentence already stops, never by cutting it short.
-_EVIDENCE_LIMIT = 110
+#: How the opener names where the rep is standing when the address carries no
+#: readable street. "This block" is a thing said out loud; a blank is not.
+_UNNAMED_BLOCK = "this block"
 
-#: The punctuation a source sentence can be halted in front of and still be a
-#: whole thing said out loud. The comma and the hyphen are left out on purpose:
-#: "(Alteration," is no more sayable at a door than "rather than".
-_CLAUSE_BOUNDARIES = "—–;:."
+
+@dataclass(frozen=True)
+class Branch:
+    """One thing the homeowner might answer, and what the rep says back.
+
+    `trigger` is a label the rep scans on a tablet mid-conversation, not a
+    sentence anyone reads aloud; `line` is.
+    """
+
+    trigger: str
+    line: str
+
+
+@dataclass(frozen=True)
+class Angle:
+    """One door's script: the question, then the answers to it.
+
+    `hook` is the last thing the rep says before the homeowner speaks, and it is
+    always an *open* question. A tag question ("You're pretty new in, right?")
+    asks for confirmation, which tells the homeowner the rep already knew — the
+    same leak as reciting the evidence, one grammatical step removed.
+
+    There is no scripted acknowledgement between the two. Every branch opens by
+    reacting to what was actually said, because a fixed token in that slot
+    ("Figured.") reads as a rep running a script, and admits the answer was
+    never in doubt.
+    """
+
+    hook: str
+    branches: tuple[Branch, ...]
+
+
+#: What HouseAccount is, in the one sentence a homeowner needs. The cheap end of
+#: the range is load-bearing: "mounting a TV" is what makes a stranger at the
+#: door feel low-risk to try, and the expensive end is what makes them remember
+#: the card. Each angle picks the pair that fits the door.
+_TENURE_ANGLE = Angle(
+    hook="Have you been here long?",
+    branches=(
+        Branch(
+            trigger="Just moved in",
+            line=(
+                "Oh nice, congrats. HouseAccount's basically one number for the whole "
+                "house — we handle everything from mounting a TV to fixing the roof. "
+                "First year in a place, most people are still working out who to call "
+                "for what. Want me to leave a card?"
+            ),
+        ),
+        Branch(
+            trigger="A couple of years",
+            line=(
+                "Oh okay. HouseAccount's one number for the whole house — a running "
+                "toilet up to a furnace, same call. Want me to leave a card?"
+            ),
+        ),
+        Branch(
+            trigger="A long time",
+            line=(
+                "Wow, okay — so you've seen the whole street change. HouseAccount's one "
+                "number for the whole house, a running toilet up to a furnace. Mostly "
+                "we end up doing the stuff people have been meaning to get to. Want me "
+                "to leave a card?"
+            ),
+        ),
+    ),
+)
+
+_CHURN_ANGLE = Angle(
+    hook="Who do you usually call when something on the house needs doing?",
+    branches=(
+        Branch(
+            trigger="Names one person",
+            line=(
+                "Oh, is he good? That's the thing though — most people have someone for "
+                "one thing and then they're googling for everything else. HouseAccount's "
+                "one number for all of it, mounting a TV up to fixing the roof. Want me "
+                "to leave a card for the stuff he doesn't do?"
+            ),
+        ),
+        Branch(
+            trigger='"Depends what it is"',
+            line=(
+                "Right, that's the annoying part. HouseAccount's one number for all of "
+                "it — a TV mount up to roofing. Want me to leave a card?"
+            ),
+        ),
+        Branch(
+            trigger='"I do it myself"',
+            line=(
+                "Respect. We're one number for the ones that aren't worth your Saturday "
+                "— furnaces, roofs, that end of it. Want me to leave a card?"
+            ),
+        ),
+    ),
+)
+
+_POOL_ANGLE = Angle(
+    hook="Do you have a pool or anything out back?",
+    branches=(
+        Branch(
+            trigger="Yes",
+            line=(
+                "Oh nice. Who's opening it for you? HouseAccount's one number for the "
+                "whole house — pool openings and filter swaps right up through roofing. "
+                "Most people are paying three separate people for that. Want me to "
+                "leave a card?"
+            ),
+        ),
+        Branch(
+            trigger="No",
+            line=(
+                "No worries. HouseAccount's one number for the whole house anyway — "
+                "mounting a TV up to fixing the roof. Want me to leave a card?"
+            ),
+        ),
+    ),
+)
+
+_HOUSE_ANGLE = Angle(
+    hook="How old's the house, do you know?",
+    branches=(
+        Branch(
+            trigger="Gives a year",
+            line=(
+                "Yeah, that tracks for this block. HouseAccount's one number for the "
+                "whole house — a running toilet up to a furnace, same call. At that age "
+                "it's never one big thing, it's six small ones. Anything on your list "
+                "that's been sitting a while?"
+            ),
+        ),
+        Branch(
+            trigger='"No idea"',
+            line=(
+                "Ha, fair enough. HouseAccount's one number for the whole house — a "
+                "running toilet up to a furnace, same call. Anything on your list that's "
+                "been sitting a while?"
+            ),
+        ),
+    ),
+)
+
+#: Where nothing about the door can be said out loud, the hook qualifies the
+#: decision-maker instead — which is also the only honest way to reach the
+#: rental branch. "Are you the homeowner?" asks the same thing and sounds like a
+#: cold call; this asks it the way a person would.
+_DEFAULT_ANGLE = Angle(
+    hook="Are you the one who deals with the house stuff, or is that somebody else?",
+    branches=(
+        Branch(
+            trigger='"That\'s me"',
+            line=(
+                "Then you're the one I should be bugging, sorry. HouseAccount's one "
+                "number for the whole house — mounting a TV up to fixing the roof. Want "
+                "me to leave a card?"
+            ),
+        ),
+        Branch(
+            trigger='"My partner"',
+            line="Fair enough — want me to leave a card for them?",
+        ),
+        Branch(
+            trigger='"I rent"',
+            line=(
+                "Ah, got it. We do work for landlords too. Want to pass the card along, "
+                "or is there a better number for the owner?"
+            ),
+        ),
+    ),
+)
+
+#: Evidence type -> the angle it opens. The types absent from this table are
+#: absent on purpose: `assessed_value`, `acs_dual_income_prior` and
+#: `absentee_likely` are things a rep cannot say without revealing the file, and
+#: `condition_trajectory` / `deferred_maintenance` are things nobody says to
+#: someone's face. They score the door, they sort the route, and they fall
+#: through to an angle that never mentions them.
+ANGLES: dict[str, Angle] = {
+    "deed_recency": _TENURE_ANGLE,
+    "tenure": _TENURE_ANGLE,
+    "non_arms_length_transfer": _TENURE_ANGLE,
+    "condition_trajectory": _TENURE_ANGLE,
+    "deferred_maintenance": _TENURE_ANGLE,
+    "permit_history": _CHURN_ANGLE,
+    "provider_churn": _CHURN_ANGLE,
+    "pool": _POOL_ANGLE,
+    "home_age": _HOUSE_ANGLE,
+    "lot_size": _HOUSE_ANGLE,
+}
+
+#: The angle for a door whose top evidence names no angle — an unscored trail, a
+#: `data_gap` line, a type added to the engine and not yet to `ANGLES`. It says
+#: nothing about the door, so it is always safe to fall through to.
+DEFAULT_ANGLE = _DEFAULT_ANGLE
 
 
 @dataclass(frozen=True)
@@ -103,7 +302,7 @@ class RouteDoor:
     address: str
     score: int | None
     centroid: tuple[float, float] | None
-    top_evidence: str | None = None
+    evidence_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +323,7 @@ class Stop:
     walk_minutes: float
     cumulative_minutes: float
     talk_track: str
+    talk_track_branches: tuple[Branch, ...] = ()
     path: tuple[tuple[float, float], ...] = ()
 
 
@@ -225,6 +425,7 @@ def plan_route(
                 walk_minutes=chosen_minutes,
                 cumulative_minutes=elapsed,
                 talk_track=talk_track_for(chosen),
+                talk_track_branches=talk_track_branches_for(chosen),
                 path=_leg_path(network, position, chosen.centroid),
             )
         )
@@ -244,7 +445,7 @@ def plan_route(
 
 
 def route_door_from_facts(
-    facts: Any, *, score: int | None, top_evidence: str | None = None
+    facts: Any, *, score: int | None, evidence_type: str | None = None
 ) -> RouteDoor:
     """Adapt anything carrying `pams_pin` / `situs` / `centroid` into a candidate.
 
@@ -256,29 +457,41 @@ def route_door_from_facts(
         address=facts.situs,
         score=score,
         centroid=facts.centroid,
-        top_evidence=top_evidence,
+        evidence_type=evidence_type,
     )
+
+
+def angle_for(door: RouteDoor) -> Angle:
+    """The script this door's top evidence opens — `DEFAULT_ANGLE` for anything
+    unmapped, so a new evidence type degrades to a safe opener rather than none."""
+    return ANGLES.get(door.evidence_type or "", DEFAULT_ANGLE)
 
 
 def talk_track_for(door: RouteDoor) -> str:
-    """The one sentence the rep opens with at this door (R7.2).
+    """What the rep says before the homeowner has said anything (R7.2).
 
-    Built from the door's top evidence when there is one, from its street when
-    there is not. Presentation only — it never touches the score or the order.
+    Three beats and a stop: who I am, why I'm on this street, one open question.
+    Everything after it depends on the answer and lives in
+    `talk_track_branches_for`, because a rep reading a wall of text talks over
+    the person they knocked for.
+
+    Presentation only — it never touches the score or the order.
     """
-    street = _street_of(door.address)
-    evidence = (door.top_evidence or "").strip()
-
-    if not evidence:
-        return (
-            f"Hi, I'm working {street} today and introducing myself to the block. "
-            "Are you the homeowner here?"
-        )
-
     return (
-        f"Hi, I'm working {street} today. Quick reason I knocked: "
-        f"{_as_clause(evidence)}. Is now a bad time?"
+        "Hey, I'm with HouseAccount — we're doing work for a few of your neighbors "
+        f"here on {_street_of(door.address)} this week. {angle_for(door).hook}"
     )
+
+
+def talk_track_branches_for(door: RouteDoor) -> tuple[Branch, ...]:
+    """What the rep says *after* the homeowner answers the hook.
+
+    Separate from the opener rather than concatenated onto it: these are
+    alternatives, only one of which gets said, and a rep scanning a tablet
+    mid-conversation needs them as a list to pick from rather than a paragraph
+    to read out.
+    """
+    return angle_for(door).branches
 
 
 def encode_share(stops: Sequence[Stop]) -> str:
@@ -383,40 +596,15 @@ def _haversine_metres(origin: tuple[float, float], destination: tuple[float, flo
 
 
 def _street_of(address: str) -> str:
-    """The street out of a display address — "1 FAWN HILL RD, Ramsey NJ 07446"
-    is a thing to read off a form, not a thing to say out loud."""
+    """The street out of a display address, as a rep would say it aloud.
+
+    "1 FAWN HILL RD, Ramsey NJ 07446" is a thing to read off a form; the opener
+    needs "Fawn Hill Rd". The house number goes because the homeowner knows
+    which house they are standing in, and the shouting goes because the rep is
+    speaking, not filing.
+    """
     street = (address or "").split(",")[0].strip()
     head, _, tail = street.partition(" ")
     if tail and any(character.isdigit() for character in head):
         street = tail.strip()
-    return street or "the neighbourhood"
-
-
-def _as_clause(evidence: str) -> str:
-    """An evidence sentence folded into the middle of the opener."""
-    clause = evidence.strip().rstrip(".!?").strip()
-    if len(clause) > _EVIDENCE_LIMIT:
-        clause = _stopped_at_a_boundary(clause)
-
-    # Fold the leading capital into the sentence, but leave "SKYLIGHT" and other
-    # shouted source values alone — they are what makes the opener specific.
-    head, separator, tail = clause.partition(" ")
-    if head and not head[1:].isupper():
-        clause = head.lower() + separator + tail
-    return clause
-
-
-def _stopped_at_a_boundary(clause: str) -> str:
-    """The leading run of `clause` that fits, ended where the sentence itself ends
-    a thought — the whole sentence when it offers nowhere to stop.
-
-    A rep says this out loud at a stranger's door, so stopping on a word boundary
-    strands the homeowner on "...gets contracted out rather than" (ticket 021).
-    Only the source's own punctuation marks a place a listener hears as finished,
-    and the substance a permit-led door was knocked on for sits ahead of the first
-    of them. Where there is no such mark inside the limit, the sentence goes to
-    the door long rather than half-said.
-    """
-    stop = max(clause.rfind(mark, 0, _EVIDENCE_LIMIT) for mark in _CLAUSE_BOUNDARIES)
-    head = clause[:stop].rstrip() if stop > 0 else ""
-    return head or clause
+    return street.title() if street else _UNNAMED_BLOCK

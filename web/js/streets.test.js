@@ -75,6 +75,31 @@ test('the name goes in the roadway, lying along the street', () => {
   assert.ok(fromEnd > 40 && fromEnd < 103, `the name sits ${fromEnd.toFixed(0)}m along the block`);
 });
 
+test('a name reads along its own street, not along the road crossing it', () => {
+  // A side road leaving the north side of MAIN ST: the gap where a lot would be.
+  // The two houses either side of it are 26m apart — closer than the 46m across
+  // MAIN ST itself — and the midpoint between them sits in open ground with
+  // houses of MAIN ST both sides of it, so every test that asks "is this a road
+  // fronted by this street" says yes. It is a road fronted by this street; it
+  // just is not this street, and the pair points ninety degrees off.
+  const block = streetBlock({ name: 'MAIN ST', lots: 15 }).filter(
+    (feature) => feature.properties.PAMS_PIN !== 'MAIN_ST_16'
+  );
+
+  const labels = streetLabels(asDoors(block));
+  const main = labels.find((label) => label.name === 'MAIN ST');
+  assert.ok(main, 'the street went unnamed');
+  assert.ok(
+    Math.abs(main.bearing) < 15,
+    `MAIN ST runs due east and its name was written at ${main.bearing.toFixed(0)}° — ` +
+      'that is the side road, not the street'
+  );
+
+  // And the anchor is in MAIN ST too, not up the side road reading sideways.
+  const offset = Math.abs(main.position[1] - 41.05) / METRE_IN_DEG_LAT;
+  assert.ok(offset <= 7, `the name sits ${offset.toFixed(0)}m off MAIN ST, up the side road`);
+});
+
 test('a name is never written in the next street over', () => {
   // Two parallel streets, close enough that a pair of houses on one has its
   // midpoint in the other's roadway if nothing checks whose houses front it.

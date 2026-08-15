@@ -1073,12 +1073,31 @@ function renderScored(body, panel) {
   // rep has to interpret.
   if (panel.footer) body.appendChild(el('div', 'nofooter', panel.footer));
 
-  // R7.2: the one sentence the rep says out loud — the same sentence the route
-  // list shows, because both come from the server's `talk_track_for`.
+  // R7.2: what the rep says out loud — the same words the route list shows,
+  // because both come from the server's `talk_track_for`.
+  //
+  // The opener and the branches are drawn as two different things because they
+  // are read at two different moments. The opener runs until the homeowner
+  // speaks; the branches are alternatives to glance at once they have, and only
+  // one of them ever gets said. Setting them as one paragraph would hand the
+  // rep a script to recite over the person they knocked for.
   if (panel.talkTrack) {
     const block = el('div', 'talktrack');
     block.appendChild(el('div', 'talktrack__head', 'Rep talk track'));
     block.appendChild(el('div', 'talktrack__line', `“${panel.talkTrack}”`));
+
+    const branches = panel.talkTrackBranches ?? [];
+    if (branches.length) {
+      block.appendChild(el('div', 'talktrack__cue', 'Then, depending on the answer'));
+      const list = el('div', 'talktrack__branches');
+      for (const branch of branches) {
+        const row = el('div', 'talktrack__branch');
+        row.appendChild(el('div', 'talktrack__trigger', branch.trigger));
+        row.appendChild(el('div', 'talktrack__reply', `“${branch.line}”`));
+        list.appendChild(row);
+      }
+      block.appendChild(list);
+    }
     body.appendChild(block);
   }
 
@@ -1628,6 +1647,7 @@ async function openSharedRoute() {
             cumulativeMinutes: null,
             elapsedLabel: null,
             talkTrack: detail.talk_track ?? null,
+            talkTrackBranches: detail.talk_track_branches ?? [],
           }
         : null
     )

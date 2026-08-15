@@ -82,7 +82,7 @@ STOP_FIELDS = {field.name for field in fields(Stop)}
 GROUP_NAMES = {"mover", "hires_out", "capacity", "need", "modifier"}
 
 #: What the door endpoint carries beyond the published allowlist after T013.
-DOOR_DETAIL_FIELDS = {"groups", "raw_total", "talk_track"}
+DOOR_DETAIL_FIELDS = {"groups", "raw_total", "talk_track", "talk_track_branches"}
 
 
 # --- builders -----------------------------------------------------------------
@@ -347,19 +347,41 @@ def permit_led_door():
     )
 
 
-def test_the_panel_opener_for_a_permit_led_door_is_a_whole_sentence():
-    """R7.2 / ticket 021: the panel shows the evidence in full right above the
-    opener, so an opener that stops mid-clause contradicts the same screen.
+def test_the_panel_opener_for_a_permit_led_door_never_reads_out_the_permit():
+    """R7.2: the panel shows the evidence sentence in full, and the opener under
+    it says none of it.
+
+    The panel is the rep's screen; the opener is the homeowner's ears. Reciting
+    "1 permit filed here in the last 24 months" at a stranger's door tells them
+    we hold a file on the house, so the permit picks the *angle* — who do you
+    call when something needs doing — and never the words. Ticket 021's cut
+    sentence cannot recur because nothing is quoted to cut.
 
     Driven through `door_payload` — the function `GET /api/door/{pin}` serves —
     because the published territory this module builds has no permits in it.
     """
-    track = door_payload(permit_led_door())["talk_track"]
+    payload = door_payload(permit_led_door())
+    track = payload["talk_track"]
     sentences = [part.strip() for part in re.split(r"[.?!]", track) if part.strip()]
 
-    assert "permit" in track
+    assert PERMIT_EVIDENCE in [item["sentence"] for item in payload["evidence"]], (
+        "the panel still shows the evidence in full"
+    )
+    for word in ["permit", "Alteration", "24 months", "contracted out"]:
+        assert word not in track, f"{word!r} was read out at the door"
     for sentence in sentences:
         assert sentence.split()[-1].lower() not in DANGLING_ENDINGS, sentence
+
+
+def test_the_panel_carries_the_branches_that_follow_the_opener():
+    """The opener stops on one open question; what the rep says next depends on
+    the answer, so the panel gets the alternatives rather than a paragraph."""
+    payload = door_payload(permit_led_door())
+
+    assert payload["talk_track"].strip().endswith("?")
+    assert payload["talk_track_branches"]
+    for branch in payload["talk_track_branches"]:
+        assert branch["trigger"].strip() and branch["line"].strip()
 
 
 def test_an_unscored_door_has_no_group_math_and_no_talk_track(client):
@@ -370,6 +392,7 @@ def test_an_unscored_door_has_no_group_math_and_no_talk_track(client):
     assert body["groups"] is None
     assert body["raw_total"] is None
     assert body["talk_track"] is None
+    assert body["talk_track_branches"] is None
 
 
 def test_the_published_geojson_is_not_widened_by_the_door_detail(client):

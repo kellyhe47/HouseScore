@@ -221,6 +221,41 @@ test('buildPanel surfaces the talk track the planner wrote (R7.2)', () => {
   assert.equal(buildPanel(door).talkTrack, door.talk_track);
 });
 
+test('the opener stops on a question and waits for the homeowner', () => {
+  assert.ok(buildPanel(detailedDoor()).talkTrack.trim().endsWith('?'));
+});
+
+test('buildPanel carries the branches that follow the opener', () => {
+  const door = detailedDoor();
+  const branches = buildPanel(door).talkTrackBranches;
+
+  assert.deepEqual(branches, door.talk_track_branches);
+  assert.ok(branches.length >= 2, 'a branch is an alternative, so there are several');
+  for (const branch of branches) {
+    assert.ok(branch.trigger.trim());
+    assert.ok(branch.line.trim());
+  }
+});
+
+test('a door with no branches renders none rather than an empty section', () => {
+  assert.deepEqual(buildPanel(scoredDoor()).talkTrackBranches, []);
+});
+
+test('the panel shows the evidence sentence it never lets the rep say (R7.2)', () => {
+  // The whole point of authoring the opener rather than quoting the trail: the
+  // assessed-value line is on the rep's screen in full, and none of it is in
+  // the words the homeowner hears.
+  const panel = buildPanel(detailedDoor());
+  const spoken = [panel.talkTrack, ...panel.talkTrackBranches.map((b) => b.line)]
+    .join(' ')
+    .toLowerCase();
+
+  assert.ok(panel.rows.some((row) => /assessed/i.test(row.sentence ?? '')));
+  for (const word of ['assessed', 'median', 'permit', 'census', 'deed', 'score']) {
+    assert.ok(!spoken.includes(word), `"${word}" reached the doorstep`);
+  }
+});
+
 test('the breakdown carries the scoring groups in ICP order', () => {
   const breakdown = buildPanel(detailedDoor()).breakdown;
 

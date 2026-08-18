@@ -59,7 +59,22 @@ and that extract lagged 20 months. Measured against the live files:
 - USGS NAIP ~60cm public domain: `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer`.
 - Aerial sees roofs/pools/lawn/driveway/solar, not doors/trucks/signs.
 
-**Permits:** NJ statewide construction permits, Socrata SODA API, free: `https://data.nj.gov/Reference-Data/NJ-Construction-Permit-Data/w9se-dmra` (filter Ramsey). Ramsey's own SDL portal is per-permit/login — don't scrape.
+**Permits:** The production pipeline uses NJ statewide construction permits,
+Socrata SODA API, free:
+`https://data.nj.gov/Reference-Data/NJ-Construction-Permit-Data/w9se-dmra`
+(filter Ramsey).
+
+**SDL update (2026-08-18):** The earlier instruction not to collect from
+Ramsey's SDL portal reflected the authorization status during the original
+audit. The project now has a manually collected, point-in-time snapshot of the
+public `roof` keyword results and matched permit-detail pages, based on the
+user's representation that SDL authorized “Option 1” manual portal-result
+collection. It contains 2,043 deduplicated municipal result rows; 210 rows match
+198 of the 540 territory properties, and 207 matched rows contain explicit
+roofing language. This is a supplemental research artifact, not a replacement
+for the Socrata source used by the scoring pipeline. See
+[`data/README-sdl-roof-permits.md`](../data/README-sdl-roof-permits.md) for the
+provenance, method, schema, false-positive handling, and coverage limitations.
 
 **Census ACS5:** B23007 (children × parents' employment — dual-income proxy), B19013 (median HH income), B08303 (commute time) confirmed; block-group level; Ramsey = state 34 / county 003 / cousub 61170. Free API key required (keyless calls now blocked).
 
@@ -67,5 +82,9 @@ and that extract lagged 20 months. Measured against the live files:
 
 **Cost:** total ≈ $0–5 of $50 (Street View free tier + sub-$1 mini-tier vision). Cost is not the constraint; Street View ToS is.
 
-## Open items
-- Territory GeoJSON polygon NOT in repo — awaiting from user, else derive from parcel data.
+## Resolved items
+
+- Territory GeoJSON is present at `data/territory.geojson` and contains the 540
+  properties used for the published run and SDL address match.
+- The authorized manual SDL roof-permit snapshot was collected and documented
+  on 2026-08-18. The production permit adapter remains Socrata-backed.

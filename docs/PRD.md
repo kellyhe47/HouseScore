@@ -15,6 +15,14 @@ R1 territory · R2 harvest · R3 entity resolution · R4 vision · R5 eval harne
 
 ## R2 — Agentic harvest
 - R2.1 `[source]` Sources (all $0, audited): NJ parcels+MOD-IV (above) · NJ construction permits Socrata `data.nj.gov/.../w9se-dmra` · Census ACS5 (B23007, B19013, B08303; block group; free key) · NJ orthos 2015+2020 `maps.nj.gov/.../Orthos_Natural_2020_NJ_WM` + NAIP · Street View Static (demo-scale only, see R11.2).
+
+  **Supplemental data note (2026-08-18):** A separately collected Ramsey SDL
+  Portal `roof` keyword snapshot is available for research at
+  [`data/README-sdl-roof-permits.md`](../data/README-sdl-roof-permits.md). It
+  covers all 540 territory properties through conservative address matching and
+  preserves matched permit-detail fields. It is not part of the R2 production
+  ingestion contract and does not currently affect scoring; Socrata remains the
+  pipeline's construction-permit source.
 - R2.2 `[source]` "Pipeline autonomy is graded" (rubric). `[proposal]` Realized as one orchestrated command (`make pipeline`) running harvest→resolve→vision→score→publish end-to-end; per-source agents discover/fetch/cache with retries; autonomy test: a fresh clone + documented env vars completes the pipeline with zero manual edits.
 - R2.3 `[proposal]` All raw responses cached on disk (content-addressed) so re-runs are free and reproducible; cache is the cost-discipline evidence the rubric asks to see in code.
 

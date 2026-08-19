@@ -70,19 +70,22 @@ from houseaccount.normalize import (
     sale_key,
     situs_display,
 )
-from houseaccount.scoring.engine import (
-    SOURCE_ACS,
-    SOURCE_MODIV,
-    SOURCE_PERMITS,
-    SOURCE_RENTAL,
-    SOURCE_SR1A,
-    ScoreInput,
-)
 from houseaccount.sources.acs import AcsResult, BlockGroupStats
 from houseaccount.sources.parcels import DEFAULT_MUN, Parcel
 from houseaccount.sources.permits import PERMIT_WINDOW_DAYS, permits_within
 from houseaccount.sources.rental import RentalRegistrationProvider
 from houseaccount.sources.sales import Sale, latest_by_parcel
+
+#: Attribution strings — resolve's own vocabulary after the V1 engine's
+#: deletion (ticket 103 / plan R27). Deliberately describe the dataset, never a
+#: person — Daniel's Law (R11.1) means no identity-derived field reaches a
+#: rep's screen.
+SOURCE_MODIV = "NJ MOD-IV parcel record"
+SOURCE_SR1A = "NJ SR1A sales register"
+SOURCE_PERMITS = "NJ DCA construction permits (Socrata)"
+SOURCE_ACS = "US Census ACS 5-year estimates, block group"
+SOURCE_RENTAL = "municipal rental registration list"
+SOURCE_IMAGERY = "NJ aerial orthoimagery"
 
 #: Provenance keys — one per signal a door can carry.
 SIGNAL_PARCEL = "parcel"
@@ -165,38 +168,6 @@ class DoorFacts:
     block_group: BlockGroupStats | None = None
     rental_registration_match: bool = False
     provenance: Mapping[str, Provenance] = field(default_factory=dict)
-
-    def to_score_input(
-        self,
-        *,
-        as_of: date,
-        territory_median_value: float,
-        acs_dual_income_threshold: float,
-        vision: Mapping[str, Any] | None = None,
-    ) -> ScoreInput:
-        """Hand this door to the score engine, deriving nothing new.
-
-        The ACS numbers are the block group's, passed through as the
-        neighbourhood prior R6.2 permits them to be and nothing more.
-        """
-        return ScoreInput(
-            as_of=as_of,
-            territory_median_value=territory_median_value,
-            acs_dual_income_threshold=acs_dual_income_threshold,
-            pams_pin=self.pams_pin,
-            deed_date=self.deed_date,
-            sale_price=self.sale_price,
-            sales_code=self.sales_code,
-            deed_source=self.deed_source,
-            yr_constr=self.yr_constr,
-            net_value=self.net_value,
-            calc_acre=self.calc_acre,
-            permits=tuple(record.to_score_permit() for record in self.permits_2yr),
-            dual_income_pct=self.block_group.dual_income_pct if self.block_group else None,
-            median_hh_income=self.block_group.median_hh_income if self.block_group else None,
-            rental_registration_match=self.rental_registration_match,
-            vision=dict(vision or {}),
-        )
 
 
 @dataclass(frozen=True)

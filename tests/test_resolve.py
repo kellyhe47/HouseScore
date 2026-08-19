@@ -40,10 +40,8 @@ No network, no fixtures on disk: every parcel, permit and polygon below is
 synthetic and built in-module.
 """
 
-import json
 from dataclasses import dataclass
 from datetime import date, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -62,15 +60,14 @@ from houseaccount.resolve import (
     UnmatchedPermit,
     resolve,
 )
-from houseaccount.scoring import engine
-from houseaccount.scoring.engine import (
+# The provenance vocabulary is resolve's own after the V1 engine's deletion
+# (ticket 103 / plan R27): these names must import from houseaccount.resolve.
+from houseaccount.resolve import (
     SOURCE_ACS,
     SOURCE_MODIV,
     SOURCE_PERMITS,
     SOURCE_RENTAL,
     SOURCE_SR1A,
-    ScoreInput,
-    score_door,
 )
 from houseaccount.sources.acs import AcsResult, BlockGroupStats
 from houseaccount.sources.parcels import DEFAULT_MUN, Parcel
@@ -852,19 +849,6 @@ def test_an_available_acs_reports_no_reason():
     assert result.report.acs_reason is None
 
 
-def test_a_door_with_declined_acs_still_scores():
-    parcels = [door(BLOCK_A, 3)]
-    (facts,) = resolved(parcels, acs=ACS_DECLINED).doors.values()
-
-    scored = score_door(
-        facts.to_score_input(
-            as_of=AS_OF, territory_median_value=500000.0, acs_dual_income_threshold=0.35
-        )
-    )
-    assert 0 <= scored.score <= 100
-    assert "acs_dual_income_prior" not in {item.type for item in scored.evidence}
-
-
 def test_the_number_of_doors_carrying_block_group_stats_is_reported():
     parcels = [door(BLOCK_A, 3, lon=-74.10, lat=41.00), door(BLOCK_A, 4, lon=-70.0, lat=30.0)]
     index = StubIndex({(-74.10, 41.00): BG_ONE_GEOID})
@@ -1087,87 +1071,12 @@ def test_retrieval_dates_default_to_as_of():
     assert {p.retrieved for p in facts.provenance.values()} == {AS_OF}
 
 
-# --- the seam ticket 009 consumes: DoorFacts -> ScoreInput --------------------------
-
-
-RUN_CONFIG = dict(territory_median_value=500000.0, acs_dual_income_threshold=0.35)
-
-
-def full_door_facts():
-    parcels = [door(BLOCK_A, 3, lon=-74.10, lat=41.00, deed_date="260615", sale_price=850000.0)]
-    result = resolved(
-        parcels,
-        [permit("P-1", BLOCK_A, 3, kind="Roofing")],
-        acs=ACS_AVAILABLE,
-        index=StubIndex({(-74.10, 41.00): BG_ONE_GEOID}),
-        rental=FixtureRentalProvider({"0248_00101_00003"}),
-    )
-    (facts,) = result.doors.values()
-    return facts
-
-
-@pytest.mark.parametrize(
-    "attribute, expected",
-    [
-        ("pams_pin", "0248_00101_00003"),
-        ("deed_date", date(2026, 6, 15)),
-        ("sale_price", 850000.0),
-        ("sales_code", ""),
-        ("yr_constr", 1962),
-        ("net_value", 725000.0),
-        ("calc_acre", 0.34),
-        ("dual_income_pct", 0.41),
-        ("median_hh_income", 145673.0),
-        ("rental_registration_match", True),
-        ("territory_median_value", 500000.0),
-        ("acs_dual_income_threshold", 0.35),
-        ("as_of", AS_OF),
-    ],
-)
-def test_to_score_input_fills_every_field_without_re_deriving_anything(attribute, expected):
-    score_input = full_door_facts().to_score_input(as_of=AS_OF, **RUN_CONFIG)
-
-    assert isinstance(score_input, ScoreInput)
-    assert getattr(score_input, attribute) == expected
-
-
-def test_to_score_input_hands_over_engine_permits():
-    score_input = full_door_facts().to_score_input(as_of=AS_OF, **RUN_CONFIG)
-
-    assert all(isinstance(p, engine.Permit) for p in score_input.permits)
-    assert [p.permit_type for p in score_input.permits] == ["Roofing"]
-    assert [p.contractor for p in score_input.permits] == [None]
-
-
-def test_to_score_input_passes_the_vision_payload_through():
-    vision = {"pool": True, "condition_2015": "fair", "condition_2020": "poor"}
-    score_input = full_door_facts().to_score_input(as_of=AS_OF, vision=vision, **RUN_CONFIG)
-
-    assert dict(score_input.vision) == vision
-
-
-def test_to_score_input_defaults_vision_to_empty():
-    score_input = full_door_facts().to_score_input(as_of=AS_OF, **RUN_CONFIG)
-    assert dict(score_input.vision) == {}
-
-
-def test_a_door_with_no_block_group_hands_over_no_acs_numbers():
-    (facts,) = resolved([door(BLOCK_A, 3)], acs=ACS_DECLINED).doors.values()
-    score_input = facts.to_score_input(as_of=AS_OF, **RUN_CONFIG)
-
-    assert score_input.dual_income_pct is None
-    assert score_input.median_hh_income is None
-
-
-def test_the_resolved_door_scores_end_to_end():
-    scored = score_door(full_door_facts().to_score_input(as_of=AS_OF, **RUN_CONFIG))
-
-    types = {item.type for item in scored.evidence}
-    assert "permit_history" in types
-    assert "acs_dual_income_prior" in types
-    assert "absentee_likely" in types
-    assert scored.raw_total == sum(item.points for item in scored.evidence)
-
+# --- the seam the pipeline consumes ------------------------------------------------
+#
+# V1's DoorFacts.to_score_input()/ScoreInput seam is deleted with the engine
+# (ticket 103 / plan R27). The V2 pipeline seam is DoorFacts -> evidence bundle
+# -> score_door_v2, pinned by the locked tests/test_v2_bundle.py; the DoorFacts
+# field values themselves are pinned throughout this module.
 
 # --- a door with nothing on it -------------------------------------------------------
 
@@ -1180,14 +1089,6 @@ def test_a_door_with_no_permits_no_acs_and_no_rental_still_resolves():
     assert facts.permits_2yr == ()
     assert facts.block_group is None
     assert facts.rental_registration_match is False
-
-
-def test_a_bare_door_still_scores_rather_than_being_dropped():
-    (facts,) = resolved([door(BLOCK_A, 3, deed_date=None, yr_constr=0)], []).doors.values()
-    scored = score_door(facts.to_score_input(as_of=AS_OF, **RUN_CONFIG))
-
-    assert 0 <= scored.score <= 100
-    assert scored.confidence == "low"
 
 
 def test_resolution_never_drops_a_territory_door():
@@ -1427,40 +1328,20 @@ def test_one_units_sale_does_not_move_its_neighbours_in_the_complex():
     assert result.doors["0248_4001_22_C0112"].deed_source == SOURCE_MODIV
 
 
-def test_a_nominal_sale_supersedes_the_date_and_the_engine_still_refuses_it():
-    """End to end through the real engine: the register makes the transfer
-    visible, and the existing R6 rule — untouched by this ticket — declines to
-    call it a move."""
+def test_a_nominal_sale_still_supersedes_the_recorded_date():
+    """The register makes the transfer visible even when it is not a move: the
+    resolver supersedes the date and hands the price/NU code through, and the
+    V2 engine's refusal to treat it as a mover (R3) is pinned by the locked
+    tests/test_v2_engine.py / tests/test_v2_golden.py."""
     result = resolved(
         [door(101, 3, deed_date="200916")],
         sales=[sale(101, 3, "260601", price=1.0, nu_code="10")],
     )
     facts = only_door(result)
     assert facts.deed_source == SOURCE_SR1A
-
-    scored = score_door(
-        facts.to_score_input(
-            as_of=AS_OF, territory_median_value=700000.0, acs_dual_income_threshold=0.35
-        )
-    )
-    assert scored.groups["mover"] == 0
-    types = {item.type for item in scored.evidence}
-    assert "non_arms_length_transfer" in types
-    assert "deed_recency" not in types
-
-
-def test_the_mover_evidence_cites_the_register_the_date_came_from():
-    """R7: a rep asking "says who?" must be told the right file."""
-    result = resolved([door(101, 3, deed_date="200916")], sales=[sale(101, 3, "260601")])
-    scored = score_door(
-        only_door(result).to_score_input(
-            as_of=AS_OF, territory_median_value=700000.0, acs_dual_income_threshold=0.35
-        )
-    )
-
-    (recency,) = [item for item in scored.evidence if item.type == "deed_recency"]
-    assert recency.source == SOURCE_SR1A
-    assert recency.points == 70  # 74 days -> the 61-90 band
+    assert facts.deed_date == date(2026, 6, 1)
+    assert facts.sale_price == 1.0
+    assert facts.sales_code.strip() == "10"
 
 
 def test_the_report_counts_what_the_register_actually_supplied():
@@ -1490,96 +1371,7 @@ def test_no_sales_at_all_leaves_every_door_exactly_as_before():
     assert all(f.deed_source == SOURCE_MODIV for f in without.doors.values())
 
 
-def test_golden_fixture_13_replays_through_the_real_resolver():
-    """Fixture 13's `parcel` is the *merged* record. This is the test that keeps
-    it honest: build the two sources the fixture says it was merged from, run
-    the real resolver, and assert it produces exactly that record.
-
-    Without this, the fixture would assert only that a 2026 deed scores 85 —
-    true, but nothing to do with the source that supplied the deed.
-    """
-    fixture = json.loads(
-        (Path(__file__).resolve().parents[1] / "eval/golden/13_sr1a_supersedes_stale_modiv.json")
-        .read_text(encoding="utf-8")
-    )
-    given = fixture["given"]
-    resolution = given["resolution"]
-    modiv, sold = resolution["modiv"], resolution["sr1a_sale"]
-    as_of = date.fromisoformat(given["as_of"])
-
-    parcel = door(
-        modiv["PCLBLOCK"],
-        modiv["PCLLOT"],
-        deed_date=modiv["DEED_DATE"],
-        sale_price=modiv["SALE_PRICE"],
-        sales_code=modiv["SALES_CODE"],
-        qualifier=modiv["PCLQCODE"],
-        yr_constr=given["parcel"]["YR_CONSTR"],
-        net_value=given["parcel"]["NET_VALUE"],
-        calc_acre=given["parcel"]["CALC_ACRE"],
-    )
-    registered = sale(
-        sold["BLOCK"],
-        sold["LOT"],
-        sold["DEED_DATE"],
-        qualifier=sold["QUALIFICATION_CODES"],
-        price=sold["REPORTED_SALES_PRICE"],
-        nu_code=sold["SR_NU_CODE"],
-    )
-
-    facts = only_door(resolved([parcel], sales=[registered], as_of=as_of))
-
-    # The merged record is exactly the fixture's `parcel`.
-    assert facts.deed_date == date(2026, 6, 1)
-    assert facts.sale_price == given["parcel"]["SALE_PRICE"]
-    assert facts.sales_code == given["parcel"]["SALES_CODE"]
-    assert facts.deed_source == fixture["expect"]["deed_source"]
-
-    scored = score_door(
-        facts.to_score_input(
-            as_of=as_of,
-            territory_median_value=given["config"]["territory_median_value"],
-            acs_dual_income_threshold=given["config"]["acs_dual_income_threshold"],
-        )
-    )
-    assert scored.score == fixture["expect"]["score"]
-    assert scored.confidence == fixture["expect"]["confidence"]
-
-    types = {item.type for item in scored.evidence}
-    for required in fixture["expect"]["evidence_must_include"]:
-        assert required["type"] in types
-    for forbidden in fixture["expect"]["evidence_must_exclude"]:
-        assert forbidden["type"] not in types
-
-
-def test_golden_fixture_13_baseline_is_what_the_stale_deed_alone_would_score():
-    """The comparative the fixture claims: the same door, no sales register."""
-    fixture = json.loads(
-        (Path(__file__).resolve().parents[1] / "eval/golden/13_sr1a_supersedes_stale_modiv.json")
-        .read_text(encoding="utf-8")
-    )
-    given = fixture["given"]
-    modiv = given["resolution"]["modiv"]
-    as_of = date.fromisoformat(given["as_of"])
-
-    parcel = door(
-        modiv["PCLBLOCK"],
-        modiv["PCLLOT"],
-        deed_date=modiv["DEED_DATE"],
-        sale_price=modiv["SALE_PRICE"],
-        sales_code=modiv["SALES_CODE"],
-        yr_constr=given["parcel"]["YR_CONSTR"],
-        net_value=given["parcel"]["NET_VALUE"],
-        calc_acre=given["parcel"]["CALC_ACRE"],
-    )
-    facts = only_door(resolved([parcel], sales=[], as_of=as_of))
-    scored = score_door(
-        facts.to_score_input(
-            as_of=as_of,
-            territory_median_value=given["config"]["territory_median_value"],
-            acs_dual_income_threshold=given["config"]["acs_dual_income_threshold"],
-        )
-    )
-
-    assert scored.score == fixture["expect"]["comparative"]["baseline_score"]
-    assert facts.deed_source == SOURCE_MODIV
+# The V1 golden-fixture-13 replay tests are deleted with eval/golden/ and the
+# V1 engine (ticket 103). SR1A-supersedes-MOD-IV resolution stays pinned above;
+# the scoring consequences of a superseding sale are pinned by eval/v2/golden
+# through the locked tests/test_v2_golden.py.

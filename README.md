@@ -79,7 +79,9 @@ coverage, cost, entity-resolution rates, declinations — go into
 make eval
 ```
 
-Runs the thirteen golden fixtures through the *shipped* score engine (not a
+Runs the 42 golden fixtures of the V2 scoring contract (the current scoring
+authority — see `docs/plans/2026-08-18-2221-feat-door-score-v2-plan.md`;
+`eval/report.json` is the count authority) through the *shipped* score engine (not a
 re-implementation of the rules — a weight table that drifts from the spec fails
 here), then reports vision precision, recall and hallucination rate, the
 **cost per door**, and the entity-resolution match rate. With no flags it reads
@@ -90,7 +92,7 @@ The current run:
 
 ```
 GOLDEN FIXTURES
-  reproduced:               12/12
+  reproduced:               42/42
 COST
   doors scored:             540
   cost per door:            $0.0000
@@ -221,7 +223,7 @@ src/houseaccount/     pipeline, scoring engine, sources, server
   sources/            one adapter per upstream, all behind one HTTP seam
   scoring/            the R6 weights table and the deterministic engine
   server/             FastAPI app: MCP tools + REST API
-eval/                 the harness, 13 golden fixtures, verify_claims.py
+eval/                 the harness, 42 golden fixtures, verify_claims.py
 web/                  static MapLibre UI + the Data & Ethics page
 tests/                the suite
 docs/                 PRD, wireframes, design notes

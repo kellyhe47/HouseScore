@@ -15,12 +15,12 @@
 
 import { scoreColor, UNSCORED_COLOR, RAMP_CSS_GRADIENT } from './ramp.js';
 import { coverageText, filterDoors } from './filter.js';
-import { buildPanel, copyAddress, panelLayout } from './panel.js';
+import { buildPanel, copyAddress, evidenceLabel, panelLayout } from './panel.js';
 import { createMapState } from './state.js';
-import { createRoutePlanner, routeLine } from './route-ui.js';
+import { createRoutePlanner, routeLine, REFRESH_PROMPT } from './route-ui.js';
 import { createWalk, readWalk, clearWalk, resumeOffer } from './walk.js';
 import { streetLabels } from './streets.js';
-import { copyAsText, copyShareLink, readShare } from './share.js';
+import { copyAsText, copyShareLink, readShare, shareTokenVersion } from './share.js';
 import { buildStreetView, loadingStreetView } from './streetview.js';
 
 /* ── Configuration ───────────────────────────────────────────────────────── */
@@ -78,29 +78,12 @@ const TOAST_MS = 1800;
 const HOURS_OPTIONS = ['0.5', '1', '1.5', '2', '3'];
 
 /**
- * A short "why this door" chip per evidence type (wireframe frame 4d).
- *
- * The route payload carries a talk track but no chip, so the chip is derived
- * here from the door's own top evidence — presentation over data the map
- * already holds, never a second opinion about the score.
+ * The "why this door" chip (wireframe frame 4d) is the API's `reason_chip`
+ * (R30) — assembled on the server from the door's own top evidence under the
+ * selection rule, never re-derived in the browser from a label table. The map
+ * only formats it for reading.
  */
-const CHIP_LABELS = {
-  deed_recency: 'recent mover',
-  mover: 'recent mover',
-  permit_history: 'permit activity',
-  contractor_churn: 'no repeat contractor',
-  assessed_value: 'above median value',
-  acs_dual_income: 'block-group context',
-  home_age: 'older home',
-  lot_size: 'large lot',
-  pool: 'pool home',
-  condition_decline: 'condition declining',
-  deferred_maintenance: 'deferred maintenance',
-  tenure: 'long tenure',
-  rental_registration: 'registered rental',
-  non_arms_length_transfer: "non-arm's-length deed",
-  data_gap: 'partial data',
-};
+const chipText = (reasonChip) => (reasonChip ? evidenceLabel(reasonChip) : null);
 
 /* ── Element handles ─────────────────────────────────────────────────────── */
 
@@ -1203,6 +1186,22 @@ function renderScored(body, panel) {
   // rep has to interpret.
   if (panel.footer) body.appendChild(el('div', 'nofooter', panel.footer));
 
+  // R30: what could not be measured for this door, in the V2 gap vocabulary —
+  // each one a neutral default said out loud, never a silent hole.
+  if (panel.gaps && panel.gaps.length) {
+    body.appendChild(el('div', 'sectionhead', 'Data gaps'));
+    const gaps = el('div', 'evidence');
+    for (const gap of panel.gaps) {
+      const row = el('div', 'evidence__row');
+      row.appendChild(el('div', 'evidence__pts is-context', '·'));
+      const text = el('div', 'evidence__text');
+      text.appendChild(el('div', 'evidence__sentence', gap.message ?? gap.type.replace(/_/g, ' ')));
+      row.appendChild(text);
+      gaps.appendChild(row);
+    }
+    body.appendChild(gaps);
+  }
+
   // R7.2: what the rep says out loud — the same words the route list shows,
   // because both come from the server's `talk_track_for`.
   //
@@ -1234,36 +1233,48 @@ function renderScored(body, panel) {
   if (panel.breakdown && showMath) body.appendChild(renderBreakdown(panel.breakdown));
 }
 
-/** Frame 2b: each group as a bar against its ceiling, then the arithmetic. */
+/** Frame 2b: each V2 category as a bar against its cap, then the arithmetic. */
 function renderBreakdown(breakdown) {
   const block = el('div', 'breakdown');
   block.appendChild(el('div', 'sectionhead', 'Score breakdown'));
 
-  const groups = el('div', 'breakdown__groups');
-  for (const group of breakdown.groups) {
+  const categories = el('div', 'breakdown__groups');
+  for (const category of breakdown.categories) {
     const row = el('div');
 
     const head = el('div', 'breakdown__row-head');
-    head.appendChild(el('span', 'breakdown__name', group.label));
-    head.appendChild(el('span', 'breakdown__value', `${group.points} / ${group.max}`));
+    head.appendChild(el('span', 'breakdown__name', category.label));
+    head.appendChild(el('span', 'breakdown__value', `${category.points} / ${category.cap}`));
     row.appendChild(head);
 
     const track = el('div', 'breakdown__track');
     const fill = el('div', 'breakdown__fill');
-    // Proportion of the group's own ceiling, so a 15/30 capacity and a 50/100
-    // mover read as the same half-full bar. The modifier's ceiling is negative,
-    // so its share is taken on magnitude and painted in the debit colour.
-    const share = group.max === 0 ? 0 : Math.abs(group.points / group.max);
+    // Proportion of the category's own cap, so a 12/25 capacity and a 15/30
+    // fit read as comparably full bars.
+    const share = category.cap === 0 ? 0 : Math.abs(category.points / category.cap);
     fill.style.width = `${Math.round(Math.min(1, share) * 100)}%`;
-    fill.style.background = group.points < 0 ? '#A4442C' : scoreColor(40 + share * 60);
+    fill.style.background = scoreColor(40 + share * 60);
     track.appendChild(fill);
     row.appendChild(track);
 
-    groups.appendChild(row);
+    categories.appendChild(row);
   }
-  block.appendChild(groups);
+  block.appendChild(categories);
 
+  // The reconciling arithmetic: base + mover lift + rental modifier +
+  // adjustment = score — with the clamp said out loud when one applied.
   block.appendChild(el('div', 'breakdown__math', breakdown.mathLine));
+  if (breakdown.clamp) {
+    block.appendChild(
+      el(
+        'div',
+        'breakdown__math',
+        breakdown.clamp === 'floor'
+          ? 'floored at 0 — the adjustment above is the clamp made visible'
+          : 'capped at 100 — the adjustment above is the clamp made visible'
+      )
+    );
+  }
   return block;
 }
 
@@ -1275,8 +1286,14 @@ function evidenceRow(row) {
   wrapper.appendChild(el('div', `evidence__pts ${kind}`, row.hasSign ? row.signed : '·'));
 
   const text = el('div', 'evidence__text');
-  text.appendChild(el('div', 'evidence__sentence', row.sentence));
-  text.appendChild(el('div', 'evidence__source', `${row.source} · fetched ${row.retrieved}`));
+  text.appendChild(el('div', 'evidence__sentence', row.reason));
+  text.appendChild(
+    el(
+      'div',
+      'evidence__source',
+      row.source ? `${row.source} · fetched ${row.retrieved}` : row.label
+    )
+  );
   wrapper.appendChild(text);
 
   return wrapper;
@@ -1296,7 +1313,7 @@ function thumbnail(row) {
   frame.appendChild(image);
   card.appendChild(frame);
 
-  const meta = el('div', 'thumb__meta', row.type.replace(/_/g, ' '));
+  const meta = el('div', 'thumb__meta', row.label);
   meta.appendChild(document.createElement('br'));
   meta.appendChild(el('span', null, imageryMeta(row.imagery)));
   card.appendChild(meta);
@@ -1319,7 +1336,7 @@ function imageryMeta(imagery) {
 function openLightbox(row) {
   clear(els.lightboxFrame);
   const image = new Image();
-  image.alt = `${row.type.replace(/_/g, ' ')} imagery`;
+  image.alt = `${row.label} imagery`;
   image.src = row.imagery.image_url;
   image.addEventListener('error', () => {
     clear(els.lightboxFrame);
@@ -1327,10 +1344,8 @@ function openLightbox(row) {
   });
   els.lightboxFrame.appendChild(image);
 
-  els.lightboxLabel.textContent = row.sentence;
-  els.lightboxSub.textContent = [row.source, imageryMeta(row.imagery)]
-    .filter(Boolean)
-    .join(' · ');
+  els.lightboxLabel.textContent = row.reason;
+  els.lightboxSub.textContent = imageryMeta(row.imagery);
   els.lightbox.hidden = false;
 }
 
@@ -1350,16 +1365,6 @@ els.lightbox.addEventListener('click', (event) => {
 function formatDuration(minutes) {
   const total = Math.max(0, Math.round(minutes ?? 0));
   return `${Math.floor(total / 60)}h${String(total % 60).padStart(2, '0')}m`;
-}
-
-/** The door's loudest evidence, as a chip (frame 4d's "top reason"). */
-function chipFor(pin) {
-  const door = byPin(pin);
-  const evidence = door && door.properties.evidence;
-  if (!evidence || evidence.length === 0) return null;
-
-  const top = [...evidence].sort((a, b) => Math.abs(b.points) - Math.abs(a.points))[0];
-  return CHIP_LABELS[top.type] ?? top.type.replace(/_/g, ' ');
 }
 
 function openRoutePanel() {
@@ -1562,7 +1567,7 @@ function routeRow(row) {
   title.appendChild(score);
   body.appendChild(title);
 
-  const chip = chipFor(row.pin);
+  const chip = chipText(row.reasonChip);
   if (chip) body.appendChild(el('div', 'routerow__chip', chip));
 
   if (row.talkTrack) body.appendChild(el('div', 'routerow__talk', row.talkTrack));
@@ -1670,7 +1675,7 @@ function renderWalk() {
 
   els.walkAddr.textContent = current.address;
 
-  const chip = chipFor(current.pin);
+  const chip = chipText(current.reasonChip);
   els.walkChip.hidden = !chip;
   els.walkChip.textContent = chip ?? '';
 
@@ -1751,6 +1756,14 @@ function offerResume() {
  * is the only thing entitled to write them (R7.2).
  */
 async function openSharedRoute() {
+  // R27/R30: a link minted under the dead V1 contract must never replay as a
+  // V2 route — the token says which vintage it is, and a stale one prompts a
+  // refresh instead of opening a wrong walk.
+  if (shareTokenVersion(location.hash) === 'v1') {
+    showToast(REFRESH_PROMPT);
+    return;
+  }
+
   const pins = (await readShare(location.hash)).slice(0, 60);
   if (pins.length === 0) return;
 
@@ -1778,6 +1791,7 @@ async function openSharedRoute() {
             elapsedLabel: null,
             talkTrack: detail.talk_track ?? null,
             talkTrackBranches: detail.talk_track_branches ?? [],
+            reasonChip: detail.reason_chip ?? null,
           }
         : null
     )

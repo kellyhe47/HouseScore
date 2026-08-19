@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { encodeShare, readShare, shareUrl, copyAsText, copyShareLink } from './share.js';
+import {
+  encodeShare,
+  readShare,
+  shareUrl,
+  copyAsText,
+  copyShareLink,
+  shareTokenVersion,
+} from './share.js';
 import { routeRows, routePayload } from './test-fixtures.js';
 
 const PINS = ['0248_01101_00012', '0248_01101_00020', '0248_3502_8.01'];
@@ -11,14 +18,14 @@ const PINS = ['0248_01101_00012', '0248_01101_00020', '0248_3502_8.01'];
  *
  *   .venv/bin/python -c "from houseaccount.route import encode_share, Stop; ..."
  *
- * `houseaccount.route.encode_share` is `r1` + base64url(zlib deflate) with the
+ * `houseaccount.route.encode_share` is `r2` + base64url(zlib deflate) with the
  * padding stripped. The browser has to read what the server writes, so this
  * exact token is the compatibility pin — not a value the JS produced for itself.
  */
-const SERVER_TOKEN = 'r1eNozMDKxiDcwNDQwjDcwMDA00jFAETAygAgYmxoYxVvoGRgCAPz0Clk';
+const SERVER_TOKEN = 'r2eNozMDKxiDcwNDQwjDcwMDA00jFAETAygAgYmxoYxVvoGRgCAPz0Clk';
 
 /** The same route encoded by the server with an empty stop list. */
-const SERVER_EMPTY_TOKEN = 'r1eNoDAAAAAAE';
+const SERVER_EMPTY_TOKEN = 'r2eNoDAAAAAAE';
 
 const HREF = 'https://houseaccount.example/map#stale';
 
@@ -27,7 +34,7 @@ const HREF = 'https://houseaccount.example/map#stale';
 test('encodeShare writes a route fragment', async () => {
   const fragment = await encodeShare(routeRows());
 
-  assert.match(fragment, /^#route=r1/, 'the fragment carries an r1 token');
+  assert.match(fragment, /^#route=r2/, 'the fragment carries a current-contract r2 token');
 });
 
 test('readShare restores exactly the order encodeShare wrote', async () => {
@@ -71,10 +78,10 @@ test('encoding an empty route round-trips to nothing', async () => {
 test('garbage in the fragment restores nothing rather than throwing', async () => {
   for (const fragment of [
     '#route=not-a-token',
-    '#route=r1!!!!not-base64!!!!',
-    '#route=r1AAAAAAAA',
+    '#route=r2!!!!not-base64!!!!',
+    '#route=r2AAAAAAAA',
     '#route=',
-    '#something-else=r1abc',
+    '#something-else=r2abc',
     '#',
     '',
   ]) {
@@ -82,9 +89,9 @@ test('garbage in the fragment restores nothing rather than throwing', async () =
   }
 });
 
-test('a token without the r1 prefix restores nothing', async () => {
+test('a token without the r2 prefix restores nothing', async () => {
   const fragment = await encodeShare(routeRows());
-  const withoutPrefix = fragment.replace('r1', '');
+  const withoutPrefix = fragment.replace('r2', '');
 
   assert.deepEqual(await readShare(withoutPrefix), []);
 });
@@ -98,7 +105,7 @@ test('readShare with no argument restores nothing outside a browser', async () =
 test('shareUrl hangs the route off the page it is shared from', async () => {
   const url = await shareUrl(routeRows(), HREF);
 
-  assert.match(url, /^https:\/\/houseaccount\.example\/map#route=r1/);
+  assert.match(url, /^https:\/\/houseaccount\.example\/map#route=r2/);
   assert.deepEqual(await readShare(new URL(url).hash), PINS);
 });
 
@@ -171,4 +178,39 @@ test('copyShareLink on an empty route says nothing', async () => {
   await copyShareLink([], HREF, (event) => events.push(event));
 
   assert.deepEqual(events, []);
+});
+
+/* ── T106: the share link carries the score contract (R27/R30) ────────────────
+ *
+ * A share token minted under the dead V1 contract must never replay as a V2
+ * route. The token self-identifies by prefix — `r2` is the current contract,
+ * `r1` the dead one — mirroring `houseaccount.route.share_token_version`, and
+ * the route view uses the answer to prompt a refresh instead of planning.
+ */
+
+// The V1 encoder's own output for the three fixture PINs — a real stale link.
+const V1_TOKEN = 'r1eNozMDKxiDcwNDQwjDcwMDA00jFAETAygAgYmxoYxVvoGRgCAPz0Clk';
+
+test('a current token reads as the current contract version', async () => {
+  const fragment = await encodeShare(routeRows());
+  assert.equal(shareTokenVersion(fragment.replace('#route=', '')), 'v2');
+});
+
+test('shareTokenVersion reads a full fragment as well as a bare token', async () => {
+  assert.equal(shareTokenVersion(await encodeShare(routeRows())), 'v2');
+  assert.equal(shareTokenVersion(`#route=${V1_TOKEN}`), 'v1');
+});
+
+test('a V1-era token identifies itself as v1', () => {
+  assert.equal(shareTokenVersion(V1_TOKEN), 'v1');
+});
+
+test('a V1-era token decodes to no pins — a refresh, never a wrong route', async () => {
+  assert.deepEqual(await readShare(`#route=${V1_TOKEN}`), []);
+});
+
+test('an unrecognizable token has no version', () => {
+  assert.equal(shareTokenVersion('zzznotatoken'), null);
+  assert.equal(shareTokenVersion(''), null);
+  assert.equal(shareTokenVersion(null), null);
 });

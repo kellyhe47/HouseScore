@@ -8,7 +8,11 @@
  * looks like.
  *
  * The stops are the approved prototype's (docs/prototype-decoded.html:922),
- * interpolated linearly in RGB. Unlike the prototype's own `ramp()`, this one
+ * fixed on the absolute 0–100 scale — a 25 is the same light blue whatever the
+ * rest of the territory scored. A quantile-derived restop was tried and
+ * reverted: it spent the ramp's contrast on the observed distribution, which
+ * read as "too dark too early" (a 25 rendered near-navy). The colours
+ * interpolate linearly in RGB. Unlike the prototype's own `ramp()`, this one
  * clamps: the published scores are already clamped to 0–100, but a colour
  * function that returns `rgb(NaN,NaN,NaN)` for an out-of-range input fails
  * silently as an invisible parcel, and clamping is the cheaper contract.
@@ -35,9 +39,14 @@ const STOPS = [
  */
 export const UNSCORED_COLOR = '#D6D3CB';
 
-/** The ramp as a CSS gradient, for the legend and the filter track. */
+/**
+ * The ramp as a CSS gradient, for the legend and the filter track.
+ *
+ * One colour stop per ramp stop, positioned at its score percentage, so the
+ * legend and the parcel fills cannot disagree about where the ramp turns.
+ */
 export const RAMP_CSS_GRADIENT = `linear-gradient(90deg, ${STOPS.map(
-  ([, r, g, b]) => `rgb(${r},${g},${b})`
+  ([score, r, g, b]) => `rgb(${r},${g},${b}) ${score}%`
 ).join(', ')})`;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));

@@ -121,19 +121,24 @@ function icpSection(page) {
 }
 
 function traceSection(page) {
+  // One block per scoring group, in the launch layout and its exact CSS: a
+  // header row naming the group, its ceiling, and the ICP trait it serves,
+  // then one row per signal with its points badge and explanation.
   const groups = page.trace.map((group) => {
     const block = el('div', 'trace');
 
     const head = el('div', 'trace__head');
     head.appendChild(el('span', 'trace__name', group.label));
-    head.appendChild(el('span', 'trace__max', `max ${group.max}`));
-    head.appendChild(el('span', 'trace__trait', group.icpTrait));
+    head.appendChild(
+      el('span', 'trace__max', group.capLabel ?? (group.cap === null ? '—' : `max ${group.cap}`))
+    );
+    head.appendChild(el('span', 'trace__trait', group.trait));
     block.appendChild(head);
 
-    for (const signal of group.signals) {
+    for (const signal of group.signals || []) {
       const row = el('div', 'trace__row');
-      const points = el('span', 'trace__points', signal.points > 0 ? `+${signal.points}` : signal.points);
-      points.classList.add(signal.points < 0 ? 'is-neg' : 'is-pos');
+      const points = el('span', 'trace__points', signal.points);
+      points.classList.add(String(signal.points).startsWith('−') ? 'is-neg' : 'is-pos');
       row.appendChild(points);
       row.appendChild(el('span', 'trace__desc', signal.description));
       block.appendChild(row);
@@ -142,58 +147,59 @@ function traceSection(page) {
   });
 
   return section(
-    'Every signal, and the ICP trait it serves',
+    'Every scoring term, and the ICP trait it serves',
     el(
       'p',
       'doc__p',
       'Each group below points at exactly one of the four traits above, and every '
-        + 'point value is read from the scoring engine’s own weight table rather than '
-        + 'restated here — a published weight that disagreed with the engine would make '
-        + 'this page a lie about the map next to it.'
+        + 'cap and constant is mirrored from the scoring engine’s own contract — a '
+        + 'published number that disagreed with the engine would make this page a '
+        + 'lie about the map next to it.'
     ),
     ...groups
   );
 }
 
-function weightsSection(page) {
-  const rows = card(
-    ...page.weights.rows.map((row) => {
-      const item = el('div', 'card__row card__row--weight');
-      item.appendChild(el('code', 'card__code', row.key));
-      item.appendChild(el('span', 'card__body', row.label));
-      item.appendChild(el('span', 'card__num', row.points > 0 ? `+${row.points}` : row.points));
-      return item;
-    })
-  );
+function modelSection(page) {
+  const { model } = page;
 
-  const thresholds = card(
-    ...page.weights.thresholds.map((row) => {
+  const caps = card(
+    ...model.caps.map((row) => {
       const item = el('div', 'card__row card__row--weight');
       item.appendChild(el('code', 'card__code', row.key));
-      item.appendChild(el('span', 'card__body', row.label));
-      item.appendChild(el('span', 'card__num', row.value));
+      item.appendChild(el('span', 'card__body', row.body));
+      item.appendChild(el('span', 'card__num', `cap ${row.cap}`));
       return item;
     })
   );
 
   return section(
-    'The exact weights',
-    el('div', 'formula', page.weights.formula),
-    el('p', 'doc__p', page.weights.note),
-    el('h3', 'doc__h3', 'Point values'),
-    rows,
-    el('h3', 'doc__h3', 'Thresholds the points hang on'),
-    thresholds,
-    el(
-      'p',
-      'doc__note',
-      `Exterior condition is an ordinal scale, worst first: ${page.weights.conditionScale.join(' → ')}.`
-    )
+    'The model: three capped categories, a blend, one demotion',
+    el('h3', 'doc__h3', 'Base categories'),
+    caps,
+    el('h3', 'doc__h3', 'The mover blend'),
+    el('div', 'formula', model.blend.formula),
+    el('p', 'doc__p', model.blend.body),
+    el('p', 'doc__p', model.decay.text),
+    el('h3', 'doc__h3', 'Rental precedence'),
+    el('p', 'doc__p', model.rental.text),
+    el('h3', 'doc__h3', 'Missing data'),
+    ...model.unknowns.map((text) => el('p', 'doc__p', text)),
+    el('p', 'doc__note', model.note)
+  );
+}
+
+function evidenceRulesSection(page) {
+  return section(
+    'How evidence is read',
+    claimList(page.evidenceRules.map((text) => ({ text }))),
+    el('h3', 'doc__h3', 'Source limitations'),
+    claimList(page.limitations.map((text) => ({ text })))
   );
 }
 
 function ethicsSection(page) {
-  const { danielsLaw, census, streetView, absentee } = page.ethics;
+  const { danielsLaw, streetView } = page.ethics;
 
   const block = (heading, body, claims) => {
     const wrap = el('div', 'stance');
@@ -206,9 +212,8 @@ function ethicsSection(page) {
   return section(
     'What we deliberately do not do',
     block(danielsLaw.heading, danielsLaw.body, danielsLaw.claims),
-    block(census.heading, census.body, census.claims),
-    block(streetView.heading, streetView.body, streetView.claims),
-    block('Absentee detection', absentee.body, absentee.claims)
+    block(page.acs.heading, page.acs.body, page.acs.claims),
+    block(streetView.heading, streetView.body, streetView.claims)
   );
 }
 
@@ -261,17 +266,15 @@ function sourcesSection(page) {
 function evaluationSection(page) {
   const view = page.evaluation;
 
-  const grid = el('div', 'metrics');
-  for (const row of view.metrics) {
-    const tile = el('div', 'metrics__tile');
-    tile.appendChild(el('div', `metrics__value${row.value === null ? ' is-unmeasured' : ''}`, row.display));
-    tile.appendChild(el('div', 'metrics__label', row.label));
-    grid.appendChild(tile);
-  }
+  const lines = view.available
+    ? view.lines.map((line) => el('p', 'doc__p', line))
+    : [el('p', 'doc__p', view.caveat)];
 
-  const provenance = el('div', view.isProvisional ? 'notice notice--warn' : 'doc__note');
-  if (view.source) provenance.appendChild(el('div', 'provenance', `source: ${view.source}`));
-  provenance.appendChild(el('div', null, view.caveat));
+  const provenance = view.available && view.banner ? el('div', 'notice notice--warn') : null;
+  if (provenance) {
+    if (view.source) provenance.appendChild(el('div', 'provenance', `source: ${view.source}`));
+    provenance.appendChild(el('div', null, view.banner));
+  }
 
   const resolution = page.resolution.rows.length
     ? card(
@@ -287,7 +290,7 @@ function evaluationSection(page) {
 
   return section(
     'Evaluation results',
-    grid,
+    ...lines,
     provenance,
     el('h3', 'doc__h3', 'Entity resolution'),
     resolution || el('p', 'doc__p', page.resolution.note),
@@ -298,7 +301,9 @@ function evaluationSection(page) {
 function validationSection(page) {
   return section(
     page.validation.heading,
-    el('p', 'doc__p', page.validation.body),
+    el('p', 'doc__p', page.validation.primary),
+    el('p', 'doc__p', page.validation.secondary),
+    el('p', 'doc__p', page.validation.successTest),
     claimList(page.validation.claims)
   );
 }
@@ -332,7 +337,7 @@ function mcpSection() {
   box.appendChild(el('div', 'formula', mcpEndpoint()));
   for (const [tool, description] of [
     ['get_door_score(address)', 'score, confidence and the full evidence trail'],
-    ['explain_score(address)', 'the same, plus the group-by-group arithmetic'],
+    ['explain_score(address)', 'the same, plus the category-by-category arithmetic'],
     ['plan_route(hours, start_point, max_doors?)', 'ordered stops with talk tracks'],
   ]) {
     const row = el('div', 'card__row card__row--tool');
@@ -377,7 +382,8 @@ const root = document.getElementById('page');
 root.append(
   icpSection(page),
   traceSection(page),
-  weightsSection(page),
+  modelSection(page),
+  evidenceRulesSection(page),
   ethicsSection(page),
   availabilitySection(page),
   sourcesSection(page),

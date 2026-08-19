@@ -67,7 +67,6 @@ from houseaccount.http import SourceError, Transport, requests_transport
 from houseaccount.normalize import parse_deed_date
 from houseaccount.publish import (
     MOVER_WINDOW_DAYS,
-    TOP_BAND_DAYS,
     PublishResult,
     RunManifest,
     parcel_record_incomplete,
@@ -82,20 +81,23 @@ from houseaccount.resolve import (
     ResolveReport,
     resolve,
 )
-from houseaccount.scoring.engine import ScoreResult, score_door
+from houseaccount.scoring.bundle import (
+    _parse_us_date,
+    build_bundle,
+    roof_permits_by_pin,
+    sdl_by_pin,
+)
+from houseaccount.scoring.evidence import imagery_for
+from houseaccount.scoring.v2 import score_door_v2
 from houseaccount.sources.acs import AcsResult, AcsSource
 from houseaccount.sources.parcels import DEFAULT_MUN, Parcel, ParcelSource
 from houseaccount.sources.permits import PERMIT_WINDOW_DAYS, PermitRecord, PermitSource
 from houseaccount.sources.rental import NullRentalProvider, RentalRegistrationProvider
 from houseaccount.sources.sales import Sale, SalesExtract, SalesSource
 from houseaccount.sources.tiger import BlockGroupIndex, TigerSource
-from houseaccount.territory import (
-    select_territory,
-    territory_median_value,
-    write_territory_geojson,
-)
+from houseaccount.territory import select_territory, write_territory_geojson
 from houseaccount.vision.run import run_vision
-from houseaccount.vision.schema import Detection, to_score_vision
+from houseaccount.vision.schema import Detection, condition_declined, to_score_vision
 from houseaccount.vision.tiles import ORTHO_YEARS, Tile, fetch_tile, tile_for
 
 logger = logging.getLogger(__name__)
@@ -160,9 +162,6 @@ class DeedVintage:
     #: The sales register's own newest deed, and the files it was read from.
     latest_sale_date: date | None = None
     source_files: tuple[str, ...] = ()
-    #: Doors inside the top band. Zero while `doors_in_mover_window` is not is
-    #: the fingerprint of the state's recording lag — see `_recording_lag_note`.
-    doors_in_top_band: int = 0
 
 
 def code_version() -> str:
@@ -275,19 +274,14 @@ def run_pipeline(
         degradations=degradations,
     )
 
-    # --- score --------------------------------------------------------------
-    median = territory_median_value(territory)
-    scored = [
-        (door, _score(door, as_of=as_of, median=median, vision=vision.signals.get(door.pams_pin)))
-        for door in doors
-    ]
+    # --- score (V2: bundle -> score_door_v2, R27) -----------------------------
+    scored = _score_doors(doors, as_of=as_of, vision=vision, data_dir=config.data_dir)
 
     # --- publish ------------------------------------------------------------
     manifest = RunManifest(
         run_at=moment,
         as_of=as_of,
         code_version=code_version(),
-        territory_median_value=median,
         acs_dual_income_threshold=ACS_DUAL_INCOME_THRESHOLD,
         retrieved=retrieved,
         cost_usd=ledger.total_usd(),
@@ -297,7 +291,6 @@ def run_pipeline(
         latest_sale_date=vintage.latest_sale_date,
         sales_source_files=vintage.source_files,
         doors_with_sales_deed=resolved.report.sales_applied,
-        doors_in_top_band=vintage.doors_in_top_band,
         vision_available=vision.available,
         vision_declination_reason=vision.declination_reason,
         vision_answers_total=vision.answers_total,
@@ -535,7 +528,7 @@ def _deed_vintage(
     degradations: list[str],
     sales: SalesExtract | None = None,
 ) -> DeedVintage:
-    """Measure the extract's deed vintage, and say so when it costs the Mover group.
+    """Measure the extract's deed vintage (R28: numbers only, no V1 prose).
 
     The deed strings are read through `parse_deed_date` — the same normalizer
     `resolve` already ran over them — so the vintage cannot disagree with the
@@ -543,10 +536,10 @@ def _deed_vintage(
     `DoorFacts.deed_date` for the same reason: a second parse here would be a
     second answer waiting to drift.
 
-    Nothing measured here is returned to the score engine. The count exists to
-    answer one question — could the model's heaviest group fire on this data? —
-    and when the answer is no, that is recorded once, as a degradation, in the
-    same list an operator already reads for a refused provider.
+    Nothing measured here is returned to the score engine, and nothing here is
+    recorded as a degradation: V2's mover strength decays to 365 days, so an
+    empty 90-day window no longer means the signal cannot fire — the measured
+    numbers are the whole disclosure now.
     """
     parsed = [parse_deed_date(parcel.deed_date, as_of) for parcel in parcels]
     modiv_latest = max((day for day in parsed if day is not None), default=None)
@@ -554,8 +547,7 @@ def _deed_vintage(
     sold = [parse_deed_date(sale.deed_date, as_of) for sale in (sales.sales if sales else ())]
     sale_latest = max((day for day in sold if day is not None), default=None)
 
-    # The feed's vintage is the freshest date either register can show, because
-    # that is what actually determines whether the group can fire.
+    # The feed's vintage is the freshest date either register can show.
     latest = max((day for day in (modiv_latest, sale_latest) if day is not None), default=None)
 
     in_window = sum(
@@ -563,99 +555,171 @@ def _deed_vintage(
         for door in doors
         if door.deed_date is not None and (as_of - door.deed_date).days <= MOVER_WINDOW_DAYS
     )
-    in_top_band = sum(
-        1
-        for door in doors
-        if door.deed_date is not None and (as_of - door.deed_date).days <= TOP_BAND_DAYS
-    )
-
-    if in_window == 0:
-        _degrade(degradations, _mover_unearnable_note(latest))
-    elif in_top_band == 0 and sale_latest is not None:
-        _degrade(degradations, _recording_lag_note(sale_latest, as_of=as_of))
 
     return DeedVintage(
         latest_deed_date=latest,
         doors_in_mover_window=in_window,
         latest_sale_date=sale_latest,
         source_files=tuple(sales.source_files) if sales else (),
-        doors_in_top_band=in_top_band,
     )
 
 
-def _recording_lag_note(latest_sale: date, *, as_of: date) -> str:
-    """Why the top band is empty even though the Mover group fired.
-
-    A distinct finding from the stale-extract note above, and it must not be
-    silently dropped once the sales register makes the group fire at all: a deed
-    reaches the published register only after it is recorded by the county and
-    the state reissues the file, and that pipeline runs weeks behind the closing.
-    So the freshest sale a run can *possibly* see is already older than the top
-    band, and the 100-point tier stays unearnable for reasons no code here can
-    fix. Saying so is the difference between a limit and a bug.
-    """
-    lag = (as_of - latest_sale).days
-    return (
-        f"no door is inside the {TOP_BAND_DAYS}-day top mover band: the freshest sale in the "
-        f"SR1A register closed {latest_sale.isoformat()}, {lag} days ago, because a deed reaches "
-        "the published register only after county recording and the state's next file release. "
-        f"The Mover group did fire in the wider {MOVER_WINDOW_DAYS}-day window; the "
-        f"{TOP_BAND_DAYS}-day tier is unreachable at this source's publication cadence, not "
-        "because the rule failed."
-    )
+# --- scoring (V2, R27: bundle -> score_door_v2, no side-by-side paths) ---------
 
 
-def _mover_unearnable_note(latest: date | None) -> str:
-    """Why no door earned a mover point, written for whoever is doubting the map.
-
-    Two shapes, because they are two different findings. A dated extract that is
-    simply old is the ordinary case and the date is the whole evidence, so it is
-    quoted. An extract with no readable deed at all has no date to quote — and a
-    placeholder standing in for one would read as a bug in this sentence rather
-    than as the absence it describes.
-    """
-    if latest is not None:
-        return (
-            f"no door in this territory has a deed dated inside the {MOVER_WINDOW_DAYS}-day "
-            f"mover window: the newest deed anywhere in the MOD-IV extract is "
-            f"{latest.isoformat()}. The Mover group — the heaviest signal in the model — "
-            "therefore scored zero everywhere on this run. That is the vintage of the county "
-            "extract, not a rule that failed to fire."
-        )
-    return (
-        "the MOD-IV extract carries no readable deed date, so no door could be placed inside "
-        f"the {MOVER_WINDOW_DAYS}-day mover window and the Mover group — the heaviest signal "
-        "in the model — scored zero everywhere on this run. That is the state of the county "
-        "extract, not a rule that failed to fire."
-    )
-
-
-# --- scoring ------------------------------------------------------------------
-
-
-def _score(
-    door: DoorFacts,
+def _score_doors(
+    doors: Sequence[DoorFacts],
     *,
     as_of: date,
-    median: float,
-    vision: dict[str, Any] | None,
-) -> ScoreResult | None:
-    """This door's score, or None when the county record cannot support one.
+    vision: VisionStage,
+    data_dir: Path | None = None,
+) -> list[tuple[DoorFacts, dict[str, Any] | None]]:
+    """Every door through the V2 seam: build its evidence bundle, score it,
+    and enrich imagery-derived evidence with its re-openable frame.
 
-    R6.1's degraded path handles a record missing *some* of its parcel facts;
-    `parcel_record_incomplete` catches the record missing all of them, where any
-    number produced would be invented rather than degraded.
+    A door whose county record carries no scoreable fact at all is `None`
+    (published as an exclusion); anything less scores through V2's typed
+    data-gap path.
     """
-    if parcel_record_incomplete(door):
-        return None
-    return score_door(
-        door.to_score_input(
-            as_of=as_of,
-            territory_median_value=median,
-            acs_dual_income_threshold=ACS_DUAL_INCOME_THRESHOLD,
-            vision=vision,
-        )
+    territory_parcels = tuple(
+        {
+            "pams_pin": door.pams_pin,
+            "prop_class": door.prop_class,
+            "net_value": door.net_value if door.net_value > 0 else None,
+            "yr_constr": door.yr_constr if door.yr_constr > 0 else None,
+            "calc_acre": door.calc_acre,
+            "centroid": door.centroid,
+        }
+        for door in doors
     )
+
+    # The SDL property-history snapshot (permits, displayed sales, assessed
+    # valuations) is R22's primary lifecycle source. Without it, no door can
+    # ever earn project points from a municipal permit: the statewide feed
+    # below carries no dispositions and lags the portal.
+    sdl_pages = sdl_by_pin(data_dir) if data_dir is not None else {}
+    roof_pages = roof_permits_by_pin(data_dir) if data_dir is not None else {}
+
+    scored: list[tuple[DoorFacts, dict[str, Any] | None]] = []
+    for door in doors:
+        if parcel_record_incomplete(door):
+            scored.append((door, None))
+            continue
+        signals = vision.signals.get(door.pams_pin)
+        sdl = sdl_pages.get(door.pams_pin)
+        sdl_collected = bool(sdl) and sdl.get("collection_status") == "collected"
+        # AE10: one municipal permit present in both the SDL page and the
+        # statewide feed must count once. Socrata rows carry no municipal
+        # permit number (only their own recordid), so the id-based coalesce in
+        # the bundle can never match them — the join key here is the issue
+        # date, and the richer SDL record wins.
+        roof_permits = roof_pages.get(door.pams_pin, ())
+        sdl_issue_dates = set()
+        if sdl_collected:
+            for app in (sdl.get("construction") or {}).get("permit_applications") or ():
+                issued = _parse_us_date(app.get("issue_date"))
+                if issued is not None:
+                    sdl_issue_dates.add(issued)
+        for permit in roof_permits:
+            raw = permit.get("issue_date")
+            if raw:
+                sdl_issue_dates.add(date.fromisoformat(raw))
+        ctx = {
+            "parcel": {
+                "pams_pin": door.pams_pin,
+                "prop_class": door.prop_class,
+                "net_value": door.net_value if door.net_value > 0 else None,
+                "yr_constr": door.yr_constr if door.yr_constr > 0 else None,
+                "calc_acre": door.calc_acre,
+                "deed_date": door.deed_date.isoformat() if door.deed_date else None,
+                "sale_price": door.sale_price,
+                "sales_code": door.sales_code,
+                "centroid": door.centroid,
+            },
+            "territory_parcels": territory_parcels,
+            "statewide_permits": tuple(
+                {
+                    "id": f"{door.pams_pin}:{getattr(record, 'record_id', '') or index}",
+                    "description": getattr(record, "type", ""),
+                    "issue_date": record.date.isoformat() if record.date else None,
+                }
+                for index, record in enumerate(door.permits_2yr)
+                if record.date not in sdl_issue_dates
+            ),
+            "acs_block_group": (
+                {"dual_income_pct": door.block_group.dual_income_pct}
+                if door.block_group is not None
+                and door.block_group.dual_income_pct is not None
+                else {}
+            ),
+            # The municipal rental registry is OPRA-only and absent from every
+            # live run (R6/R23): the engine records the typed gap.
+            "rental_registry": {},
+            "imagery": _imagery_inputs(signals, available=vision.available),
+        }
+        if sdl_pages:
+            # R23: with the snapshot on disk, an uncollected page is a data
+            # gap, never proof of absence — flagged so the engine emits it.
+            # With no snapshot at all the keys stay out, and the bundle treats
+            # SDL as unknown rather than flooding every door with the gap.
+            ctx["sdl"] = sdl if sdl_collected else None
+            ctx["sdl_available"] = sdl_collected
+            ctx["sdl_match_exact_current"] = sdl_collected
+        if roof_permits:
+            ctx["sdl_roof_permits"] = roof_permits
+        envelope = dict(score_door_v2(build_bundle(ctx, as_of), as_of))
+        envelope["evidence"] = _attach_frames(envelope["evidence"], signals)
+        scored.append((door, envelope))
+    return scored
+
+
+def _imagery_inputs(
+    signals: Mapping[str, Any] | None, *, available: bool
+) -> dict[str, Any]:
+    """The vision stage's answers in the V2 bundle's imagery vocabulary."""
+    if not available:
+        return {"available": False}
+    observations: list[dict[str, Any]] = []
+    if signals:
+        for kind in ("pool", "solar"):
+            if signals.get(kind):
+                frame = imagery_for(signals, kind)
+                observations.append(
+                    {"kind": kind, "confidence": frame["model_confidence"] if frame else 1.0}
+                )
+        if condition_declined(signals.get("condition_2015"), signals.get("condition_2020")):
+            frame = imagery_for(signals, "condition")
+            observations.append(
+                {
+                    "kind": "condition_decline",
+                    "confidence": frame["model_confidence"] if frame else 1.0,
+                }
+            )
+    return {"available": True, "observations": tuple(observations)}
+
+
+#: Which vision attachment re-opens each imagery-derived evidence type.
+_FRAME_KEYS = {
+    "fit_pool": "pool",
+    "fit_solar": "solar",
+    "fit_condition_decline": "condition",
+}
+
+
+def _attach_frames(
+    evidence: Sequence[Mapping[str, Any]], signals: Mapping[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Enrich imagery-derived evidence entries with their re-openable frames."""
+    enriched = []
+    for item in evidence:
+        entry = dict(item)
+        key = _FRAME_KEYS.get(entry["type"])
+        if key and signals:
+            frame = imagery_for(signals, key)
+            if frame:
+                entry["imagery"] = dict(frame)
+        enriched.append(entry)
+    return enriched
 
 
 def _degrade(degradations: list[str], reason: str) -> None:

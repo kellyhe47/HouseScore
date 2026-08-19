@@ -117,7 +117,9 @@ keyless `make pipeline` exits 0 having published a complete, internally
 consistent, three-signals-poorer territory — no vision terms, no ACS prior — and
 the image build below will bake exactly that in. A run that used its keys
 reports `"vision": {"available": true, ...}` and lists only the two structural
-degradations (no OPRA rental list, no door in the 30-day mover band).
+degradations (no OPRA rental list, no door in the freshest mover band of the
+V2 recency blend — scoring authority:
+`docs/plans/2026-08-18-2221-feat-door-score-v2-plan.md`).
 
 `make pipeline` is what puts the artifacts in `data/`, and the `Dockerfile`
 copies that directory into the image. **Deploying without a current `data/` ships
@@ -247,7 +249,8 @@ Open `https://houseaccount.vercel.app`. In order:
    `HOUSEACCOUNT_API_BASE` is missing its `/api`.
 2. Click a parcel — the evidence panel shows the score breakdown and a talk track.
 3. **Plan Route** returns an ordered walk with an estimate disclosure.
-4. **Data & Ethics** shows the real fixture counts and the run manifest, not the
+4. **Data & Ethics** shows the real fixture counts (42 golden fixtures — count
+   authority `eval/report.json`) and the run manifest, not the
    "no published run" fallback. If it shows the fallback,
    `HOUSEACCOUNT_ARTIFACT_BASE` is wrong or the eval report never made it into
    the image.

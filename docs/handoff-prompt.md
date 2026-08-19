@@ -3,7 +3,7 @@
 Build the system specified in this repo. You do not need the original assignment; the PRD has absorbed it, including all graded deliverables.
 
 ## Sources of truth, in precedence order
-1. `eval/golden/*.json` — 12 fixtures; the acceptance contract. `eval/verify_claims.py` re-derives all of them from the scoring rules — run it before and after any change to scoring code or fixtures.
+1. `eval/v2/golden/*.json` — the 42-fixture V2 golden suite (count authority `eval/report.json`); the acceptance contract. `eval/verify_claims.py` re-derives all of them from the scoring rules — run it before and after any change to scoring code or fixtures.
 2. `docs/PRD.md` — numbered requirements R1–R14. Settled conflicts: territory is OURS (R1.1, no external polygon is coming); absentee modifier is −15 and applies to everyone including ≤30-day movers (fixture 10); score is the only surfaced output (no tiers).
 3. `docs/HouseAccount-Prototype.html` + `docs/DESIGN-ADDITIONS.md` — approved visual reference (drive it, don't guess); `docs/ui-wireframes.html` and `docs/architecture.excalidraw` for structure.
 
@@ -18,7 +18,7 @@ No identity data, ever: no owner names, no mailing addresses, no deed-book name 
 
 ## Definition of done
 - `make pipeline` runs harvest→resolve→vision→score→publish from a fresh clone with only documented env vars (`OPENAI_API_KEY`, `CENSUS_API_KEY`; optional `GOOGLE_MAPS_KEY`), zero manual steps (R2.2).
-- `make eval` runs: all 12 golden fixtures green via the real score engine; vision P/R + hallucination + cost-per-door computed from labeled sets; entity-resolution match rate ≥95% reported (R3.2).
+- `make eval` runs: the full V2 golden suite (42 fixtures; count authority `eval/report.json`) green via the real score engine; vision P/R + hallucination + cost-per-door computed from labeled sets; entity-resolution match rate ≥95% reported (R3.2).
 - Map UI and MCP server (tools exactly: `get_door_score`, `explain_score`, `plan_route`) deployed and publicly reachable (R8, R9, R12); Data & Ethics page live per R11.4.
 - Total API spend ≤ $50 (projected $0–5); caching/batching visible in code (R14, R2.3).
 - README documents setup end-to-end; no hardcoded secrets (R13).

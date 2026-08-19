@@ -28,20 +28,56 @@ export const SHEET_BREAKPOINT = 768;
 export const COPIED_MESSAGE = 'Address copied';
 
 /**
- * R8.1's five scoring groups, in ICP order with their ceilings.
+ * R2: the three V2 base categories in contract order, with their caps.
  *
- * The order is the argument: mover, then hires-out, then capacity, then need is
- * the order the ICP was written in, and the breakdown reads as the case for the
- * door rather than as a leaderboard of whichever group happened to score most.
- * The modifier's "max" is a floor — the one group that can only subtract.
+ * The only subtotal vocabulary any surface may use (R30). The caps are the
+ * engine's: capped subtotals sum to the base, and any cap adjustment lives in
+ * the evidence trail as its own explicit entry (R7).
  */
-const SCORE_GROUPS = [
-  { key: 'mover', label: 'Mover', max: 100 },
-  { key: 'hires_out', label: 'Hires-out', max: 60 },
-  { key: 'capacity', label: 'Capacity', max: 30 },
-  { key: 'need', label: 'Need', max: 30 },
-  { key: 'modifier', label: 'Modifier', max: -15 },
+const V2_CATEGORIES = [
+  { key: 'project', label: 'Project', cap: 45 },
+  { key: 'capacity', label: 'Capacity', cap: 25 },
+  { key: 'fit', label: 'Need', cap: 48 },
 ];
+
+/**
+ * R30: the degradation copy for the six V2 gap types — what the panel says
+ * when a signal source could not answer for this door. Every message states a
+ * neutral default: a missing input never subtracts points.
+ */
+export const GAP_MESSAGES = {
+  rental_data_missing:
+    'No rental registry was available, so rental status is treated as neutral '
+    + '— this door is neither promoted nor demoted for it.',
+  acs_missing:
+    'No Census block-group statistics were available, so the neighborhood '
+    + 'prior contributed nothing to this score.',
+  imagery_missing:
+    'No aerial imagery signals were available for this parcel, so the score '
+    + 'is built without pool, solar or exterior-condition terms.',
+  sdl_page_unavailable:
+    'The permit lifecycle page could not be retrieved, so project activity is '
+    + 'read from the records already on hand.',
+  local_comparables_insufficient:
+    'Too few nearby comparable sales exist, so the local relative-value '
+    + 'signal contributed nothing to this score.',
+  assessed_value_missing:
+    'The county record carries no assessed value for this parcel, so the '
+    + 'capacity signals that read it contributed nothing.',
+};
+
+/**
+ * Reader-facing names for evidence types whose underscore-spelling is jargon.
+ * Every other type reads fine as its own words; the fallback is the type with
+ * underscores as spaces.
+ */
+const TYPE_LABELS = {
+  mover_recency: 'recent move-in',
+};
+
+/** The doorstep name for one evidence type. */
+export const evidenceLabel = (type) =>
+  TYPE_LABELS[type] ?? String(type).replace(/_/g, ' ');
 
 /**
  * One evidence line, ready to render.
@@ -52,61 +88,84 @@ const SCORE_GROUPS = [
  * decides that there is one.
  */
 function toRow(item) {
-  const points = item.points;
+  // Whole numbers only at the doorstep: the engine's mover blend is fractional,
+  // but a rep must never read "+61.23400494288421" off the panel.
+  const points = Math.round(item.points);
   const hasSign = points !== 0;
   return {
     type: item.type,
+    label: evidenceLabel(item.type),
     points,
     hasSign,
     signed: hasSign ? (points > 0 ? `+${points}` : `${MINUS}${Math.abs(points)}`) : null,
-    sentence: item.sentence,
-    source: item.source,
-    retrieved: item.retrieved,
+    reason: item.reason,
+    // The attribution line: which record produced this evidence, fetched
+    // when. Derived entries (category caps) publish no source and fall back
+    // to the readable type label.
+    source: item.source ?? null,
+    retrieved: item.retrieved ?? null,
     imagery: item.imagery ?? null,
   };
 }
 
 /**
- * The score's arithmetic, shown (R8.1, wireframe frame 2b).
+ * The V2 score's arithmetic, shown (R7/R30, wireframe frame 2b).
  *
- * Only the door endpoint carries `groups` and `raw_total` — the published
- * GeoJSON deliberately does not (R11.1) — so this returns null whenever the
- * panel was opened from the map's own properties, and the section simply is not
- * there until the detail fetch lands. An unscored door has no arithmetic to
- * show at all.
+ * Every published door carries the reconciliation fields under V2 —
+ * `categories{project,capacity,fit}`, `base`, `mover_lift`, `rental_modifier`,
+ * `adjustment` — so the breakdown renders from the map's own properties, not
+ * only from the door endpoint. The arithmetic the panel shows is the one the
+ * engine ran:
+ *
+ *   base + mover lift + rental modifier + adjustment = score
+ *
+ * with the three capped category subtotals above it. An unscored door has no
+ * arithmetic to show at all.
  */
 function buildBreakdown(door, scored) {
-  if (!scored || !door.groups || door.raw_total === null || door.raw_total === undefined) {
-    return null;
-  }
+  if (!scored || !door.categories) return null;
 
-  const groups = SCORE_GROUPS.filter(
-    // A zero modifier is not a finding. Every other group's zero is one — "no
-    // permits in the window" is why the door scored what it did — but a row
-    // reading "Modifier 0 / −15" implies a demotion that was never applied.
-    (group) => group.key !== 'modifier' || (door.groups[group.key] ?? 0) !== 0
-  ).map((group) => ({ ...group, points: door.groups[group.key] ?? 0 }));
+  // What the trail summed to before the clamp/rounding adjustment: below 0 the
+  // published 0 was a floor, above 100 the published 100 was a ceiling. Saying
+  // so is what keeps the arithmetic honest for the one reader who checks.
+  const unclamped =
+    (door.base ?? 0) + (door.mover_lift ?? 0) + (door.rental_modifier ?? 0);
+
+  // Whole numbers only: each displayed term is rounded, and the adjustment is
+  // re-derived from the rounded terms — not rounded itself — so the shown
+  // arithmetic still sums exactly to the published integer score.
+  const base = Math.round(door.base ?? 0);
+  const moverLift = Math.round(door.mover_lift ?? 0);
+  const rentalModifier = Math.round(door.rental_modifier ?? 0);
+  const adjustment = door.score - base - moverLift - rentalModifier;
 
   return {
-    groups,
-    rawTotal: door.raw_total,
+    categories: V2_CATEGORIES.map((category) => ({
+      ...category,
+      points: door.categories[category.key] ?? 0,
+    })),
+    base,
+    moverLift,
+    rentalModifier,
+    adjustment,
     score: door.score,
-    mathLine: mathLine(door.raw_total, door.score),
+    mathLine: mathLine(base, moverLift, rentalModifier, adjustment, door.score),
+    clamp: unclamped < 0 ? 'floor' : unclamped > 100 ? 'ceiling' : null,
   };
 }
 
 /**
- * The line under the bars.
- *
- * A clamped score has to say so, in both directions: "100" that was really 108
- * and "0" that was really −15 are each a claim about a door that the raw total
- * contradicts, and hiding the clamp would make the group bars fail to add up
- * for the one reader who checks.
+ * The reconciling line under the subtotals, e.g. `39 + 56 + 0 + 0 = 95` — or,
+ * for the demoted rental floored at 0, `13 + 0 − 25 + 12 = 0`, where the
+ * 12-point adjustment is the clamp made visible. Negative terms wear the
+ * typographic minus the rest of the panel uses.
  */
-function mathLine(rawTotal, score) {
-  if (rawTotal > 100) return `raw ${rawTotal} → capped ${score}`;
-  if (rawTotal < 0) return `raw ${rawTotal} → floored ${score}`;
-  return `raw ${rawTotal} = score ${score}`;
+function mathLine(base, ...terms) {
+  const score = terms.pop();
+  const line = terms
+    .map((term) => (term < 0 ? `${MINUS} ${Math.abs(term)}` : `+ ${term}`))
+    .join(' ');
+  return `${base} ${line} = ${score}`;
 }
 
 /**
@@ -153,6 +212,17 @@ export function buildPanel(door) {
     // from rather than more prose to read out.
     talkTrackBranches: door.talk_track_branches ?? [],
     breakdown: buildBreakdown(door, scored),
+    // R30: readable degradation rows in the V2 gap vocabulary. Only a scored
+    // door discloses gaps — an unscored door has its own message.
+    gaps: scored
+      ? (door.data_gaps ?? []).map((gap) => ({
+          type: gap.type,
+          message: GAP_MESSAGES[gap.type] ?? null,
+        }))
+      : [],
+    // R30: the chip is the API's, never derived in the browser. Null means the
+    // detail fetch has not landed, and no chip is shown rather than a guess.
+    reasonChip: door.reason_chip ?? null,
   };
 }
 

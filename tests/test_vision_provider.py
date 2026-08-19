@@ -40,7 +40,6 @@ import pytest
 from houseaccount.cache import Cache
 from houseaccount.config import Config
 from houseaccount.cost import CostLedger
-from houseaccount.scoring.engine import ScoreInput, score_door
 from houseaccount.vision.provider import (
     DEFAULT_BATCH_SIZE,
     LEDGER_SOURCE,
@@ -57,8 +56,6 @@ from houseaccount.vision.run import (
 )
 from houseaccount.vision.schema import Detection, to_score_vision
 from houseaccount.vision.tiles import Tile
-
-GOLDEN = Path(__file__).resolve().parents[1] / "eval" / "golden"
 
 PNG = b"\x89PNG\r\n\x1a\n ortho tile bytes"
 
@@ -593,28 +590,10 @@ def test_the_declined_result_is_a_valid_empty_vision_dict(no_key):
     assert vision["condition_2020"] is None
 
 
-def scored_fixtures():
-    out = []
-    for path in sorted(GOLDEN.glob("*.json")):
-        fixture = json.loads(path.read_text(encoding="utf-8"))
-        if "score" in fixture.get("expect", {}):
-            out.append(fixture)
-    return out
-
-
-FIXTURES = scored_fixtures()
-
-assert len(FIXTURES) >= 10, f"fixture discovery found only {len(FIXTURES)} scored fixtures"
-
-
-@pytest.mark.parametrize("fixture", FIXTURES, ids=[f["name"] for f in FIXTURES])
-def test_every_door_still_scores_when_vision_declines(no_key, fixture):
-    """R6.1: a missing vision stage degrades the score, it does not stop the run."""
-    given = dict(fixture["given"])
-    given["vision"] = to_score_vision(run_vision([], config=no_key).detections)
-    result = score_door(ScoreInput.from_fixture(given))
-    assert isinstance(result.score, int)
-    assert 0 <= result.score <= 100
+# The V1 "every golden fixture still scores when vision declines" sweep is
+# deleted with eval/golden/ and the V1 engine (ticket 103 / plan R27). V2 pins
+# the same guarantee as the imagery_missing data gap: doors score without
+# imagery, per the locked tests/test_v2_engine.py and eval/v2/golden fixtures.
 
 
 # --- the configured path ----------------------------------------------------
@@ -843,7 +822,7 @@ def test_the_worst_case_hang_stays_bounded(with_key, stub_openai):
     assert worst_case <= 15 * 60
 
 
-def test_a_configured_run_feeds_the_score_engine(with_key):
+def test_a_configured_run_feeds_the_scorer(with_key):
     batch = tiles(2)
     result = run_vision(batch, config=with_key, client=FakeOpenAI(batch))
     assert to_score_vision(result.detections)["pool"] is True

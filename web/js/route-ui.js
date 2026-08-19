@@ -17,6 +17,18 @@
 /** Same-origin by default; a split deployment overrides it (R12). */
 const DEFAULT_API_BASE = '/api';
 
+/** The score contract this client was built against (R27/R30). */
+export const SCORE_CONTRACT_VERSION = 'v2';
+
+/**
+ * What the rep reads when a shared link was minted under an older contract:
+ * the server answered with a refresh signal instead of stops, and the honest
+ * move is a prompt, never a mixed-version route.
+ */
+export const REFRESH_PROMPT =
+  'The scores behind this link were re-issued under a newer contract. '
+  + 'Refresh the map and plan again to get a route over the current scores.';
+
 /**
  * One stop, as the route list and walk mode read it.
  *
@@ -39,6 +51,9 @@ function toRow(stop, index) {
     elapsedLabel: `+${Math.round(stop.cumulative_minutes)} min`,
     talkTrack: stop.talk_track,
     talkTrackBranches: stop.talk_track_branches ?? [],
+    // R30: the chip is the API's, assembled server-side from the door's own
+    // top evidence — never re-derived in the browser from a label table.
+    reasonChip: stop.reason_chip ?? null,
     path: stop.path ?? [],
   };
 }
@@ -100,6 +115,10 @@ export async function requestRoute(request, options = {}) {
       start_point: request.start,
       max_doors: request.maxDoors ?? null,
       exclude: request.exclude ?? null,
+      // R27: every request names the contract its scores came from — the
+      // client's own by default, or the vintage a shared URL was minted under,
+      // so the server can answer a stale link with the refresh signal.
+      score_contract_version: request.scoreContractVersion ?? SCORE_CONTRACT_VERSION,
     }),
   });
 
@@ -117,6 +136,7 @@ export async function requestRoute(request, options = {}) {
 
   const payload = await response.json();
   const rows = (payload.stops ?? []).map(toRow);
+  const refreshRequired = payload.refresh_required === true;
 
   return {
     rows,
@@ -125,6 +145,15 @@ export async function requestRoute(request, options = {}) {
     // An empty route is an answer, not a failure: "no doors reachable in 0.5h"
     // is what frame 4b renders, and it is never a blank map.
     isEmpty: rows.length === 0,
+    // R30: the list's average is arithmetic over the scores the list displays
+    // — computed from the rows, so it cannot disagree with what is on screen.
+    // An empty route has no average rather than a zero.
+    averageScore: rows.length
+      ? rows.reduce((sum, row) => sum + row.score, 0) / rows.length
+      : null,
+    refreshRequired,
+    refreshPrompt: refreshRequired ? REFRESH_PROMPT : null,
+    scoreContractVersion: payload.score_contract_version ?? null,
   };
 }
 

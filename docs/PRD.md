@@ -41,18 +41,21 @@ R1 territory · R2 harvest · R3 entity resolution · R4 vision · R5 eval harne
 
 ## R5 — Eval harness (rubric non-negotiable)
 - R5.1 `[source]` Runnable code (not a spreadsheet): labeled samples, precision/recall on top signal, hallucination rate, cost per door. `[proposal]` Sizes: ~40 hand-labeled parcels (pool), 20-image verified-negative probe set. Arithmetic pinned by fixture 09 (P=0.818, R=0.9, H=0.05 on the frozen confusion set).
-- R5.2 `[proposal]` Harness also runs all golden fixtures (12 at time of writing) against the score engine; CI-style single command `make eval`.
+- R5.2 `[proposal]` Harness also runs the full V2 golden suite — 42 fixtures; `eval/report.json` is the count authority — against the score engine; CI-style single command `make eval`.
 
-## R6 — House Score `[decided]`
-Single surfaced number 0–100 (no tiers). Deterministic, fixture-tested. `score = clamp(mover + hires_out + capacity + need + modifier, 0, 100)`.
+## R6 — House Score `[decided]` — **SUPERSEDED (scoring contract)**
+Single surfaced number 0–100 (no tiers). Deterministic, fixture-tested.
 
-| Group | Max | Rules |
-|---|---|---|
-| Mover | 100 | deed ≤30d: **100** · ≤60d: 85 · ≤90d: 70 · older: 0. "100" is the Mover *group's* contribution — the additive formula and the absentee modifier still apply (≤30d mover + rental match = 85, fixture 10). Non-arm's-length deeds (SALE_PRICE ≤ $100 **or** SALES_CODE non-empty — MOD-IV non-usable-sale flag) earn 0 (fixtures 03, 12). ICP trace: recently-moved is the #1 stated best-customer trait. |
-| Hires-out | 60 | each permit in last **2 yrs** (rolling 730 days from as_of): 20, cap 40 · provider churn: +20 iff ≥2 distinct contractor names within the same window AND no contractor repeats; permits lacking a contractor field are excluded from churn (not from permit points). ICP trace: hires-out-not-DIY, demonstrated. |
-| Capacity | 30 | NET_VALUE ≥ territory median: 15 (≥1.5×: 25) · ACS block-group prior (dual_income_pct ≥ 0.35): +5. Territory median = median NET_VALUE over all territory class-2 parcels with NET_VALUE > 0, computed once per pipeline run, persisted in the run manifest. ICP trace: capacity to pay for years of service. |
-| Need | 32 | age ≥30yr: 8 · pool: 8 · lot ≥0.5ac: 4 · condition decline 2015→2020 (ordinal scale excellent>good>fair>poor; any ≥1-step drop): 8 · deferred-maintenance combo (age ≥30yr AND zero permits in window AND decline): 4. ICP trace: near-term service demand. |
-| Modifier | −15 | absentee-likely (rental-registration match only, R11.3). `[decided]` Mild: rental households still buy services. |
+> **Superseded 2026-08-18.** The V1 scoring rules that used to live in this
+> section — the additive five-group formula, the old group names and maxima,
+> the rental modifier, the hard recency cutoff, and the two contractor-history
+> bonuses — are no longer the shipped contract and are deliberately not quoted
+> here. The current scoring authority is the V2 plan,
+> [`docs/plans/2026-08-18-2221-feat-door-score-v2-plan.md`](plans/2026-08-18-2221-feat-door-score-v2-plan.md),
+> together with the V2 golden fixtures in `eval/v2/golden/`. The V1 text is
+> preserved verbatim inside that plan as supersession context. The ICP traces
+> (recently moved · hires out rather than DIYs · can pay · has work coming due)
+> carry forward unchanged into V2.
 
 - R6.1 `[decided]` Missing fields degrade gracefully: null/unparseable deed → Mover skipped; YR_CONSTR=0 → age-dependent *components* skipped (pool/lot/decline still score); emit `confidence: low` + explicit data-gap evidence (fixture 06). Confidence is binary: `normal` | `low`.
 - R6.0 `[source]` Raw DEED_DATE is a YYMMDD 2-digit-year string (audited); harvest normalizes to ISO before scoring with century pivot: YY ≤ (current 2-digit year + 1) → 2000s, else 1900s (fixture 11). Unparseable → treated as null.

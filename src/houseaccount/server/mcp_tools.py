@@ -67,22 +67,26 @@ _ADDRESS_ARGUMENT = (
 _GET_DOOR_SCORE_DESCRIPTION = (
     "Look up one address's House Score with the evidence behind it. Returns the "
     "score (0-100, higher means more likely to be in the market for home "
-    "improvement work now), a confidence level, and the evidence trail: one "
-    "sentence per signal with the points it contributed, the public source it "
-    "came from and the date that source was retrieved. Some doors have no score "
-    "- the county record is too thin to support one - and those return "
+    "improvement work now), a confidence level, the score_contract_version the "
+    "run was published under, and the evidence trail: one entry per signal with "
+    "its type, the points it contributed and a short reason. Some doors have no "
+    "score - the county record is too thin to support one - and those return "
     "score: null with an exclusion_reason. Use this when asked what a specific "
     "house scores or why it is worth knocking."
 )
 
 _EXPLAIN_SCORE_DESCRIPTION = (
     "Explain one address's House Score in full: the same evidence trail as "
-    "get_door_score, plus the arithmetic behind the number. Returns the five "
-    "group subtotals - mover (recently changed hands), hires_out (pays "
-    "contractors rather than DIY), capacity (can afford the work), need (the "
-    "house is due for it) and modifier (adjustments) - along with raw_total, "
-    "their unclamped sum, and score, that total clamped to 0-100. Use this when "
-    "asked to justify or break down a score, or why one door outranks another."
+    "get_door_score, plus the arithmetic behind the number. Returns the three "
+    "capped category subtotals - project (recent qualifying project activity), "
+    "capacity (ability to pay for the work) and fit (the house suits the "
+    "service) - whose sum is base; the mover state (a home that recently "
+    "changed hands gets a large lift that fades out over the first year) with "
+    "its mover_lift; the rental "
+    "registration modifier (a verified rental demotes the door); the rounding/"
+    "clamp adjustment; the typed data_gaps behind the confidence level; and "
+    "score, the final 0-100 integer. Use this when asked to justify or break "
+    "down a score, or why one door outranks another."
 )
 
 _PLAN_ROUTE_DESCRIPTION = (
@@ -92,10 +96,12 @@ _PLAN_ROUTE_DESCRIPTION = (
     "highest-scoring doors reachable on foot within the time budget, ordered "
     "greedily by score per walking minute from the starting point, and returns "
     "each stop with its address, House Score, walking minutes for that leg, "
-    "cumulative minutes, and a talk track - the opening line to use at that "
-    "specific door, drawn from its strongest evidence. Walking times are "
-    "straight-line estimates, and the returned estimate_disclosure says so; "
-    "pass it on rather than presenting the times as turn-by-turn directions."
+    "cumulative minutes, a reason_chip naming why this door made the route, "
+    "and a talk track - the opening line to use at that specific door. The "
+    "payload carries the score_contract_version its scores came from. Walking "
+    "times are straight-line estimates, and the returned estimate_disclosure "
+    "says so; pass it on rather than presenting the times as turn-by-turn "
+    "directions."
 )
 
 
@@ -127,12 +133,14 @@ def mcp_server_for(territory: Territory) -> MCPServer:
         door = territory.find(address)
         if door is None:
             return _unresolved(territory, address)
+        properties = door.properties
         return {
             "pams_pin": door.pams_pin,
             "score": door.score,
             "confidence": door.confidence,
             "evidence": list(door.evidence),
             "exclusion_reason": door.exclusion_reason,
+            "score_contract_version": properties["score_contract_version"],
         }
 
     @server.tool(name="explain_score", description=_EXPLAIN_SCORE_DESCRIPTION)
@@ -142,11 +150,19 @@ def mcp_server_for(territory: Territory) -> MCPServer:
         door = territory.find(address)
         if door is None:
             return _unresolved(territory, address)
+        properties = door.properties
         return {
             "pams_pin": door.pams_pin,
-            "groups": dict(door.groups) if door.groups is not None else None,
-            "raw_total": door.raw_total,
             "score": door.score,
+            "confidence": door.confidence,
+            "score_contract_version": properties["score_contract_version"],
+            "categories": properties["categories"],
+            "base": properties["base"],
+            "mover": properties["mover"],
+            "mover_lift": properties["mover_lift"],
+            "rental_modifier": properties["rental_modifier"],
+            "adjustment": properties["adjustment"],
+            "data_gaps": properties["data_gaps"],
             "evidence": list(door.evidence),
             "exclusion_reason": door.exclusion_reason,
         }

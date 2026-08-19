@@ -187,9 +187,9 @@
         "categories": {
           "project": 0,
           "capacity": 0,
-          "fit": 5
+          "fit": 8
         },
-        "base": 5,
+        "base": 8,
         "mover": {
           "eligible": false,
           "days_since_move": null,
@@ -197,20 +197,20 @@
         },
         "mover_lift": 0.0,
         "rental_modifier": 0,
-        "pre_rounding": 5.0,
+        "pre_rounding": 8.0,
         "adjustment": 0.0,
-        "score": 5,
         "evidence": [
           {
             "type": "fit_pool",
-            "points": 5
+            "points": 8
           },
           {
             "type": "project_neutralized",
             "points": 0
           }
         ],
-        "data_gaps": []
+        "data_gaps": [],
+        "score": 8
       },
       "state_changes": [],
       "emitted_events": [],

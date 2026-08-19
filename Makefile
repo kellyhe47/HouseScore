@@ -18,7 +18,7 @@ UV := uv
 # populated `.env` needs to see the same greens as CI with none.
 DOTENV := set -a; [ -f .env ] && . ./.env; set +a;
 
-.PHONY: setup pipeline eval test test-py test-web serve clean
+.PHONY: setup pipeline eval test test-py test-golden test-web audit serve clean
 
 setup:
 	$(UV) venv --python 3.12 .venv
@@ -28,13 +28,23 @@ setup:
 pipeline:
 	$(DOTENV) $(PY) -m houseaccount.pipeline
 
-eval:
-	$(DOTENV) $(PY) -m eval.harness
+# The eval run (ticket 104/R34): the 42-fixture V2 golden suite, then the
+# recalculation report built from the published artifacts — deterministic, no
+# network. The report builder exits nonzero on a PII violation (R25).
+eval: test-golden
+	$(PY) -m eval.v2.report
 
-test: test-py test-web
+test: test-py test-web audit
+
+# R35: fail on any stale V1-contract assertion outside the versioned allowlist.
+audit:
+	$(PY) scripts/audit_stale_contract.py
 
 test-py:
 	$(PY) -m pytest
+
+test-golden:
+	$(PY) -m pytest tests/test_v2_golden.py -q
 
 test-web:
 	npm --prefix web test

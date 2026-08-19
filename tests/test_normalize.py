@@ -7,22 +7,21 @@ Pinned surface (`src/houseaccount/normalize.py`, pure functions, no I/O):
     parcel_key(mun, block, lot) -> str
     situs_display(prop_loc: str | None, zip5: str | None) -> str
 
-`eval/golden/11_deed_date_yymmdd_parse.json` is the contract for the deed
-parser, so the cases are READ FROM THAT FILE rather than copied here — adding a
-case to the fixture adds a test. The century pivot is derived from `as_of`
-(`YY <= as_of.year % 100 + 1` -> 2000s, else 1900s), which a second as_of in
-2030 proves by shifting a boundary case that fixture 11 pins at 2026.
+The YYMMDD deed-parse cases were originally pinned by V1 golden fixture 11
+(`eval/golden/11_deed_date_yymmdd_parse.json`). That directory is deleted with
+the V1 contract (ticket 103 / plan R27), so the cases are inlined here verbatim:
+the parser contract survives the cutover unchanged. The century pivot is derived
+from `as_of` (`YY <= as_of.year % 100 + 1` -> 2000s, else 1900s), which a second
+as_of in 2030 proves by shifting a boundary case pinned at 2026.
 
-Both input shapes matter: golden fixtures feed the engine ISO strings, live
-MOD-IV feeds it YYMMDD, and `parse_deed_date` is the single door both go through.
+Both input shapes matter: fixtures feed the scorer ISO strings, live MOD-IV
+feeds it YYMMDD, and `parse_deed_date` is the single door both go through.
 
 `normalize_address` canonicalises to the SHORT street type ("12 OAK ST"), which
 is the form R9.1's copy-address string shows.
 """
 
-import json
 from datetime import date
-from pathlib import Path
 
 import pytest
 
@@ -33,19 +32,26 @@ from houseaccount.normalize import (
     situs_display,
 )
 
-FIXTURE_11 = Path(__file__).resolve().parents[1] / "eval" / "golden" / "11_deed_date_yymmdd_parse.json"
-FIXTURE = json.loads(FIXTURE_11.read_text(encoding="utf-8"))
-CASES = FIXTURE["given"]["cases"]
-AS_OF = date.fromisoformat(FIXTURE["given"]["as_of"])
-
-assert len(CASES) >= 7, "fixture 11 lost cases — the deed-parse contract is read from disk"
+#: Inlined from V1 golden fixture 11 before eval/golden/ was deleted (R27):
+#: raw DEED_DATE is a YYMMDD 2-digit-year string ('080122' = 2008-01-22); a
+#: silent century bug ('26' -> 1926) would zero every mover.
+AS_OF = date(2026, 8, 1)
+CASES = [
+    {"raw": "260712", "expect_iso": "2026-07-12"},
+    {"raw": "080122", "expect_iso": "2008-01-22"},
+    {"raw": "990315", "expect_iso": "1999-03-15"},
+    {"raw": "270101", "expect_iso": "2027-01-01"},
+    {"raw": "280101", "expect_iso": "1928-01-01"},
+    {"raw": "", "expect_iso": None},
+    {"raw": "9903", "expect_iso": None},
+]
 
 
 def _expected(case):
     return date.fromisoformat(case["expect_iso"]) if case["expect_iso"] else None
 
 
-# --- deed date: the fixture 11 contract, read from disk ---------------------
+# --- deed date: the (inlined) fixture-11 contract ---------------------------
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c["raw"] or "<empty>" for c in CASES])

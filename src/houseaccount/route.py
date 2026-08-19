@@ -61,7 +61,7 @@ import math
 import re
 import zlib
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 #: Straight-line distance underestimates a walk along streets and driveways;
 #: 1.3 is the usual planning multiplier for a residential street grid.
@@ -83,9 +83,22 @@ ESTIMATE_DISCLOSURE = (
     "not turn-by-turn directions."
 )
 
-#: Marks a share link as ours, so a mangled fragment decodes to nothing instead
-#: of being mistaken for a route.
-_SHARE_PREFIX = "r1"
+#: The score contract this planner plans for (R27/R30). One authority for what
+#: version a shared route was planned under.
+SCORE_CONTRACT_VERSION = "v2"
+
+#: Marks a share link as ours — and as this contract's. The V1-era prefix was
+#: `r1`; a token still carrying it names a route scored under a dead contract,
+#: so it decodes to no pins and the UI asks for a fresh route (R27/R30).
+_SHARE_PREFIX = "r2"
+_V1_SHARE_PREFIX = "r1"
+
+#: Unspeakable at the door (PRD R7.2.1): a rep cannot voice a value percentile
+#: or a local price ratio without revealing the file. They still score the door
+#: and still sort the route; they never pick the words and never become a chip.
+UNSPEAKABLE_TYPES = frozenset(
+    {"capacity_territory_percentile", "capacity_local_relative_value"}
+)
 
 #: Conservative: everything a PAMS PIN can contain, nothing a URL would mind.
 _PIN_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
@@ -264,23 +277,37 @@ _DEFAULT_ANGLE = Angle(
     ),
 )
 
-#: Evidence type -> the angle it opens. The types absent from this table are
-#: absent on purpose: `assessed_value`, `acs_dual_income_prior` and
-#: `absentee_likely` are things a rep cannot say without revealing the file, and
-#: `condition_trajectory` / `deferred_maintenance` are things nobody says to
-#: someone's face. They score the door, they sort the route, and they fall
-#: through to an angle that never mentions them.
+#: V2 evidence type -> the angle it opens (R30). Exhaustive over every type
+#: `scoring/v2.py` can emit, so a new engine signal can never ship without a
+#: deliberate decision about what a rep says. The unspeakable capacity types
+#: (PRD R7.2.1) and everything file-derived map *explicitly* to the default
+#: angle — coverage is a decision the map records, not an accident of a
+#: missing key. `fit_condition_decline` maps away from the house entirely
+#: (R19: the signal is historical decline between imagery vintages, and
+#: nothing a rep says describes the house's present state), and the ACS prior
+#: maps to an angle that never mentions income (R15: it is a neighborhood-
+#: level prior, never a household claim).
 ANGLES: dict[str, Angle] = {
-    "deed_recency": _TENURE_ANGLE,
-    "tenure": _TENURE_ANGLE,
-    "non_arms_length_transfer": _TENURE_ANGLE,
-    "condition_trajectory": _TENURE_ANGLE,
-    "deferred_maintenance": _TENURE_ANGLE,
-    "permit_history": _CHURN_ANGLE,
-    "provider_churn": _CHURN_ANGLE,
-    "pool": _POOL_ANGLE,
-    "home_age": _HOUSE_ANGLE,
-    "lot_size": _HOUSE_ANGLE,
+    "capacity_acs_dual_income_prior": _DEFAULT_ANGLE,
+    "capacity_cap_adjustment": _DEFAULT_ANGLE,
+    "capacity_local_relative_value": _DEFAULT_ANGLE,
+    "capacity_territory_percentile": _DEFAULT_ANGLE,
+    "fit_cap_adjustment": _HOUSE_ANGLE,
+    "fit_condition_decline": _TENURE_ANGLE,
+    "fit_condition_superseded": _CHURN_ANGLE,
+    "fit_home_age": _HOUSE_ANGLE,
+    "fit_lot": _HOUSE_ANGLE,
+    "fit_pool": _POOL_ANGLE,
+    "fit_roof_age": _CHURN_ANGLE,
+    "fit_solar": _POOL_ANGLE,
+    "mover_invalid_sale": _TENURE_ANGLE,
+    "mover_recency": _TENURE_ANGLE,
+    "project_active": _CHURN_ANGLE,
+    "project_cap_adjustment": _CHURN_ANGLE,
+    "project_completed": _CHURN_ANGLE,
+    "project_neutralized": _CHURN_ANGLE,
+    "rental_registration": _DEFAULT_ANGLE,
+    "rental_stale": _DEFAULT_ANGLE,
 }
 
 #: The angle for a door whose top evidence names no angle — an unscored trail, a
@@ -303,6 +330,9 @@ class RouteDoor:
     score: int | None
     centroid: tuple[float, float] | None
     evidence_type: str | None = None
+    #: The door's route reason chip (R30) — pre-computed by the caller via
+    #: `reason_chip`, stamped verbatim onto the door's `Stop`.
+    reason_chip: str | None = None
 
 
 @dataclass(frozen=True)
@@ -325,6 +355,8 @@ class Stop:
     talk_track: str
     talk_track_branches: tuple[Branch, ...] = ()
     path: tuple[tuple[float, float], ...] = ()
+    #: The one word the route list shows beside this door — *why this door*.
+    reason_chip: str | None = None
 
 
 @dataclass(frozen=True)
@@ -427,6 +459,7 @@ def plan_route(
                 talk_track=talk_track_for(chosen),
                 talk_track_branches=talk_track_branches_for(chosen),
                 path=_leg_path(network, position, chosen.centroid),
+                reason_chip=chosen.reason_chip,
             )
         )
         position = chosen.centroid
@@ -492,6 +525,35 @@ def talk_track_branches_for(door: RouteDoor) -> tuple[Branch, ...]:
     to read out.
     """
     return angle_for(door).branches
+
+
+def reason_chip(evidence: Sequence[Mapping[str, Any]]) -> str | None:
+    """The route reason chip for one door's evidence trail (R30).
+
+    Pure and deterministic: the highest-point evidence entry wins, ties break
+    by descending points then ascending evidence type, and the unspeakable
+    capacity types are never eligible however many points they carry (PRD
+    R7.2.1). No speakable evidence means no chip — `None` is an answer.
+    """
+    eligible = [item for item in evidence if item["type"] not in UNSPEAKABLE_TYPES]
+    if not eligible:
+        return None
+    return min(eligible, key=lambda item: (-item["points"], item["type"]))["type"]
+
+
+def share_token_version(token: str) -> str | None:
+    """Which score contract a share token was minted under (R27/R30).
+
+    `"v2"` for a current token, `"v1"` for the dead contract's `r1` fragments,
+    `None` for anything unrecognizable — the caller treats anything other than
+    the current version as a refresh, never as a route.
+    """
+    text = (token or "").strip()
+    if text.startswith(_SHARE_PREFIX):
+        return SCORE_CONTRACT_VERSION
+    if text.startswith(_V1_SHARE_PREFIX):
+        return "v1"
+    return None
 
 
 def encode_share(stops: Sequence[Stop]) -> str:

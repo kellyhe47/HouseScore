@@ -3,7 +3,7 @@
 Ground truth (verified live, Phase 0): `data.nj.gov/resource/w9se-dmra.json?comu=0248`
 returns Ramsey's permits with `block`/`lot`/`permitdate`/`permittypedesc`/`constcost` —
 and **no contractor field at all**. That absence is the interesting part of this
-module: `Permit.contractor` exists because the score engine's churn rule needs it,
+module: V1's churn rule once wanted a contractor field,
 and from *this* source it is always None, deliberately, so the churn bonus is
 structurally unearnable on real data (PRD R6: "permits lacking a contractor field
 are excluded from churn, not from permit points").
@@ -22,8 +22,6 @@ import pytest
 
 from houseaccount.cache import Cache
 from houseaccount.http import Response
-from houseaccount.scoring import engine
-from houseaccount.scoring.engine import ScoreInput, score_door
 from houseaccount.sources import permits as permits_module
 from houseaccount.sources.permits import (
     SOCRATA_PERMITS_URL,
@@ -261,50 +259,14 @@ def test_the_absence_is_documented_at_module_level():
     assert "contractor" in note, "the module must say why contractor is always None"
 
 
-# --- relationship to the score engine's Permit ------------------------------
-
-
-def test_the_module_does_not_define_a_second_permit_type():
-    """One `Permit` in the codebase: the engine's. This module re-exports it."""
-    assert permits_module.Permit is engine.Permit
-    assert PermitRecord is not engine.Permit
-
-
-def test_to_score_permit_produces_the_engine_type():
-    record = PermitRecord(
-        record_id="1",
-        block="2702",
-        lot="15",
-        date=date(2025, 6, 1),
-        type="Alteration",
-        contractor=None,
-        cost=4500.0,
-    )
-    scored = record.to_score_permit()
-
-    assert isinstance(scored, engine.Permit)
-    assert scored.permit_date == date(2025, 6, 1)
-    assert scored.permit_type == "Alteration"
-    assert scored.contractor is None
-
-
-def test_permits_from_this_source_earn_points_but_never_churn():
-    """R6: no contractor field -> permit points yes, provider-churn bonus no."""
-    records = [
-        PermitRecord(record_id="1", date=date(2025, 6, 1), type="Alteration"),
-        PermitRecord(record_id="2", date=date(2026, 1, 5), type="Roofing"),
-    ]
-    result = score_door(
-        ScoreInput(
-            as_of=AS_OF,
-            territory_median_value=0.0,
-            acs_dual_income_threshold=0.35,
-            permits=tuple(r.to_score_permit() for r in records),
-        )
-    )
-    types = {item.type for item in result.evidence}
-    assert "permit_history" in types
-    assert "provider_churn" not in types
+# --- relationship to the score engine --------------------------------------
+#
+# V1's engine.Permit / to_score_permit seam and the provider-churn rule are
+# deleted with the V1 engine (ticket 103 / plan R27; V2 scope boundary: no
+# contractor/provider-churn scoring). V2 consumes permit records as plain
+# mappings through the evidence bundle, pinned by the locked
+# tests/test_v2_bundle.py; the contractor-None guarantee above is still the
+# source contract this module owns.
 
 
 # --- the 730-day window -----------------------------------------------------

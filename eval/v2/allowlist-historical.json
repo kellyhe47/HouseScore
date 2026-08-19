@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "reviewed_change_note": "R33/R35: allowlist membership is the operative definition of historical status. Adding a path here is a reviewed change committed to version control, never an audit-time judgment call. Each entry keeps V1 facts as history only; no active surface may cite them as current.",
+  "entries": [
+    {
+      "path": "docs/review-log.md",
+      "reason": "Dated review log; records V1-era review verdicts as history (R33)."
+    },
+    {
+      "path": "docs/audit-findings.md",
+      "reason": "Dated audit findings against the V1 contract; historical record (R33)."
+    },
+    {
+      "path": "docs/design-change-requests.md",
+      "reason": "Dated design-review change requests written against the V1 spec; history."
+    },
+    {
+      "path": "docs/design-prompt.md",
+      "reason": "Original design prompt snapshot from the V1 era; kept as provenance."
+    },
+    {
+      "path": "docs/DESIGN-ADDITIONS.md",
+      "reason": "Design-review additions authored against the V1 spec; historical record."
+    },
+    {
+      "path": "docs/HouseAccount-Prototype.html",
+      "reason": "Prototype snapshot; frozen V1-era artifact (R33)."
+    },
+    {
+      "path": "docs/prototype-decoded.html",
+      "reason": "Decoded prototype snapshot; frozen V1-era artifact (R33)."
+    },
+    {
+      "path": ".qa/report.md",
+      "reason": "Dated QA report of the V1 build; historical record."
+    },
+    {
+      "path": ".tdd/",
+      "reason": "TDD board and ticket history; records the migration itself, quotes V1 text by necessity."
+    },
+    {
+      "path": "docs/plans/2026-08-18-2221-feat-door-score-v2-plan.md",
+      "reason": "The V2 plan quotes V1 rules verbatim as the superseded contract it replaces; the quotes are supersession context, not current claims."
+    },
+    {
+      "path": "docs/plans/2026-08-18-door-score-v2-handoff.md",
+      "reason": "V2 handoff document; quotes V1 rules as the contract being replaced."
+    }
+  ]
+}

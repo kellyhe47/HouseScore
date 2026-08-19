@@ -22,7 +22,7 @@ Per-ticket cap: 5 implementation iterations.
 
 | # | Ticket | Status | Iters | Depends | Mode |
 |---|---|---|---|---|---|
-| 101 | V2 scoring engine + golden adapter (test-golden), R1–R26/R37 | pending | 0 | — | seq |
+| 101 | V2 scoring engine + golden adapter (test-golden), R1–R26/R37 | green | 1 | — | seq |
 | 102 | Live evidence-bundle builder (real sources → V2 ScoreInput, R8/R13/R14/R22/R23) | pending | 0 | 101 | seq |
 | 103 | Cutover: pipeline/publish/SQLite/manifest V2 + delete V1 path + 540-door versioned run (R27/R28) | pending | 0 | 102 | seq |
 | 104 | R34 recalculation report + PII check + eval harness replacement (R32/R34) + R36 outcome-log contract | pending | 0 | 103 | seq |
@@ -41,3 +41,4 @@ chain); 104/105 could parallelize but share eval-report consumers and the Makefi
 
 - 2026-08-19: board created; baseline `5686c52` green (1476 py pass, 18 skip + 273 js).
   validate-spec passes (42 fixtures, anchors hold).
+- 101 green iter 1 (tests a515dad, impl 4f7e527): 42/42 fixtures + 59 boundary unit tests via real engine; red gate verified (101 failing pre-impl); full suite exit 0.

@@ -1,11 +1,11 @@
 ---
 id: 101
 title: V2 scoring engine + golden adapter (test-golden)
-status: pending
+status: green
 depends_on: []
 touches: [src/houseaccount/scoring/, eval/v2/, tests/test_v2_engine.py, tests/test_v2_golden.py, Makefile]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [tests/test_v2_golden.py, tests/test_v2_engine.py, eval/v2/run_golden.py]
 branch: ""
 ---
 

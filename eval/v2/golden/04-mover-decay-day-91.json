@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "id": "G-004",
+  "name": "mover-decay-day-91",
+  "why": "R4 boundary: day 91 is the first decay day; strength must drop strictly below 90 via the normalized exponential, not stay flat and not fall linearly.",
+  "covers": [
+    "B-004"
+  ],
+  "case_type": "boundary",
+  "traces_to": [
+    "DEC-002",
+    "R4"
+  ],
+  "defends_against": "A flat band that extends past day 90, or linear decay, produces a different strength at day 91.",
+  "time_sensitive": true,
+  "given": {
+    "inputs": {
+      "parcel": {
+        "pin": "0248_V2_B40",
+        "assessed_value": 650000,
+        "construction_year": 1946,
+        "lot_acres": 0.55,
+        "sdl_page_available": true
+      },
+      "sales": [
+        {
+          "source": "SR1A",
+          "date": "2026-05-19",
+          "price": 850000,
+          "sales_code": ""
+        }
+      ],
+      "permits": [
+        {
+          "id": "P-ROOF-2006",
+          "sources": [
+            "SDL"
+          ],
+          "municipal_id": "SDL-2006-014",
+          "description": "roof replacement - remove and reshingle",
+          "issue_date": "2006-05-01",
+          "disposition": "completed",
+          "completion_date": "2006-06-20"
+        },
+        {
+          "id": "P-WH-2025",
+          "sources": [
+            "SDL"
+          ],
+          "municipal_id": "SDL-2025-201",
+          "description": "water heater replacement",
+          "issue_date": "2025-07-10",
+          "disposition": "completed",
+          "completion_date": "2025-08-15"
+        }
+      ],
+      "local_comparables": [
+        {
+          "pin": "0248_CMP_00",
+          "assessed_value": 500000,
+          "distance_m": 50
+        },
+        {
+          "pin": "0248_CMP_01",
+          "assessed_value": 500000,
+          "distance_m": 51
+        },
+        {
+          "pin": "0248_CMP_02",
+          "assessed_value": 500000,
+          "distance_m": 52
+        },
+        {
+          "pin": "0248_CMP_03",
+          "assessed_value": 500000,
+          "distance_m": 53
+        },
+        {
+          "pin": "0248_CMP_04",
+          "assessed_value": 500000,
+          "distance_m": 54
+        },
+        {
+          "pin": "0248_CMP_05",
+          "assessed_value": 500000,
+          "distance_m": 55
+        },
+        {
+          "pin": "0248_CMP_06",
+          "assessed_value": 500000,
+          "distance_m": 56
+        },
+        {
+          "pin": "0248_CMP_07",
+          "assessed_value": 500000,
+          "distance_m": 57
+        },
+        {
+          "pin": "0248_CMP_08",
+          "assessed_value": 500000,
+          "distance_m": 58
+        },
+        {
+          "pin": "0248_CMP_09",
+          "assessed_value": 500000,
+          "distance_m": 59
+        },
+        {
+          "pin": "0248_CMP_10",
+          "assessed_value": 500000,
+          "distance_m": 60
+        },
+        {
+          "pin": "0248_CMP_11",
+          "assessed_value": 500000,
+          "distance_m": 61
+        },
+        {
+          "pin": "0248_CMP_12",
+          "assessed_value": 500000,
+          "distance_m": 62
+        },
+        {
+          "pin": "0248_CMP_13",
+          "assessed_value": 500000,
+          "distance_m": 63
+        },
+        {
+          "pin": "0248_CMP_14",
+          "assessed_value": 500000,
+          "distance_m": 64
+        },
+        {
+          "pin": "0248_CMP_15",
+          "assessed_value": 500000,
+          "distance_m": 65
+        },
+        {
+          "pin": "0248_CMP_16",
+          "assessed_value": 500000,
+          "distance_m": 66
+        },
+        {
+          "pin": "0248_CMP_17",
+          "assessed_value": 500000,
+          "distance_m": 67
+        },
+        {
+          "pin": "0248_CMP_18",
+          "assessed_value": 500000,
+          "distance_m": 68
+        },
+        {
+          "pin": "0248_CMP_19",
+          "assessed_value": 500000,
+          "distance_m": 69
+        }
+      ],
+      "territory_assessed_values": [
+        600000,
+        610000,
+        620000,
+        630000,
+        650000,
+        700000,
+        710000,
+        720000,
+        730000,
+        740000,
+        750000
+      ],
+      "acs_block_group": {
+        "dual_income_pct": 0.3
+      },
+      "rental_registry": {
+        "available": true,
+        "registrations": []
+      },
+      "imagery": {
+        "available": true,
+        "observations": []
+      }
+    },
+    "preexisting_state": {},
+    "configuration": {},
+    "clock": {
+      "as_of": "2026-08-18T00:00:00Z"
+    }
+  },
+  "when": {
+    "operation": "score_door"
+  },
+  "expect": {
+    "exact": {
+      "result": {
+        "score_contract_version": "v2",
+        "confidence": "normal",
+        "categories": {
+          "project": 8,
+          "capacity": 7,
+          "fit": 25
+        },
+        "base": 40,
+        "mover": {
+          "eligible": true,
+          "days_since_move": 91,
+          "strength": 89.246
+        },
+        "mover_lift": 54.539,
+        "rental_modifier": 0,
+        "pre_rounding": 94.539,
+        "adjustment": 0.461,
+        "score": 95,
+        "evidence": [
+          {
+            "type": "capacity_local_relative_value",
+            "points": 7
+          },
+          {
+            "type": "fit_home_age",
+            "points": 8
+          },
+          {
+            "type": "fit_lot",
+            "points": 5
+          },
+          {
+            "type": "fit_roof_age",
+            "points": 12
+          },
+          {
+            "type": "mover_recency",
+            "points": 54.539
+          },
+          {
+            "type": "project_completed",
+            "points": 8
+          }
+        ],
+        "data_gaps": []
+      },
+      "state_changes": [],
+      "emitted_events": [],
+      "external_calls": []
+    },
+    "properties": []
+  }
+}

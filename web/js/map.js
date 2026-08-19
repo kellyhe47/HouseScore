@@ -21,6 +21,7 @@ import { createRoutePlanner, routeLine } from './route-ui.js';
 import { createWalk, readWalk, clearWalk, resumeOffer } from './walk.js';
 import { streetLabels } from './streets.js';
 import { copyAsText, copyShareLink, readShare } from './share.js';
+import { buildStreetView, loadingStreetView } from './streetview.js';
 
 /* ── Configuration ───────────────────────────────────────────────────────── */
 
@@ -126,6 +127,13 @@ const els = {
   panelClose: $('panel-close'),
   copyAddress: $('copy-address'),
   toggleMath: $('toggle-math'),
+  panelPhoto: $('panel-photo'),
+  photoFull: $('photo-full'),
+  photoBack: $('photo-back'),
+  photoAddr: $('photo-addr'),
+  photoSub: $('photo-sub'),
+  photoMaps: $('photo-maps'),
+  photoFrame: $('photo-frame'),
   lightbox: $('lightbox'),
   lightboxFrame: $('lightbox-frame'),
   lightboxLabel: $('lightbox-label'),
@@ -187,6 +195,8 @@ let containerWatch = null;
 
 /** The detail body of the selected door, once `/api/door/{pin}` answers. */
 let selectedDetail = null;
+/** The Street View slot's view model for the selected door (streetview.js). */
+let streetView = null;
 /** Frame 2b's toggle: the breakdown is opt-in, not the default reading. */
 let showMath = false;
 
@@ -901,8 +911,29 @@ function selectDoor(pin) {
   // and the group math live only on the door endpoint (R11.1 keeps them out of
   // the 540-door download), so they arrive a moment later and fill in.
   renderPanel(buildPanel(door.properties));
+  // The photo slot goes to its skeleton immediately — the panel must not
+  // reflow when the metadata answer lands.
+  streetView = loadingStreetView();
+  renderStreetView();
   revealSelected(door);
   loadDoorDetail(pin);
+  loadStreetView(pin);
+}
+
+async function loadStreetView(pin) {
+  let body = null;
+  try {
+    const response = await fetch(`${API_BASE}/streetview/${encodeURIComponent(pin)}`);
+    // A 502 still carries a body (and often a usable Maps link); parse it
+    // either way and let the view model sort available from error.
+    body = await response.json().catch(() => null);
+  } catch {
+    // Network down: body stays null, which buildStreetView renders as error.
+  }
+  // The rep may have clicked another door while this was in flight.
+  if (selectedPin !== pin) return;
+  streetView = buildStreetView(body);
+  renderStreetView();
 }
 
 async function loadDoorDetail(pin) {
@@ -925,6 +956,10 @@ function closePanel() {
   selectedPin = null;
   selectedDetail = null;
   showMath = false;
+  streetView = null;
+  els.panelPhoto.hidden = true;
+  clear(els.panelPhoto);
+  closePhotoFull();
   els.panel.hidden = true;
   if (map && map.getLayer('doors-selected')) {
     map.setFilter('doors-selected', ['==', ['get', 'PAMS_PIN'], '']);
@@ -935,7 +970,8 @@ els.panelClose.addEventListener('click', closePanel);
 // Escape unwinds one layer at a time, outermost first.
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  if (!els.lightbox.hidden) closeLightbox();
+  if (!els.photoFull.hidden) closePhotoFull();
+  else if (!els.lightbox.hidden) closeLightbox();
   else if (pickingStart) {
     pickingStart = false;
     openRoutePanel();
@@ -1007,6 +1043,100 @@ function renderPanel(panel) {
   // to the top of a panel they have already started scrolling.
   body.scrollTop = scrollTop;
 }
+
+/* ── Street View slot ────────────────────────────────────────────────────── */
+
+/**
+ * The photo under the address: context, never evidence.
+ *
+ * Four states, one slot, one height — the frame is fixed in CSS so the panel
+ * does not jump as the skeleton becomes a photo (or a designed absence). The
+ * image element is created fresh per render and never persisted anywhere:
+ * the server proxies with `no-store`, and this side keeps no copy either.
+ */
+function renderStreetView() {
+  const slot = els.panelPhoto;
+  clear(slot);
+  if (!streetView) {
+    slot.hidden = true;
+    return;
+  }
+  slot.hidden = false;
+  slot.dataset.state = streetView.state;
+
+  const frame = el('div', 'photo__frame');
+
+  if (streetView.state === 'loading') {
+    frame.appendChild(el('div', 'photo__skeleton', streetView.message));
+  } else if (streetView.state === 'available') {
+    const image = new Image();
+    image.className = 'photo__img';
+    image.alt = 'Street View of the selected house';
+    image.src = `${API_BASE}${streetView.imageUrl}`;
+    // The metadata said OK but the image call can still fail; that failure is
+    // the error state, not a broken-image glyph.
+    image.onerror = () => {
+      streetView = { ...streetView, state: 'error', message: 'Street View couldn’t load' };
+      renderStreetView();
+    };
+    frame.appendChild(image);
+
+    const view = el('button', 'photo__expand', 'View house ⤢');
+    view.type = 'button';
+    view.addEventListener('click', openPhotoFull);
+    frame.appendChild(view);
+  } else {
+    // `unavailable` and `error` are both a message in the frame; only the
+    // wording (and the retry-worthiness it implies) differs.
+    frame.appendChild(el('div', 'photo__absent', streetView.message));
+  }
+  slot.appendChild(frame);
+
+  const meta = el('div', 'photo__meta');
+  const left = el(
+    'div',
+    'photo__caption',
+    [streetView.captureLabel, streetView.attribution].filter(Boolean).join(' · ')
+  );
+  meta.appendChild(left);
+  if (streetView.mapsUrl) {
+    const link = el('a', 'photo__maps', 'Open in Google Maps ↗');
+    link.href = streetView.mapsUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    meta.appendChild(link);
+  }
+  if (left.textContent || streetView.mapsUrl) slot.appendChild(meta);
+}
+
+/** Frame the photo full-screen over the map; Back (or Escape) unwinds it. */
+function openPhotoFull() {
+  if (!streetView || streetView.state !== 'available') return;
+  clear(els.photoFrame);
+  const image = new Image();
+  image.className = 'photofull__img';
+  image.alt = 'Street View of the selected house';
+  image.src = `${API_BASE}${streetView.imageUrl}?view=full`;
+  els.photoFrame.appendChild(image);
+
+  els.photoAddr.textContent = els.panelAddr.textContent;
+  els.photoSub.textContent = [streetView.captureLabel].filter(Boolean).join('');
+  if (streetView.mapsUrl) {
+    els.photoMaps.href = streetView.mapsUrl;
+    els.photoMaps.hidden = false;
+  } else {
+    els.photoMaps.hidden = true;
+  }
+  els.photoFull.hidden = false;
+}
+
+function closePhotoFull() {
+  if (els.photoFull.hidden) return;
+  els.photoFull.hidden = true;
+  clear(els.photoFrame);
+}
+
+els.photoBack.addEventListener('click', closePhotoFull);
 
 /** R9.4: the exclusion state, tied back to the coverage count it explains. */
 function renderExclusion(body, panel) {

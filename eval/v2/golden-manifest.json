@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "comparison": "deep_equal_after_canonicalization",
+  "canonicalization": [
+    {
+      "path": "result.evidence",
+      "sort_by": [
+        "type"
+      ]
+    },
+    {
+      "path": "result.data_gaps",
+      "sort_by": [
+        "type"
+      ]
+    }
+  ],
+  "behaviors": [
+    {
+      "id": "B-001",
+      "statement": "Final score is one deterministic integer 0-100 whose displayed arithmetic reconciles via round-half-up and a single clamp",
+      "traces_to": [
+        "R1",
+        "R7"
+      ],
+      "required_case_types": [
+        "happy",
+        "boundary"
+      ]
+    },
+    {
+      "id": "B-002",
+      "statement": "Base B is the sum of three independently capped categories: project <=25, capacity <=25, fit <=30",
+      "traces_to": [
+        "R2"
+      ],
+      "required_case_types": [
+        "boundary"
+      ]
+    },
+    {
+      "id": "B-003",
+      "statement": "Only the freshest valid arm's-length transfer earns mover influence; nominal price, sales code, and invalid or future dates disqualify",
+      "traces_to": [
+        "R3"
+      ],
+      "required_case_types": [
+        "boundary",
+        "negative_control",
+        "failure",
+        "precedence"
+      ]
+    },
+    {
+      "id": "B-004",
+      "statement": "Mover strength is 90 through day 90, follows the normalized exponential through day 364, and is 0 from day 365",
+      "traces_to": [
+        "R4",
+        "DEC-002"
+      ],
+      "required_case_types": [
+        "happy",
+        "boundary"
+      ]
+    },
+    {
+      "id": "B-005",
+      "statement": "The mover blend lifts B toward the 90-100 priority band while preserving base differentiation",
+      "traces_to": [
+        "R5",
+        "DEC-001"
+      ],
+      "required_case_types": [
+        "happy"
+      ]
+    },
+    {
+      "id": "B-006",
+      "statement": "A current verified rental registration applies -25 after the blend; a registration older than the latest valid sale is stale-neutral; missing registry data is neutral with a data gap",
+      "traces_to": [
+        "R6",
+        "DEC-006"
+      ],
+      "required_case_types": [
+        "happy",
+        "precedence",
+        "degenerate"
+      ]
+    },
+    {
+      "id": "B-007",
+      "statement": "An active qualifying project adds 15 only with a qualifying lifecycle event in the last 12 months; an old Open label alone is not active",
+      "traces_to": [
+        "R9"
+      ],
+      "required_case_types": [
+        "happy",
+        "negative_control"
+      ]
+    },
+    {
+      "id": "B-008",
+      "statement": "A qualifying project completed within 24 months adds 8, requiring a terminal disposition and a reliable completion date",
+      "traces_to": [
+        "R10"
+      ],
+      "required_case_types": [
+        "happy",
+        "degenerate"
+      ]
+    },
+    {
+      "id": "B-009",
+      "statement": "Two distinct qualifying permits in 24 months add 5 and a qualifying major scope adds another 5, inside the project cap",
+      "traces_to": [
+        "R11"
+      ],
+      "required_case_types": [
+        "happy"
+      ]
+    },
+    {
+      "id": "B-010",
+      "statement": "Voided, stale, denied, expired, and administrative-only records earn no project points and contractor-churn scoring does not exist",
+      "traces_to": [
+        "R12",
+        "DEC-004"
+      ],
+      "required_case_types": [
+        "negative_control"
+      ]
+    },
+    {
+      "id": "B-011",
+      "statement": "The same municipal record seen in multiple sources is coalesced and counts once",
+      "traces_to": [
+        "R8"
+      ],
+      "required_case_types": [
+        "idempotency"
+      ]
+    },
+    {
+      "id": "B-012",
+      "statement": "Local relative value scores 0/3/7/10 by ratio to the median of the 20 closest valid comparables, neutral with a gap below 10 comparables",
+      "traces_to": [
+        "R13"
+      ],
+      "required_case_types": [
+        "happy",
+        "boundary",
+        "degenerate"
+      ]
+    },
+    {
+      "id": "B-013",
+      "statement": "Territory assessed-value percentile scores 0/3/7/10 using deterministic midrank percentiles",
+      "traces_to": [
+        "R14"
+      ],
+      "required_case_types": [
+        "happy",
+        "boundary"
+      ]
+    },
+    {
+      "id": "B-014",
+      "statement": "An ACS dual-income prior at or above 35% adds 5 and is always described as a neighborhood-level prior",
+      "traces_to": [
+        "R15"
+      ],
+      "required_case_types": [
+        "boundary"
+      ]
+    },
+    {
+      "id": "B-015",
+      "statement": "A missing capacity signal is neutral for that signal only and never blocks other capacity signals",
+      "traces_to": [
+        "R16"
+      ],
+      "required_case_types": [
+        "degenerate"
+      ]
+    },
+    {
+      "id": "B-016",
+      "statement": "Roof age scores 0/4/8/12 only from an explicitly completed full-replacement record; generic or non-install roof records leave age unknown and neutral",
+      "traces_to": [
+        "R17",
+        "DEC-003"
+      ],
+      "required_case_types": [
+        "happy",
+        "boundary",
+        "negative_control"
+      ]
+    },
+    {
+      "id": "B-017",
+      "statement": "Home age scores 0/2/5/8 by construction-year bands",
+      "traces_to": [
+        "R18"
+      ],
+      "required_case_types": [
+        "boundary"
+      ]
+    },
+    {
+      "id": "B-018",
+      "statement": "Verified 2015-to-2020 condition decline adds 8 unless a later completed exterior project supersedes it",
+      "traces_to": [
+        "R19"
+      ],
+      "required_case_types": [
+        "precedence"
+      ]
+    },
+    {
+      "id": "B-019",
+      "statement": "Pool and solar each add 5 once, from a completed explicit permit or qualifying imagery; an active installation permit does not establish the feature",
+      "traces_to": [
+        "R20"
+      ],
+      "required_case_types": [
+        "idempotency",
+        "negative_control"
+      ]
+    },
+    {
+      "id": "B-020",
+      "statement": "A lot of at least 0.5 acres adds 5",
+      "traces_to": [
+        "R21"
+      ],
+      "required_case_types": [
+        "boundary"
+      ]
+    },
+    {
+      "id": "B-021",
+      "statement": "A door with unavailable SDL and imagery data still scores from remaining sources and carries explicit data gaps",
+      "traces_to": [
+        "R16",
+        "R23",
+        "R26"
+      ],
+      "required_case_types": [
+        "degenerate"
+      ]
+    },
+    {
+      "id": "B-022",
+      "statement": "Every temporal window and age derives from the declared as_of date, never wall-clock time",
+      "traces_to": [
+        "R24"
+      ],
+      "required_case_types": [
+        "happy"
+      ]
+    },
+    {
+      "id": "B-023",
+      "statement": "Owner names, mailing addresses, and agent identity present in source records never influence matching, scoring, or the emitted envelope",
+      "traces_to": [
+        "R25"
+      ],
+      "required_case_types": [
+        "negative_control"
+      ]
+    },
+    {
+      "id": "B-024",
+      "statement": "A lower-precedence source may fill a missing parcel fact only on an exact current match and must never overwrite a present higher-precedence value",
+      "traces_to": [
+        "R22"
+      ],
+      "required_case_types": [
+        "precedence",
+        "degenerate"
+      ]
+    }
+  ]
+}

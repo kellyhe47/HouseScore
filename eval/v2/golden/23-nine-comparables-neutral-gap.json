@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "id": "G-023",
+  "name": "nine-comparables-neutral-gap",
+  "why": "R13/R16: nine valid comparables make the local signal neutral with a recorded gap while the 95th-percentile territory signal still scores 10.",
+  "covers": [
+    "B-012",
+    "B-015"
+  ],
+  "case_type": "degenerate",
+  "traces_to": [
+    "R13",
+    "R16"
+  ],
+  "defends_against": "Zeroing all of capacity when one signal lacks data, or scoring the local band from 9 comps, both fail.",
+  "time_sensitive": true,
+  "given": {
+    "inputs": {
+      "parcel": {
+        "pin": "0248_V2_SUBJ",
+        "assessed_value": 900000,
+        "construction_year": 2020,
+        "lot_acres": 0.2,
+        "sdl_page_available": true
+      },
+      "sales": [],
+      "permits": [],
+      "local_comparables": [
+        {
+          "pin": "0248_CMP_00",
+          "assessed_value": 500000,
+          "distance_m": 50
+        },
+        {
+          "pin": "0248_CMP_01",
+          "assessed_value": 500000,
+          "distance_m": 51
+        },
+        {
+          "pin": "0248_CMP_02",
+          "assessed_value": 500000,
+          "distance_m": 52
+        },
+        {
+          "pin": "0248_CMP_03",
+          "assessed_value": 500000,
+          "distance_m": 53
+        },
+        {
+          "pin": "0248_CMP_04",
+          "assessed_value": 500000,
+          "distance_m": 54
+        },
+        {
+          "pin": "0248_CMP_05",
+          "assessed_value": 500000,
+          "distance_m": 55
+        },
+        {
+          "pin": "0248_CMP_06",
+          "assessed_value": 500000,
+          "distance_m": 56
+        },
+        {
+          "pin": "0248_CMP_07",
+          "assessed_value": 500000,
+          "distance_m": 57
+        },
+        {
+          "pin": "0248_CMP_08",
+          "assessed_value": 500000,
+          "distance_m": 58
+        }
+      ],
+      "territory_assessed_values": [
+        400000,
+        410000,
+        420000,
+        430000,
+        440000,
+        450000,
+        460000,
+        470000,
+        480000,
+        900000
+      ],
+      "acs_block_group": {
+        "dual_income_pct": 0.3
+      },
+      "rental_registry": {
+        "available": true,
+        "registrations": []
+      },
+      "imagery": {
+        "available": true,
+        "observations": []
+      }
+    },
+    "preexisting_state": {},
+    "configuration": {},
+    "clock": {
+      "as_of": "2026-08-18T00:00:00Z"
+    }
+  },
+  "when": {
+    "operation": "score_door"
+  },
+  "expect": {
+    "exact": {
+      "result": {
+        "score_contract_version": "v2",
+        "confidence": "normal",
+        "categories": {
+          "project": 0,
+          "capacity": 10,
+          "fit": 0
+        },
+        "base": 10,
+        "mover": {
+          "eligible": false,
+          "days_since_move": null,
+          "strength": 0.0
+        },
+        "mover_lift": 0.0,
+        "rental_modifier": 0,
+        "pre_rounding": 10.0,
+        "adjustment": 0.0,
+        "score": 10,
+        "evidence": [
+          {
+            "type": "capacity_territory_percentile",
+            "points": 10
+          }
+        ],
+        "data_gaps": [
+          {
+            "type": "local_comparables_insufficient"
+          }
+        ]
+      },
+      "state_changes": [],
+      "emitted_events": [],
+      "external_calls": []
+    },
+    "properties": []
+  }
+}

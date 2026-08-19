@@ -16,12 +16,12 @@
 <div class="frame"><h2>1 · MAP — default view (happy path)</h2>
   <div class="box row" style="align-items:center">
     <b>HouseAccount · Ramsey Territory</b><span class="grow"></span>
-    <span class="btn">Score filter: [0——————100] slider</span>
+    <span class="btn">Score filter: [0——————100] slider</span> <span class="note">(hides parcels outside range; count readout reflects filter; does not feed route planning)</span>
     <span class="btn">Plan Route</span>
     <span class="btn">About / Data &amp; Ethics</span>
   </div>
   <div class="row">
-    <div class="box map grow">MAP (MapLibre)<br>~540 parcel polygons, filled on a single color ramp by House Score (0–100)<br>numeric score label on each parcel at high zoom<br>[legend: color ramp 0→100, bottom-left]<br>[count readout: "537 of 540 doors scored" top-right]</div>
+    <div class="box map grow">MAP (MapLibre)<br>~540 parcel polygons, filled on a single color ramp by House Score (0–100)<br>numeric score label on each parcel at high zoom<br>[legend: color ramp 0→100, bottom-left]<br>[count readout: "540 of 540 doors scored · contract v2" top-right]</div>
   </div>
   <div class="box">Click parcel → opens EVIDENCE PANEL (frame 2)</div>
 </div>
@@ -30,13 +30,14 @@
   <div class="row">
     <div class="box map grow">map stays visible, selected parcel outlined</div>
     <div class="panel">
-      <div class="box"><b>27 Fawn Hill Rd</b> · PIN 0248_1503_7<br><b style="font-size:20px">Score 100</b> · confidence: normal · <i>(raw 108, capped)</i></div>
+      <div class="box"><b>27 Fawn Hill Rd</b> · PIN 0248_1503_7<br><b style="font-size:20px">Score 95</b> · <i>V2 contract · scored as of 2026-08-18</i> · confidence: normal <span class="note">(R37: low when 2+ typed data gaps, else normal)</span></div>
       <div class="box"><b>Why this score</b> (each line = evidence item, signed pts)<br>
-        +85 Moved in 47 days ago (deed 2026-06-15)<br>
-        +15 Assessed $520k ≥ territory median<br>
-        +8 Home built 1995 (31 yrs)<br>
-        = 108 raw → capped at 100 … shown score math expandable</div>
-      <div class="box"><b>Sources</b> per line: "NJ parcel record" / "permit #B-2025-114" / "2020 aerial" — with retrieval date</div>
+        +8 Completed water-heater permit (closed 2025-08)<br>
+        +7 Assessed 1.3× the 20 nearest comparables<br>
+        +12 Roof replaced 2006 (20 yrs old)<br>
+        +8 Built 1946 · +5 Lot 0.55 ac<br>
+        base 40 → <b>+55.0 mover lift</b> (moved 47 days ago, deed 2026-07-02) = 95 … score math expandable</div>
+      <div class="box"><b>Sources</b> per line: "NJ parcel record" / "permit #20250201" / "2020 aerial" — with retrieval date + effective evidence date (R24/R26)</div>
       <div class="box"><b>Rep talk track</b> — 1-line opener generated from top evidence ("Welcome to the neighborhood — most new owners here…")</div>
       <span class="btn">Copy address</span><span class="btn">Close ✕</span>
     </div>
@@ -48,14 +49,14 @@
     <div class="box map grow">map dimmed behind panel</div>
     <div class="panel">
       <div class="box"><b>Score breakdown</b> (opened via "show math" toggle)<br>
-        MOVER &nbsp;&nbsp;&nbsp;85 / 100 &nbsp;[bar ████████▌ ]<br>
-        HIRES-OUT 0 / 60 &nbsp;[bar ]<br>
-        CAPACITY &nbsp;15 / 30 &nbsp;[bar ████ ]<br>
-        NEED &nbsp;&nbsp;&nbsp;&nbsp;8 / 30 &nbsp;[bar ██ ]<br>
-        MODIFIER &nbsp;0<br>
-        raw 108 → <b>capped 100</b><br>
-        each group row expands → its component rules with the exact threshold met ("deed 47 days ≤ 60 → 85")</div>
-      <div class="box"><b>Signal detail on tap</b> — e.g. tap permit line →<br>permit #B-2025-114 · roofing · issued 2024-12-01 · contractor "ABC Roofing LLC" · source: NJ construction permit dataset, fetched 2026-08-10</div>
+        PROJECT &amp; HIRING &nbsp;&nbsp;8 / 25 &nbsp;[bar ██▌ ]<br>
+        CAPACITY &nbsp;7 / 25 &nbsp;[bar ██ ]<br>
+        PROPERTY FIT &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;25 / 30 &nbsp;[bar ██████▌ ]<br>
+        BASE B &nbsp;&nbsp;40 / 80<br>
+        MOVER LIFT +55.0 &nbsp;(strength 90/90, day 47 of flat band)<br>
+        RENTAL &nbsp;&nbsp;0 · pre-round 95.0 · adjustment 0 → <b>95</b><br>
+        each category row expands → its component rules with the exact threshold met ("roof completed 2006 → age 20 → +12"); displayed arithmetic always reconciles to the final integer (R7); when a category caps, an explicit "cap adjustment −N" row appears<br>ACS line, when present: "+5 Dual-income neighborhood prior — a neighborhood-level ACS estimate, not a claim about this household" (R15, fixed copy)</div>
+      <div class="box"><b>Signal detail on tap</b> — e.g. tap permit line →<br>permit #20250201 · water heater replacement · issued 2025-07-10 · completed 2025-08-15 · source: SDL municipal record, fetched 2026-08-18 · <span class="note">no contractor/agent identity shown (V2 removes churn scoring); drill-down always matches its evidence line</span></div>
       <div class="box"><b>Imagery evidence</b> — thumbnail strip: 2015 ortho | 2020 ortho | Street View (if used), each tap → full-size with detection annotation box + model confidence + capture date</div>
     </div>
   </div>
@@ -63,9 +64,10 @@
 
 <div class="frame"><h2>3 · EVIDENCE PANEL — degraded states</h2>
   <div class="row">
-    <div class="box panel"><b>3a · Low confidence</b><br>Score 15 · <b>confidence: LOW</b><br>banner: "Deed date and year built unavailable in county data — score from partial signals"<br>evidence list shows only what exists + explicit "data gap" line</div>
-    <div class="box panel"><b>3b · Absentee-flagged</b><br>Score 28<br>"−15 Matches municipal rental registration — occupant likely tenant"<br><span class="note">never shows owner identity; ethics link → About page</span></div>
-    <div class="box panel"><b>3c · No vision coverage</b><br>vision lines simply absent; footer: "No imagery signals for this parcel" (cause logged pipeline-side only, per R9.3)</div>
+    <div class="box panel"><b>3a · Data-gap door (AE11)</b><br>Score 91<br>typed data-gap lines, one per gap: "SDL property page unavailable" · "No imagery for this parcel" · "Rental registry not yet supplied (neutral)"<br>signals stay independent — every present signal still scores (R16/R23)<br><span class="note">day one, every door shows the rental-registry gap line</span></div>
+    <div class="box panel"><b>3b · Rental-registered</b><br>Score 70<br>"−25 Current municipal rental registration (dated after latest sale) — decision-maker likely not resident"<br><span class="note">stale registration (older than a newer valid sale) shows as neutral "awaiting reverification" line</span><br><span class="note">never shows owner identity; ethics link → About page</span></div>
+    <div class="box panel"><b>3d · Neutralized evidence</b><br>"$10 transfer 2026-07 — not an arm's-length sale, no mover effect" (AE12)<br>"Roof permit from 2004 still marked Open — no recent activity, no points" (AE7)<br>"2015→2020 condition decline superseded by 2022 siding replacement" (R19)<br><span class="note">0-pt lines render greyed with an explicit reason, distinct from data gaps</span></div>
+    <div class="box panel"><b>3c · No vision coverage</b><br>vision lines simply absent; footer: "No imagery signals for this parcel" (cause logged pipeline-side only)</div>
   </div>
 </div>
 
@@ -73,7 +75,7 @@
   <div class="box">Inputs: hours available [ 2 ▼ ] · start point [click map or type address] · doors target [ 20 ] → <span class="btn">Plan</span></div>
   <div class="row">
     <div class="box map grow">map shows numbered pins 1→20 connected by walking path; unselected parcels dimmed</div>
-    <div class="box panel"><b>Route list</b> (ordered)<br>1 · 27 Fawn Hill · 100 · "new mover"<br>2 · 31 Fawn Hill · 74 · "3 permits, no repeat contractor"<br>…<br>footer: total walk ~1.9h est · <span class="btn">Copy as text</span></div>
+    <div class="box panel"><b>Route list</b> (ordered)<br>1 · 27 Fawn Hill · 95 · "new mover"<br>2 · 31 Fawn Hill · 74 · "active addition permit"<br>…<br>footer: total walk ~1.9h est · <span class="btn">Copy as text</span></div>
   </div>
   <div class="box"><b>4b · Empty state:</b> filter/hours too tight → "No doors reachable in 0.5h from this point — widen hours or move start" (never a blank map)</div>
 </div>
@@ -90,12 +92,12 @@
   <div class="row">
     <div class="box panel"><b>Row anatomy</b> (each of the N stops)<br>[#3] 42 Crescent Dr &nbsp;·&nbsp; <b>81</b><br>↳ top reason chip: "moved in 3 wks ago"<br>↳ talk-track line (1 sentence)<br>↳ +42 min into route · 4 min walk from prev<br>tap row → parcel highlighted + evidence panel opens (frame 2) without leaving route mode</div>
     <div class="box panel"><b>Walk mode (mobile)</b><br>full-screen list, current stop pinned top with big address + talk track<br><span class="btn">Done — next stop</span> <span class="btn">Skip</span><br>marking done greys pin on map, advances to next; progress "7 of 20 · 52 min left"<br>state persists in localStorage — reopening mid-walk resumes</div>
-    <div class="box panel"><b>Route summary footer</b><br>doors 20 · est total 1h54m · avg score 78 · <span class="btn">Copy as text</span> <span class="btn">Share link</span> (URL encodes route → same view opens on any device)</div>
+    <div class="box panel"><b>Route summary footer</b><br>doors 20 · est total 1h54m · avg score 78 · <span class="btn">Copy as text</span> <span class="btn">Share link</span> (URL encodes route + score-contract version → same view opens on any device; version mismatch prompts a refresh, R27/R30)</div>
   </div>
 </div>
 
 <div class="frame"><h2>5 · ABOUT / DATA &amp; ETHICS page</h2>
-  <div class="box">Static page: ICP definition + signal→ICP trace table · scoring weights · validation plan (decile lift + calibration) · data sources + retrieval dates · Daniel's Law handling (what we deliberately do NOT do) · Street View ToS position · eval results table (precision/recall, hallucination rate, cost per door, entity-resolution match rate, coverage %) · MCP endpoint URL + tool list — this page IS the one-page rationale deliverable, rendered</div>
+  <div class="box">Static page (V2 per R29): objective + exact category caps (25/25/30, B ≤ 80) · mover blend + exponential decay curve (flat 0–90d, zero at 365d) · project &amp; roof evidence rules (what counts, what stays neutral) · rental precedence + current registry status (data absent → every door neutral with a gap line) · missing-data behavior by gap type · source limitations (SDL point-in-time, pre-2002 roof coverage, SR1A lag) · ICP definition + signal→ICP trace table (PRD R11.4) · R36 validation plan (ranking lift by score band; no invented conversion target) · vision eval table (precision/recall, hallucination rate, cost per door) · Daniel's Law handling · MCP endpoint + tool list — must NOT retain: additive formula, old group maxima, provider churn, deferred maintenance, 90-day cutoff, −15 rental</div>
 </div>
 
 <div class="frame"><h2>6 · GLOBAL STATES</h2>

@@ -92,3 +92,41 @@ OpenAI surface, so the seam is still exercised against a fake on a keyless machi
 **Still unexecuted.** The vision stage has never run against a real provider —
 that was true under Anthropic (`.tdd/board.md`) and is equally true now. The swap
 does not close that gap; it moves which key would close it.
+
+---
+
+## 2026-08-18 · Door Score V2 spec-review round 1
+
+Target: `docs/plans/2026-08-18-2221-feat-door-score-v2-plan.md` + `eval/v2/` fixtures + `docs/ui-wireframes.html` + `docs/architecture.excalidraw`. Seven parallel dimensions.
+
+### Fixed (P0/P1)
+- **AE3 arithmetic**: 64.448 → 64.447 (exact blend 64.44747; fixture G-005 pins 3-dp values).
+- **R24/R25 had zero fixtures** → added G-038 (as_of-shift) and G-039 (owner-identity fields ignored); behaviors B-022/B-023.
+- **R22 precedence table 6/7 rows untested** → added G-040/G-041 (assessed-value precedence + SDL gap-fill), behavior B-024; R22's exterior-condition row split so a completed exterior permit supersedes (R19) rather than establishes condition; R23's "supplemental" wording replaced with "under the R22 precedence roles".
+- **R30 evidence↔score reconciliation vs category caps** → explicit cap-adjustment evidence entries (R7 sentence; `*_cap_adjustment` in envelope; G-018/G-030 regenerated).
+- **R6 unbounded no-sale rental currency** → provisional 24-month window; −25 path documented as dormant until a registry exists.
+- **R10/R17 issue-date fallback divergence** → unified rule ("no later lifecycle date displayed"); implemented in derivation; fixture G-042.
+- **R12 "stale" not a disposition** → reworded to reference R9's activity test. R11 "comparable multi-trade scope" → closed keyword list. R10 "reliable" → "displayed". R19 "directly supersedes" → defined (exterior scope, completed after 2020 vintage). R14 percentile band holes → half-open intervals. R13 → centroid distance, 10–19-comparable behavior defined.
+- **R33/R35 undecidable audit criterion** → explicit versioned historical-path allowlist is the operative definition.
+- **Unexplained constants** → R4: 275 = 365−90 derived, −2 provisional; R5: divisor 8 = B_max/10 derived.
+- **SR1A missing from architecture diagram** → node added; eval-harness, store (contract version), SDL edge labels corrected; checker fully recoverable.
+- **Numeric claims**: "open records dating back to 2002" re-sourced (617/3,662 non-terminal Open, some decades old); R31's 12-vs-13 mismatch reattributed to `docs/PRD.md` R5.2 + `docs/handoff-prompt.md` (README/report agree at 13); AE8 80th → 85th percentile; provider-churn claim re-sourced to both snapshots.
+- **Coverage misses** → R28 now names run-manifest V1 fields to drop + SQLite `groups`/`raw_total` replacement; R29 retains ICP trace + R36 validation plan; R34 retains PRD R5.1 vision metrics + adds PII artifact check; R30 covers talk-track angle map (unspeakable types per PRD R7.2.1), route reason chips, aggregates, share-link versioning; R31 names `docs/ui-wireframes.html` as live authority; R26 preserves zero-point context evidence; R3 preserves century pivot; Sources table now lists `eval/v2/`, `web/js/map.js`, `route.py`, `api.py`.
+- **Wireframes**: frame-2b drill-down contradiction fixed (water heater, matches evidence list); 537→540 readout; V1 low-confidence banner replaced by typed data-gap door (AE11); neutralized-evidence panel added (3d); Data & Ethics frame rewritten to R29 content; stale PRD R9.3 citation removed; ACS fixed copy; as_of shown; filter/share-link semantics noted.
+
+### Rejected / no change (with reason)
+- "Clamp adjustment upper bound is dead code" (dim 2 C11): true but harmless — R7's clamp text covers both directions; floor case fixtured (G-036).
+- R34/R35 absent from architecture diagram (dim 6): process artifacts, not runtime data flow — correct omission.
+- R36 non-falsifiable absolute target (dim 3): deliberate per plan text; accepted.
+- `docs/HouseAccount-Prototype.html`, `prototype-decoded.html`, `.qa/report.md`: historical; candidates for the R35 allowlist, not edits.
+
+### Escalated to user (pending)
+- **D1**: door-level `confidence` field semantics under V2 (published API field today).
+- **D3**: score-field compression — ~538/540 doors confined to 0–80 on current data (2 movers in window); ramp/legend recalibration?
+- **D4**: roof-age unknown = neutral with ~135/540 (25%) coverage — keep strict-neutral or add partial prior?
+
+## 2026-08-18 · Door Score V2 spec-review round 2
+
+Verification pass over all round-1 edits: **no P0/P1 remaining.** Scripts green (42 fixtures / 24 behaviors; verifier anchors hold; diagram fully recoverable). G-038/G-040/G-042 hand-derived from plan text alone and match. Two new P2s fixed: R30 chip tiebreak (points desc, then type asc); whole-elapsed-years/days convention added to R4 for all age/window math.
+
+User decisions (2026-08-18): R37 door-level confidence = low at 2+ typed data gaps (envelope + fixtures updated; G-035 is the canonical low door); R38 ramp/legend restop to V2 distribution, scores stay 0-100; unknown roof age stays neutral (confirmed, no partial prior).

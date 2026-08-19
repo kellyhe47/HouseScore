@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "id": "G-032",
+  "name": "pool-corroborated-scores-once",
+  "why": "R20: a pool established by both a completed permit and qualifying imagery scores 5 exactly once.",
+  "covers": [
+    "B-019"
+  ],
+  "case_type": "idempotency",
+  "traces_to": [
+    "R20"
+  ],
+  "defends_against": "Awarding 5 per supporting record double-counts corroborating sources.",
+  "time_sensitive": true,
+  "given": {
+    "inputs": {
+      "parcel": {
+        "pin": "0248_V2_SUBJ",
+        "assessed_value": 400000,
+        "construction_year": 2020,
+        "lot_acres": 0.2,
+        "sdl_page_available": true
+      },
+      "sales": [],
+      "permits": [
+        {
+          "id": "P-POOL-2015",
+          "sources": [
+            "SDL"
+          ],
+          "municipal_id": "SDL-2015-088",
+          "description": "in-ground pool installation",
+          "issue_date": "2015-05-01",
+          "disposition": "completed",
+          "completion_date": "2015-07-10"
+        }
+      ],
+      "local_comparables": [
+        {
+          "pin": "0248_CMP_00",
+          "assessed_value": 500000,
+          "distance_m": 50
+        },
+        {
+          "pin": "0248_CMP_01",
+          "assessed_value": 500000,
+          "distance_m": 51
+        },
+        {
+          "pin": "0248_CMP_02",
+          "assessed_value": 500000,
+          "distance_m": 52
+        },
+        {
+          "pin": "0248_CMP_03",
+          "assessed_value": 500000,
+          "distance_m": 53
+        },
+        {
+          "pin": "0248_CMP_04",
+          "assessed_value": 500000,
+          "distance_m": 54
+        },
+        {
+          "pin": "0248_CMP_05",
+          "assessed_value": 500000,
+          "distance_m": 55
+        },
+        {
+          "pin": "0248_CMP_06",
+          "assessed_value": 500000,
+          "distance_m": 56
+        },
+        {
+          "pin": "0248_CMP_07",
+          "assessed_value": 500000,
+          "distance_m": 57
+        },
+        {
+          "pin": "0248_CMP_08",
+          "assessed_value": 500000,
+          "distance_m": 58
+        },
+        {
+          "pin": "0248_CMP_09",
+          "assessed_value": 500000,
+          "distance_m": 59
+        },
+        {
+          "pin": "0248_CMP_10",
+          "assessed_value": 500000,
+          "distance_m": 60
+        },
+        {
+          "pin": "0248_CMP_11",
+          "assessed_value": 500000,
+          "distance_m": 61
+        },
+        {
+          "pin": "0248_CMP_12",
+          "assessed_value": 500000,
+          "distance_m": 62
+        },
+        {
+          "pin": "0248_CMP_13",
+          "assessed_value": 500000,
+          "distance_m": 63
+        },
+        {
+          "pin": "0248_CMP_14",
+          "assessed_value": 500000,
+          "distance_m": 64
+        },
+        {
+          "pin": "0248_CMP_15",
+          "assessed_value": 500000,
+          "distance_m": 65
+        },
+        {
+          "pin": "0248_CMP_16",
+          "assessed_value": 500000,
+          "distance_m": 66
+        },
+        {
+          "pin": "0248_CMP_17",
+          "assessed_value": 500000,
+          "distance_m": 67
+        },
+        {
+          "pin": "0248_CMP_18",
+          "assessed_value": 500000,
+          "distance_m": 68
+        },
+        {
+          "pin": "0248_CMP_19",
+          "assessed_value": 500000,
+          "distance_m": 69
+        }
+      ],
+      "territory_assessed_values": [
+        400000,
+        700000,
+        710000,
+        720000,
+        730000,
+        740000,
+        750000,
+        760000,
+        770000,
+        780000,
+        790000
+      ],
+      "acs_block_group": {
+        "dual_income_pct": 0.3
+      },
+      "rental_registry": {
+        "available": true,
+        "registrations": []
+      },
+      "imagery": {
+        "available": true,
+        "observations": [
+          {
+            "kind": "pool",
+            "confidence": 0.8,
+            "vintages": [
+              "2020"
+            ]
+          }
+        ]
+      }
+    },
+    "preexisting_state": {},
+    "configuration": {},
+    "clock": {
+      "as_of": "2026-08-18T00:00:00Z"
+    }
+  },
+  "when": {
+    "operation": "score_door"
+  },
+  "expect": {
+    "exact": {
+      "result": {
+        "score_contract_version": "v2",
+        "confidence": "normal",
+        "categories": {
+          "project": 0,
+          "capacity": 0,
+          "fit": 5
+        },
+        "base": 5,
+        "mover": {
+          "eligible": false,
+          "days_since_move": null,
+          "strength": 0.0
+        },
+        "mover_lift": 0.0,
+        "rental_modifier": 0,
+        "pre_rounding": 5.0,
+        "adjustment": 0.0,
+        "score": 5,
+        "evidence": [
+          {
+            "type": "fit_pool",
+            "points": 5
+          },
+          {
+            "type": "project_neutralized",
+            "points": 0
+          }
+        ],
+        "data_gaps": []
+      },
+      "state_changes": [],
+      "emitted_events": [],
+      "external_calls": []
+    },
+    "properties": []
+  }
+}

@@ -59,7 +59,27 @@ and that extract lagged 20 months. Measured against the live files:
 - USGS NAIP ~60cm public domain: `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer`.
 - Aerial sees roofs/pools/lawn/driveway/solar, not doors/trucks/signs.
 
-**Permits:** NJ statewide construction permits, Socrata SODA API, free: `https://data.nj.gov/Reference-Data/NJ-Construction-Permit-Data/w9se-dmra` (filter Ramsey). Ramsey's own SDL portal is per-permit/login — don't scrape.
+**Permits:** The production pipeline uses NJ statewide construction permits,
+Socrata SODA API, free:
+`https://data.nj.gov/Reference-Data/NJ-Construction-Permit-Data/w9se-dmra`
+(filter Ramsey).
+
+**SDL update (2026-08-18):** The earlier instruction not to collect from
+Ramsey's SDL portal reflected the authorization status during the original
+audit. Based on the user's representation that SDL authorized “Option 1”
+manual portal-result collection, the project now has a point-in-time browser
+snapshot for the full 540-parcel territory. SDL property pages were available
+for 532 parcels and display 3,648 permit applications, 6,168 inspections, and
+91 violations; eight parcels returned SDL 404s and no visible address-search
+result. The primary artifact groups these fields with public property,
+assessment, sale, and map metadata under each house. It also retains the earlier
+2,043-row `roof` search snapshot and attaches all 210 matched roof detail pages,
+including 14 supplemental roof records absent from the property-page tables.
+Owner/mailing and permit-agent fields are excluded. This remains supplemental
+research, not a replacement for the Socrata source used by scoring. See
+[`data/README-sdl-property-history.md`](../data/README-sdl-property-history.md)
+for provenance, schema, privacy choices, property-page limitations, roof
+keyword coverage, and false-positive handling.
 
 **Census ACS5:** B23007 (children × parents' employment — dual-income proxy), B19013 (median HH income), B08303 (commute time) confirmed; block-group level; Ramsey = state 34 / county 003 / cousub 61170. Free API key required (keyless calls now blocked).
 
@@ -67,5 +87,10 @@ and that extract lagged 20 months. Measured against the live files:
 
 **Cost:** total ≈ $0–5 of $50 (Street View free tier + sub-$1 mini-tier vision). Cost is not the constraint; Street View ToS is.
 
-## Open items
-- Territory GeoJSON polygon NOT in repo — awaiting from user, else derive from parcel data.
+## Resolved items
+
+- Territory GeoJSON is present at `data/territory.geojson` and contains the 540
+  properties used for the published run and SDL address match.
+- The authorized manual SDL property/construction-history snapshot was
+  collected and documented on 2026-08-18, together with its roof-search
+  provenance. The production permit adapter remains Socrata-backed.

@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "id": "G-001",
+  "name": "fresh-mover-no-base",
+  "why": "AE1: a valid 47-day-old move with zero base evidence must land exactly at the bottom of the priority band (90).",
+  "covers": [
+    "B-004",
+    "B-005"
+  ],
+  "case_type": "happy",
+  "traces_to": [
+    "AE1",
+    "DEC-001",
+    "DEC-002",
+    "R4",
+    "R5"
+  ],
+  "defends_against": "An implementation that requires base evidence before granting mover priority, or that averages M with B, scores below 90.",
+  "time_sensitive": true,
+  "given": {
+    "inputs": {
+      "parcel": {
+        "pin": "0248_V2_SUBJ",
+        "assessed_value": 400000,
+        "construction_year": 2020,
+        "lot_acres": 0.2,
+        "sdl_page_available": true
+      },
+      "sales": [
+        {
+          "source": "SR1A",
+          "date": "2026-07-02",
+          "price": 850000,
+          "sales_code": ""
+        }
+      ],
+      "permits": [],
+      "local_comparables": [
+        {
+          "pin": "0248_CMP_00",
+          "assessed_value": 500000,
+          "distance_m": 50
+        },
+        {
+          "pin": "0248_CMP_01",
+          "assessed_value": 500000,
+          "distance_m": 51
+        },
+        {
+          "pin": "0248_CMP_02",
+          "assessed_value": 500000,
+          "distance_m": 52
+        },
+        {
+          "pin": "0248_CMP_03",
+          "assessed_value": 500000,
+          "distance_m": 53
+        },
+        {
+          "pin": "0248_CMP_04",
+          "assessed_value": 500000,
+          "distance_m": 54
+        },
+        {
+          "pin": "0248_CMP_05",
+          "assessed_value": 500000,
+          "distance_m": 55
+        },
+        {
+          "pin": "0248_CMP_06",
+          "assessed_value": 500000,
+          "distance_m": 56
+        },
+        {
+          "pin": "0248_CMP_07",
+          "assessed_value": 500000,
+          "distance_m": 57
+        },
+        {
+          "pin": "0248_CMP_08",
+          "assessed_value": 500000,
+          "distance_m": 58
+        },
+        {
+          "pin": "0248_CMP_09",
+          "assessed_value": 500000,
+          "distance_m": 59
+        },
+        {
+          "pin": "0248_CMP_10",
+          "assessed_value": 500000,
+          "distance_m": 60
+        },
+        {
+          "pin": "0248_CMP_11",
+          "assessed_value": 500000,
+          "distance_m": 61
+        },
+        {
+          "pin": "0248_CMP_12",
+          "assessed_value": 500000,
+          "distance_m": 62
+        },
+        {
+          "pin": "0248_CMP_13",
+          "assessed_value": 500000,
+          "distance_m": 63
+        },
+        {
+          "pin": "0248_CMP_14",
+          "assessed_value": 500000,
+          "distance_m": 64
+        },
+        {
+          "pin": "0248_CMP_15",
+          "assessed_value": 500000,
+          "distance_m": 65
+        },
+        {
+          "pin": "0248_CMP_16",
+          "assessed_value": 500000,
+          "distance_m": 66
+        },
+        {
+          "pin": "0248_CMP_17",
+          "assessed_value": 500000,
+          "distance_m": 67
+        },
+        {
+          "pin": "0248_CMP_18",
+          "assessed_value": 500000,
+          "distance_m": 68
+        },
+        {
+          "pin": "0248_CMP_19",
+          "assessed_value": 500000,
+          "distance_m": 69
+        }
+      ],
+      "territory_assessed_values": [
+        400000,
+        700000,
+        710000,
+        720000,
+        730000,
+        740000,
+        750000,
+        760000,
+        770000,
+        780000,
+        790000
+      ],
+      "acs_block_group": {
+        "dual_income_pct": 0.3
+      },
+      "rental_registry": {
+        "available": true,
+        "registrations": []
+      },
+      "imagery": {
+        "available": true,
+        "observations": []
+      }
+    },
+    "preexisting_state": {},
+    "configuration": {},
+    "clock": {
+      "as_of": "2026-08-18T00:00:00Z"
+    }
+  },
+  "when": {
+    "operation": "score_door"
+  },
+  "expect": {
+    "exact": {
+      "result": {
+        "score_contract_version": "v2",
+        "categories": {
+          "project": 0,
+          "capacity": 0,
+          "fit": 0
+        },
+        "base": 0,
+        "mover": {
+          "eligible": true,
+          "days_since_move": 47,
+          "strength": 90.0
+        },
+        "mover_lift": 90.0,
+        "rental_modifier": 0,
+        "pre_rounding": 90.0,
+        "adjustment": 0.0,
+        "score": 90,
+        "evidence": [
+          {
+            "type": "mover_recency",
+            "points": 90.0
+          }
+        ],
+        "data_gaps": []
+      },
+      "state_changes": [],
+      "emitted_events": [],
+      "external_calls": []
+    },
+    "properties": []
+  }
+}

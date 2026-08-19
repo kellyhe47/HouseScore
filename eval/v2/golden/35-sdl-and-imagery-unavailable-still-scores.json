@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "id": "G-035",
+  "name": "sdl-and-imagery-unavailable-still-scores",
+  "why": "AE11/R23: one of the eight unavailable SDL pages with no imagery still scores from parcel, sale, and ACS evidence (B=8 fresh mover -> 91) and carries explicit gaps.",
+  "covers": [
+    "B-021"
+  ],
+  "case_type": "degenerate",
+  "traces_to": [
+    "AE11",
+    "R16",
+    "R23",
+    "R26"
+  ],
+  "defends_against": "Treating SDL or imagery absence as disqualifying (score 0) or as negative evidence fails; absence is a gap, not proof.",
+  "time_sensitive": true,
+  "given": {
+    "inputs": {
+      "parcel": {
+        "pin": "0248_V2_GAP",
+        "assessed_value": 400000,
+        "construction_year": 1946,
+        "lot_acres": 0.2,
+        "sdl_page_available": false
+      },
+      "sales": [
+        {
+          "source": "SR1A",
+          "date": "2026-07-02",
+          "price": 850000,
+          "sales_code": ""
+        }
+      ],
+      "permits": [],
+      "local_comparables": [
+        {
+          "pin": "0248_CMP_00",
+          "assessed_value": 500000,
+          "distance_m": 50
+        },
+        {
+          "pin": "0248_CMP_01",
+          "assessed_value": 500000,
+          "distance_m": 51
+        },
+        {
+          "pin": "0248_CMP_02",
+          "assessed_value": 500000,
+          "distance_m": 52
+        },
+        {
+          "pin": "0248_CMP_03",
+          "assessed_value": 500000,
+          "distance_m": 53
+        },
+        {
+          "pin": "0248_CMP_04",
+          "assessed_value": 500000,
+          "distance_m": 54
+        },
+        {
+          "pin": "0248_CMP_05",
+          "assessed_value": 500000,
+          "distance_m": 55
+        },
+        {
+          "pin": "0248_CMP_06",
+          "assessed_value": 500000,
+          "distance_m": 56
+        },
+        {
+          "pin": "0248_CMP_07",
+          "assessed_value": 500000,
+          "distance_m": 57
+        },
+        {
+          "pin": "0248_CMP_08",
+          "assessed_value": 500000,
+          "distance_m": 58
+        },
+        {
+          "pin": "0248_CMP_09",
+          "assessed_value": 500000,
+          "distance_m": 59
+        },
+        {
+          "pin": "0248_CMP_10",
+          "assessed_value": 500000,
+          "distance_m": 60
+        },
+        {
+          "pin": "0248_CMP_11",
+          "assessed_value": 500000,
+          "distance_m": 61
+        },
+        {
+          "pin": "0248_CMP_12",
+          "assessed_value": 500000,
+          "distance_m": 62
+        },
+        {
+          "pin": "0248_CMP_13",
+          "assessed_value": 500000,
+          "distance_m": 63
+        },
+        {
+          "pin": "0248_CMP_14",
+          "assessed_value": 500000,
+          "distance_m": 64
+        },
+        {
+          "pin": "0248_CMP_15",
+          "assessed_value": 500000,
+          "distance_m": 65
+        },
+        {
+          "pin": "0248_CMP_16",
+          "assessed_value": 500000,
+          "distance_m": 66
+        },
+        {
+          "pin": "0248_CMP_17",
+          "assessed_value": 500000,
+          "distance_m": 67
+        },
+        {
+          "pin": "0248_CMP_18",
+          "assessed_value": 500000,
+          "distance_m": 68
+        },
+        {
+          "pin": "0248_CMP_19",
+          "assessed_value": 500000,
+          "distance_m": 69
+        }
+      ],
+      "territory_assessed_values": [
+        400000,
+        700000,
+        710000,
+        720000,
+        730000,
+        740000,
+        750000,
+        760000,
+        770000,
+        780000,
+        790000
+      ],
+      "acs_block_group": {
+        "dual_income_pct": 0.3
+      },
+      "rental_registry": {
+        "available": true,
+        "registrations": []
+      },
+      "imagery": {
+        "available": false
+      }
+    },
+    "preexisting_state": {},
+    "configuration": {},
+    "clock": {
+      "as_of": "2026-08-18T00:00:00Z"
+    }
+  },
+  "when": {
+    "operation": "score_door"
+  },
+  "expect": {
+    "exact": {
+      "result": {
+        "score_contract_version": "v2",
+        "categories": {
+          "project": 0,
+          "capacity": 0,
+          "fit": 8
+        },
+        "base": 8,
+        "mover": {
+          "eligible": true,
+          "days_since_move": 47,
+          "strength": 90.0
+        },
+        "mover_lift": 83.0,
+        "rental_modifier": 0,
+        "pre_rounding": 91.0,
+        "adjustment": 0.0,
+        "score": 91,
+        "evidence": [
+          {
+            "type": "fit_home_age",
+            "points": 8
+          },
+          {
+            "type": "mover_recency",
+            "points": 83.0
+          }
+        ],
+        "data_gaps": [
+          {
+            "type": "imagery_missing"
+          },
+          {
+            "type": "sdl_page_unavailable"
+          }
+        ]
+      },
+      "state_changes": [],
+      "emitted_events": [],
+      "external_calls": []
+    },
+    "properties": []
+  }
+}

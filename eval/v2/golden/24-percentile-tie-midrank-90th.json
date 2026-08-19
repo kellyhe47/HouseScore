@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "id": "G-024",
+  "name": "percentile-tie-midrank-90th",
+  "why": "R14 boundary: with 17 values below and a two-way tie, midrank gives exactly the 90th percentile and the 10-point band.",
+  "covers": [
+    "B-013"
+  ],
+  "case_type": "boundary",
+  "traces_to": [
+    "R14"
+  ],
+  "defends_against": "Rank-by-first-occurrence or exclusive percentile definitions land the tied subject below 90 and score 7.",
+  "time_sensitive": true,
+  "given": {
+    "inputs": {
+      "parcel": {
+        "pin": "0248_V2_SUBJ",
+        "assessed_value": 900000,
+        "construction_year": 2020,
+        "lot_acres": 0.2,
+        "sdl_page_available": true
+      },
+      "sales": [],
+      "permits": [],
+      "local_comparables": [
+        {
+          "pin": "0248_CMP_00",
+          "assessed_value": 950000,
+          "distance_m": 50
+        },
+        {
+          "pin": "0248_CMP_01",
+          "assessed_value": 950000,
+          "distance_m": 51
+        },
+        {
+          "pin": "0248_CMP_02",
+          "assessed_value": 950000,
+          "distance_m": 52
+        },
+        {
+          "pin": "0248_CMP_03",
+          "assessed_value": 950000,
+          "distance_m": 53
+        },
+        {
+          "pin": "0248_CMP_04",
+          "assessed_value": 950000,
+          "distance_m": 54
+        },
+        {
+          "pin": "0248_CMP_05",
+          "assessed_value": 950000,
+          "distance_m": 55
+        },
+        {
+          "pin": "0248_CMP_06",
+          "assessed_value": 950000,
+          "distance_m": 56
+        },
+        {
+          "pin": "0248_CMP_07",
+          "assessed_value": 950000,
+          "distance_m": 57
+        },
+        {
+          "pin": "0248_CMP_08",
+          "assessed_value": 950000,
+          "distance_m": 58
+        },
+        {
+          "pin": "0248_CMP_09",
+          "assessed_value": 950000,
+          "distance_m": 59
+        },
+        {
+          "pin": "0248_CMP_10",
+          "assessed_value": 950000,
+          "distance_m": 60
+        },
+        {
+          "pin": "0248_CMP_11",
+          "assessed_value": 950000,
+          "distance_m": 61
+        },
+        {
+          "pin": "0248_CMP_12",
+          "assessed_value": 950000,
+          "distance_m": 62
+        },
+        {
+          "pin": "0248_CMP_13",
+          "assessed_value": 950000,
+          "distance_m": 63
+        },
+        {
+          "pin": "0248_CMP_14",
+          "assessed_value": 950000,
+          "distance_m": 64
+        },
+        {
+          "pin": "0248_CMP_15",
+          "assessed_value": 950000,
+          "distance_m": 65
+        },
+        {
+          "pin": "0248_CMP_16",
+          "assessed_value": 950000,
+          "distance_m": 66
+        },
+        {
+          "pin": "0248_CMP_17",
+          "assessed_value": 950000,
+          "distance_m": 67
+        },
+        {
+          "pin": "0248_CMP_18",
+          "assessed_value": 950000,
+          "distance_m": 68
+        },
+        {
+          "pin": "0248_CMP_19",
+          "assessed_value": 950000,
+          "distance_m": 69
+        }
+      ],
+      "territory_assessed_values": [
+        400000,
+        410000,
+        420000,
+        430000,
+        440000,
+        450000,
+        460000,
+        470000,
+        480000,
+        490000,
+        500000,
+        510000,
+        520000,
+        530000,
+        540000,
+        550000,
+        560000,
+        900000,
+        900000,
+        990000
+      ],
+      "acs_block_group": {
+        "dual_income_pct": 0.3
+      },
+      "rental_registry": {
+        "available": true,
+        "registrations": []
+      },
+      "imagery": {
+        "available": true,
+        "observations": []
+      }
+    },
+    "preexisting_state": {},
+    "configuration": {},
+    "clock": {
+      "as_of": "2026-08-18T00:00:00Z"
+    }
+  },
+  "when": {
+    "operation": "score_door"
+  },
+  "expect": {
+    "exact": {
+      "result": {
+        "score_contract_version": "v2",
+        "categories": {
+          "project": 0,
+          "capacity": 10,
+          "fit": 0
+        },
+        "base": 10,
+        "mover": {
+          "eligible": false,
+          "days_since_move": null,
+          "strength": 0.0
+        },
+        "mover_lift": 0.0,
+        "rental_modifier": 0,
+        "pre_rounding": 10.0,
+        "adjustment": 0.0,
+        "score": 10,
+        "evidence": [
+          {
+            "type": "capacity_territory_percentile",
+            "points": 10
+          }
+        ],
+        "data_gaps": []
+      },
+      "state_changes": [],
+      "emitted_events": [],
+      "external_calls": []
+    },
+    "properties": []
+  }
+}

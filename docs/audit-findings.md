@@ -66,15 +66,21 @@ Socrata SODA API, free:
 
 **SDL update (2026-08-18):** The earlier instruction not to collect from
 Ramsey's SDL portal reflected the authorization status during the original
-audit. The project now has a manually collected, point-in-time snapshot of the
-public `roof` keyword results and matched permit-detail pages, based on the
-user's representation that SDL authorized “Option 1” manual portal-result
-collection. It contains 2,043 deduplicated municipal result rows; 210 rows match
-198 of the 540 territory properties, and 207 matched rows contain explicit
-roofing language. This is a supplemental research artifact, not a replacement
-for the Socrata source used by the scoring pipeline. See
-[`data/README-sdl-roof-permits.md`](../data/README-sdl-roof-permits.md) for the
-provenance, method, schema, false-positive handling, and coverage limitations.
+audit. Based on the user's representation that SDL authorized “Option 1”
+manual portal-result collection, the project now has a point-in-time browser
+snapshot for the full 540-parcel territory. SDL property pages were available
+for 532 parcels and display 3,648 permit applications, 6,168 inspections, and
+91 violations; eight parcels returned SDL 404s and no visible address-search
+result. The primary artifact groups these fields with public property,
+assessment, sale, and map metadata under each house. It also retains the earlier
+2,043-row `roof` search snapshot and attaches all 210 matched roof detail pages,
+including 14 supplemental roof records absent from the property-page tables.
+Owner/mailing and permit-agent fields are excluded. This remains supplemental
+research, not a replacement for the Socrata source used by scoring. See
+[`data/README-sdl-property-history.md`](../data/README-sdl-property-history.md)
+for provenance, schema, privacy choices, and limitations, and the
+[roof-specific README](../data/README-sdl-roof-permits.md) for keyword coverage
+and false-positive handling.
 
 **Census ACS5:** B23007 (children × parents' employment — dual-income proxy), B19013 (median HH income), B08303 (commute time) confirmed; block-group level; Ramsey = state 34 / county 003 / cousub 61170. Free API key required (keyless calls now blocked).
 
@@ -86,5 +92,6 @@ provenance, method, schema, false-positive handling, and coverage limitations.
 
 - Territory GeoJSON is present at `data/territory.geojson` and contains the 540
   properties used for the published run and SDL address match.
-- The authorized manual SDL roof-permit snapshot was collected and documented
-  on 2026-08-18. The production permit adapter remains Socrata-backed.
+- The authorized manual SDL property/construction-history snapshot was
+  collected and documented on 2026-08-18, together with its roof-search
+  provenance. The production permit adapter remains Socrata-backed.

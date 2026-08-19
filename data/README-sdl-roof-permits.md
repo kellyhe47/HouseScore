@@ -11,6 +11,12 @@ This is a supplemental research dataset. It is **not** an input to the current
 HouseAccount scoring pipeline, which continues to use New Jersey's statewide
 Socrata construction-permit dataset.
 
+For the broader successor collection—public property fields plus every permit,
+inspection, and violation displayed for each territory parcel—start with
+[`README-sdl-property-history.md`](README-sdl-property-history.md). This
+roof-keyword snapshot remains the detailed provenance source for 210 permits
+and is nested into that coalesced per-house artifact where applicable.
+
 ## Snapshot summary
 
 | Item | Value |
@@ -188,4 +194,3 @@ A suggested citation is:
 > SDL Portal — Ramsey Borough, public permit-search and permit-detail pages,
 > keyword “roof”; manually collected 2026-08-18; matched to the HouseAccount
 > 540-property Ramsey territory by exact normalized situs address.
-

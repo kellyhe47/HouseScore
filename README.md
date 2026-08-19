@@ -151,21 +151,23 @@ server, the map, the eval harness — reads them rather than re-deriving anythin
 
 `make clean` removes the derived artifacts and the caches.
 
-### Supplemental SDL roof-permit research snapshot
+### Supplemental SDL property-history research snapshot
 
 The `data/` directory also contains a separately collected, point-in-time SDL
-Portal research dataset. It covers the public Ramsey `roof` keyword results,
-matches them conservatively to all 540 territory properties, and includes the
-detail-page fields for every matched record. It is not produced by
-`make pipeline`, is not removed by `make clean`, and does not affect the current
-House Score.
+Portal research dataset. Its primary artifact keeps all available property,
+assessment, permit, inspection, and violation fields together for each of the
+540 territory parcels. SDL property pages were available for 532 parcels; the
+other eight are retained as explicit collection errors. The earlier `roof`
+keyword search and all 210 matched detail pages remain as provenance and enrich
+the coalesced permit records. These files are not produced by `make pipeline`,
+are not removed by `make clean`, and do not affect the current House Score.
 
 Start with
-[`data/README-sdl-roof-permits.md`](data/README-sdl-roof-permits.md) for the
+[`data/README-sdl-property-history.md`](data/README-sdl-property-history.md) for the
 source, authorization record, collection method, schema, counts, limitations,
 responsible-use guidance, and reproducibility commands. The primary analysis
-file is `data/sdl_roof_permits_territory.json`; the raw results and detail-page
-snapshot are retained alongside it for provenance.
+file is `data/sdl_property_history_territory.json`; the raw property-page
+snapshot and roof-specific files are retained alongside it for provenance.
 
 ## Data sources, and their licence position
 
@@ -179,7 +181,7 @@ the weights and the validation plan — is the
 | NJ statewide parcels + MOD-IV assessment records | ArcGIS FeatureServer, municipality code 0248 | Public record, open data. Owner-identity and mailing-address columns dropped at ingest for Daniel's Law (R11.1). |
 | NJ SR1A sales register | `nj.gov/treasury/taxation` year-to-date sales flat file (fixed-width, zipped) | Public record. Supplies deed recency wherever it is fresher than MOD-IV's — which on the shipped run is the only reason the Mover signal fires at all. The download is statewide and its layout reserves grantor/grantee identity columns, so only non-identity columns are read and the raw file is never cached (R11.1). |
 | NJ construction permits | Socrata, `data.nj.gov` dataset `w9se-dmra` | NJ Open Data public record; joined to parcels by block and lot. |
-| Ramsey SDL roof-permit snapshot (supplemental; not scored) | Public SDL Portal search and matched permit-detail pages | Manually collected 2026-08-18 based on the user's representation that SDL authorized manual portal-result collection. See the [dataset README](data/README-sdl-roof-permits.md) for scope and limits. |
+| Ramsey SDL property and construction-history snapshot (supplemental; not scored) | Public SDL Portal property, permit, inspection, violation, and matched roof-detail pages | Manually collected 2026-08-18 based on the user's representation that SDL authorized manual portal-result collection. Owner/mailing and permit-agent fields are excluded. See the [dataset README](data/README-sdl-property-history.md) for scope and limits. |
 | Census ACS 5-year block groups (B23007, B19013, B08303) | `api.census.gov` | US federal government work, public domain; used per the Census API terms. Neighbourhood context only, never a household claim. |
 | NJ orthophotography, 2015 and 2020 vintages | `maps.nj.gov` | Public domain. The source of **every** bulk imagery signal. |
 | Ramsey municipal rental registration | Municipal record, requested under OPRA | Public record on request. Not obtained by build time, so the absentee modifier ships as a documented declination (R11.3). |

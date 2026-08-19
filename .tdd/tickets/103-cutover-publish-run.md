@@ -1,11 +1,11 @@
 ---
 id: 103
 title: Cutover — pipeline/publish/SQLite/manifest to V2, delete V1 path, one versioned 540-door run
-status: pending
+status: green
 depends_on: [102]
 touches: [src/houseaccount/pipeline.py, src/houseaccount/publish.py, src/houseaccount/scoring/engine.py (delete), src/houseaccount/scoring/weights.py (delete), eval/golden/ (delete), eval/verify_claims.py (delete), data/, tests/test_publish.py, tests/test_pipeline.py, tests/test_scoring_fixtures.py, Makefile]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [tests/test_publish.py, tests/test_pipeline.py, tests/test_v2_cutover.py]
 branch: ""
 ---
 

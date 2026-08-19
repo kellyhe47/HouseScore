@@ -1,11 +1,11 @@
 ---
 id: 105
 title: Server + route surfaces — API, MCP, published, talk-track template map (R30)
-status: pending
+status: green
 depends_on: [103]
 touches: [src/houseaccount/server/api.py, src/houseaccount/server/mcp_tools.py, src/houseaccount/server/published.py, src/houseaccount/route.py, tests/test_server.py, tests/test_mcp_tools.py, tests/test_route.py]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [tests/test_server.py, tests/test_mcp_tools.py, tests/test_route.py]
 branch: ""
 ---
 

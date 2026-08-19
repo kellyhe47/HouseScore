@@ -24,9 +24,9 @@ Per-ticket cap: 5 implementation iterations.
 |---|---|---|---|---|---|
 | 101 | V2 scoring engine + golden adapter (test-golden), R1–R26/R37 | green | 1 | — | seq |
 | 102 | Live evidence-bundle builder (real sources → V2 ScoreInput, R8/R13/R14/R22/R23) | green | 1 | 101 | seq |
-| 103 | Cutover: pipeline/publish/SQLite/manifest V2 + delete V1 path + 540-door versioned run (R27/R28) | pending | 0 | 102 | seq |
+| 103 | Cutover: pipeline/publish/SQLite/manifest V2 + delete V1 path + 540-door versioned run (R27/R28) | green | 1 | 102 | seq |
 | 104 | R34 recalculation report + PII check + eval harness replacement (R32/R34) + R36 outcome-log contract | pending | 0 | 103 | seq |
-| 105 | Server + route surfaces: API, MCP, published, talk-track template map (R30) | pending | 0 | 103 | seq |
+| 105 | Server + route surfaces: API, MCP, published, talk-track template map (R30) | green | 1 | 103 | seq |
 | 106 | Web UI: map ramp restop (R38), panel math, route chips, degradation copy | pending | 0 | 104,105 | batch W-web |
 | 107 | Ethics page V2 (R29) | pending | 0 | 104 | batch W-web |
 | 108 | R35 stale audit + allowlist; docs R31 (README/PRD/DEPLOY/handoff/wireframes pointers) | pending | 0 | 103,104,105,106,107 | seq |
@@ -43,3 +43,7 @@ chain); 104/105 could parallelize but share eval-report consumers and the Makefi
   validate-spec passes (42 fixtures, anchors hold).
 - 101 green iter 1 (tests a515dad, impl 4f7e527): 42/42 fixtures + 59 boundary unit tests via real engine; red gate verified (101 failing pre-impl); full suite exit 0.
 - 102 green iter 1 (tests a620a59, impl HEAD): bundle.py, 22 tests, 540/540 disk-only integration; full suite/js/golden exit 0.
+- 103+105 implemented together (105 tests pulled forward: engine deletion import-breaks server/route tests).
+  Tests 7cb971a + 5327cc5, impl 46db641. V1 engine/weights/eval-golden/verify_claims deleted;
+  540/540 republished v2 (as_of 2026-08-15, warm cache, $0, zero network; scores 2-92, mean 12.4).
+  KNOWN BRIDGE: 4 js reds in ethics.test.js (pins of deleted weights.py) — owned by 106/107.

@@ -1,11 +1,11 @@
 ---
 id: 102
 title: Live evidence-bundle builder — real sources to V2 ScoreInput
-status: pending
+status: green
 depends_on: [101]
 touches: [src/houseaccount/scoring/bundle.py, src/houseaccount/resolve.py, src/houseaccount/sources/, tests/test_v2_bundle.py]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [tests/test_v2_bundle.py]
 branch: ""
 ---
 

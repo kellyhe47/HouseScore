@@ -202,21 +202,20 @@
         "score_contract_version": "v2",
         "confidence": "normal",
         "categories": {
-          "project": 8,
+          "project": 15,
           "capacity": 7,
-          "fit": 25
+          "fit": 27
         },
-        "base": 40,
+        "base": 49,
         "mover": {
           "eligible": true,
           "days_since_move": 180,
           "strength": 40.005
         },
-        "mover_lift": 24.447,
+        "mover_lift": 20.947,
         "rental_modifier": 0,
-        "pre_rounding": 64.447,
-        "adjustment": -0.447,
-        "score": 64,
+        "pre_rounding": 69.947,
+        "adjustment": 0.053,
         "evidence": [
           {
             "type": "capacity_local_relative_value",
@@ -224,7 +223,7 @@
           },
           {
             "type": "fit_home_age",
-            "points": 8
+            "points": 10
           },
           {
             "type": "fit_lot",
@@ -240,14 +239,15 @@
           },
           {
             "type": "mover_recency",
-            "points": 24.447
+            "points": 20.947
           },
           {
             "type": "project_completed",
-            "points": 8
+            "points": 15
           }
         ],
-        "data_gaps": []
+        "data_gaps": [],
+        "score": 70
       },
       "state_changes": [],
       "emitted_events": [],

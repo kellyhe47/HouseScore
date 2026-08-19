@@ -34,16 +34,15 @@ GOLDEN_DIR = HERE / "golden"
 MANIFEST = HERE / "golden-manifest.json"
 
 # --- contract constants (plan R2, R4, R5, R6) ---
-PROJECT_CAP = 25
+PROJECT_CAP = 45
 CAPACITY_CAP = 25
-FIT_CAP = 30
+FIT_CAP = 48
 MOVER_PEAK = 90.0
 MOVER_FLAT_DAYS = 90
 MOVER_ZERO_DAY = 365
 RENTAL_MODIFIER = -25
 NOMINAL_PRICE_MAX = 100  # R3: at or below $100 is non-arm's-length
 
-MAJOR_KEYWORDS = ("addition", "renovation", "alteration", "new construction")
 ROOF_INSTALL_KEYWORDS = ("roof replacement", "reroof", "reshingle")
 EXTERIOR_KEYWORDS = ("siding", "roof", "window", "facade", "paint", "stucco")
 TERMINAL_COMPLETED = "completed"
@@ -129,29 +128,15 @@ def derive(given: dict) -> dict:
         if completion_effective_date(p)
         and parse_date(completion_effective_date(p)) >= window_24m
     ]
-    issued_recent = [
-        p
-        for p in permits
-        if is_qualifying(p) and p.get("issue_date") and parse_date(p["issue_date"]) >= window_24m
-    ]
-    major_recent = [
-        p
-        for p in issued_recent
-        if any(k in p.get("description", "").lower() for k in MAJOR_KEYWORDS)
-    ]
-
-    if active:
+    # One flat rule (user-directed 2026-08-19): every distinct qualifying
+    # permit — active now, or completed within 24 months — earns 15; three
+    # saturate the 45 cap. A permit cannot be both: completed is terminal.
+    for p in active:
         project_raw += 15
         evidence.append({"type": "project_active", "points": 15})
-    if completed_recent:
-        project_raw += 8
-        evidence.append({"type": "project_completed", "points": 8})
-    if len(issued_recent) >= 2:
-        project_raw += 5
-        evidence.append({"type": "project_multi_permit", "points": 5})
-    if major_recent:
-        project_raw += 5
-        evidence.append({"type": "project_major", "points": 5})
+    for p in completed_recent:
+        project_raw += 15
+        evidence.append({"type": "project_completed", "points": 15})
     if permits and project_raw == 0:
         evidence.append({"type": "project_neutralized", "points": 0})
     project = min(PROJECT_CAP, project_raw)
@@ -226,7 +211,7 @@ def derive(given: dict) -> dict:
     yr = parcel.get("construction_year")
     if yr:
         age = as_of.year - yr
-        pts = 0 if age < 30 else 2 if age < 50 else 5 if age < 75 else 8
+        pts = 0 if age < 30 else 5 if age < 50 else 8 if age < 75 else 10
         fit_raw += pts
         if pts:
             evidence.append({"type": "fit_home_age", "points": pts})
@@ -262,10 +247,12 @@ def derive(given: dict) -> dict:
         by_imagery = any(o["kind"] == name and o["confidence"] >= 0.60 for o in obs)
         return by_permit or by_imagery
 
-    for feature in ("pool", "solar"):
+    # Pool 8 (user-directed 2026-08-19: a standing maintenance commitment),
+    # solar 5.
+    for feature, pts in (("pool", 8), ("solar", 5)):
         if feature_established(feature):
-            fit_raw += 5
-            evidence.append({"type": f"fit_{feature}", "points": 5})
+            fit_raw += pts
+            evidence.append({"type": f"fit_{feature}", "points": pts})
 
     if parcel.get("lot_acres") is not None and parcel["lot_acres"] >= 0.5:
         fit_raw += 5
@@ -388,9 +375,9 @@ def check_anchors() -> list[str]:
     expect([roof_pts(a) for a in (9, 10, 14, 15, 19, 20)] == [0, 4, 4, 8, 8, 12], "R17 bands")
 
     def home_pts(age):
-        return 0 if age < 30 else 2 if age < 50 else 5 if age < 75 else 8
+        return 0 if age < 30 else 5 if age < 50 else 8 if age < 75 else 10
 
-    expect([home_pts(a) for a in (29, 30, 49, 50, 74, 75)] == [0, 2, 2, 5, 5, 8], "R18 bands")
+    expect([home_pts(a) for a in (29, 30, 49, 50, 74, 75)] == [0, 5, 5, 8, 8, 10], "R18 bands")
     return errors
 
 

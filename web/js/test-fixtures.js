@@ -107,7 +107,7 @@ export function visionDoor(overrides = {}) {
       {
         type: 'fit_pool',
         points: 8,
-        reason: 'in-ground pool visible in aerial imagery',
+        reason: 'pool visible in aerial imagery — a standing maintenance commitment',
         imagery: {
           image_url: 'https://example.invalid/tiles/0248_3502_8.01_2020.jpg',
           bbox: [-74.14, 41.05, -74.139, 41.051],
@@ -221,13 +221,19 @@ export function detailedDoor(overrides = {}) {
       {
         type: 'project_active',
         points: 15,
-        reason: 'active qualifying project with recent lifecycle activity',
+        reason: 'open municipal project with activity in the last 12 months: '
+          + 'Roof Replacement, issued 2026-07-21',
+        source: 'Ramsey municipal permits (SDL portal)',
+        retrieved: '2026-08-19',
         imagery: null,
       },
       {
         type: 'capacity_local_relative_value',
         points: 7,
-        reason: 'assessed value above the median of the nearest comparables',
+        reason: 'assessed at $850,000, 1.42× the $600,000 median of the '
+          + 'nearest 20 single-family comparables',
+        source: 'NJ MOD-IV parcel record',
+        retrieved: '2026-08-19',
         imagery: null,
       },
       {
@@ -247,9 +253,11 @@ export function detailedDoor(overrides = {}) {
       {
         type: 'mover_recency',
         points: 55.875,
-        reason: 'home changed hands 12 days ago in a market sale — new owners '
-          + 'are the likeliest to start projects, so the score gets a large '
-          + 'lift that fades out over the first year',
+        reason: 'home changed hands 12 days ago (2026-08-07) in a market sale '
+          + '— new owners are the likeliest to start projects, so the score '
+          + 'gets a large lift that fades out over the first year',
+        source: 'NJ SR1A sales register',
+        retrieved: '2026-08-19',
         imagery: null,
       },
     ],

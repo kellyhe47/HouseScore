@@ -41,7 +41,7 @@ MANIFEST = DATA / "run_manifest.json"
 TERRITORY_TARGET = 540
 
 #: V2 category caps (plan R2).
-CAPS = {"project": 25, "capacity": 25, "fit": 30}
+CAPS = {"project": 45, "capacity": 25, "fit": 48}
 
 V1_MANIFEST_FIELDS = ("territory_median_value", "top_band_days", "doors_in_top_band")
 

@@ -1287,7 +1287,13 @@ function evidenceRow(row) {
 
   const text = el('div', 'evidence__text');
   text.appendChild(el('div', 'evidence__sentence', row.reason));
-  text.appendChild(el('div', 'evidence__source', row.label));
+  text.appendChild(
+    el(
+      'div',
+      'evidence__source',
+      row.source ? `${row.source} · fetched ${row.retrieved}` : row.label
+    )
+  );
   wrapper.appendChild(text);
 
   return wrapper;

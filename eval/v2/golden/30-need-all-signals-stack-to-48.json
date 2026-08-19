@@ -1,55 +1,55 @@
 {
   "schema_version": 1,
-  "id": "G-018",
-  "name": "project-category-cap-25",
-  "why": "R2/R11: active 15 + completed 8 + two-permit 5 + major 5 = 33 raw must cap at 25 in B while evidence still shows each raw signal.",
+  "id": "G-030",
+  "name": "need-all-signals-stack-to-48",
+  "why": "AE9/R2: roof 12 + home 10 + condition 8 + pool 8 + solar 5 + lot 5 = 48 — the Need cap equals the sum of its signals, so a fully qualifying house contributes all 48 with no cap adjustment.",
   "covers": [
-    "B-002",
-    "B-007",
-    "B-008",
-    "B-009"
+    "B-002"
   ],
   "case_type": "boundary",
   "traces_to": [
-    "R10",
-    "R11",
+    "AE9",
+    "R17",
+    "R18",
+    "R19",
     "R2",
-    "R9"
+    "R20",
+    "R21"
   ],
-  "defends_against": "Summing without the category cap leaks 8 extra points into B.",
+  "defends_against": "Summing fit without the category cap leaks 13 extra points into B.",
   "time_sensitive": true,
   "given": {
     "inputs": {
       "parcel": {
         "pin": "0248_V2_SUBJ",
         "assessed_value": 400000,
-        "construction_year": 2020,
-        "lot_acres": 0.2,
+        "construction_year": 1946,
+        "lot_acres": 0.55,
         "sdl_page_available": true
       },
       "sales": [],
       "permits": [
         {
-          "id": "P-ADD-2026",
+          "id": "P-ROOF-2006",
           "sources": [
             "SDL"
           ],
-          "municipal_id": "SDL-2026-140",
-          "description": "addition - second story",
-          "issue_date": "2026-05-01",
-          "disposition": null,
-          "last_activity_date": "2026-07-01"
+          "municipal_id": "SDL-2006-014",
+          "description": "roof replacement - remove and reshingle",
+          "issue_date": "2006-05-01",
+          "disposition": "completed",
+          "completion_date": "2006-06-20"
         },
         {
-          "id": "P-WH-2025",
+          "id": "P-SOLAR-2010",
           "sources": [
             "SDL"
           ],
-          "municipal_id": "SDL-2025-201",
-          "description": "water heater replacement",
-          "issue_date": "2025-07-10",
+          "municipal_id": "SDL-2010-055",
+          "description": "solar panel installation",
+          "issue_date": "2010-04-01",
           "disposition": "completed",
-          "completion_date": "2025-08-15"
+          "completion_date": "2010-05-15"
         }
       ],
       "local_comparables": [
@@ -176,7 +176,23 @@
       },
       "imagery": {
         "available": true,
-        "observations": []
+        "observations": [
+          {
+            "kind": "condition_decline",
+            "confidence": 0.7,
+            "vintages": [
+              "2015",
+              "2020"
+            ]
+          },
+          {
+            "kind": "pool",
+            "confidence": 0.65,
+            "vintages": [
+              "2020"
+            ]
+          }
+        ]
       }
     },
     "preexisting_state": {},
@@ -194,11 +210,11 @@
         "score_contract_version": "v2",
         "confidence": "normal",
         "categories": {
-          "project": 25,
+          "project": 0,
           "capacity": 0,
-          "fit": 0
+          "fit": 48
         },
-        "base": 25,
+        "base": 48,
         "mover": {
           "eligible": false,
           "days_since_move": null,
@@ -206,32 +222,40 @@
         },
         "mover_lift": 0.0,
         "rental_modifier": 0,
-        "pre_rounding": 25.0,
+        "pre_rounding": 48.0,
         "adjustment": 0.0,
-        "score": 25,
         "evidence": [
           {
-            "type": "project_active",
-            "points": 15
-          },
-          {
-            "type": "project_cap_adjustment",
-            "points": -8
-          },
-          {
-            "type": "project_completed",
+            "type": "fit_condition_decline",
             "points": 8
           },
           {
-            "type": "project_major",
+            "type": "fit_home_age",
+            "points": 10
+          },
+          {
+            "type": "fit_lot",
             "points": 5
           },
           {
-            "type": "project_multi_permit",
+            "type": "fit_pool",
+            "points": 8
+          },
+          {
+            "type": "fit_roof_age",
+            "points": 12
+          },
+          {
+            "type": "fit_solar",
             "points": 5
+          },
+          {
+            "type": "project_neutralized",
+            "points": 0
           }
         ],
-        "data_gaps": []
+        "data_gaps": [],
+        "score": 48
       },
       "state_changes": [],
       "emitted_events": [],

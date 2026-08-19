@@ -369,8 +369,17 @@ def test_published_evidence_is_the_envelope_trail_in_order(data_dir):
     )
     assert [item["reason"] for item in evidence] == [item["reason"] for item in envelope["evidence"]]
     for item in evidence:
-        assert {"type", "points", "reason"} <= set(item) <= {"type", "points", "reason", "imagery"}
-        assert "sentence" not in item and "source" not in item
+        assert {"type", "points", "reason"} <= set(item) <= {
+            "type",
+            "points",
+            "reason",
+            "source",
+            "retrieved",
+            "imagery",
+        }
+        # V1's `sentence` field stays gone; `source`/`retrieved` returned by
+        # request as the panel's attribution line.
+        assert "sentence" not in item
 
 
 def test_the_published_score_reconciles_per_r7(data_dir):

@@ -86,6 +86,8 @@ CREATE TABLE evidence (
     type      TEXT    NOT NULL,
     points    REAL    NOT NULL,
     reason    TEXT    NOT NULL,
+    source    TEXT,
+    retrieved TEXT,
     imagery   TEXT,
     PRIMARY KEY (pams_pin, seq)
 );
@@ -243,6 +245,8 @@ def _evidence(item: Mapping[str, Any]) -> dict[str, Any]:
         "type": item["type"],
         "points": item["points"],
         "reason": item["reason"],
+        "source": item.get("source"),
+        "retrieved": item.get("retrieved"),
         "imagery": dict(frame) if frame else None,
     }
 
@@ -270,8 +274,9 @@ def _write_sqlite(
                 [_door_row(door, envelope) for door, envelope in pairs],
             )
             connection.executemany(
-                "INSERT INTO evidence (pams_pin, seq, type, points, reason, imagery)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO evidence"
+                " (pams_pin, seq, type, points, reason, source, retrieved, imagery)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 list(_evidence_rows(pairs)),
             )
     finally:
@@ -318,6 +323,8 @@ def _evidence_rows(
                 item["type"],
                 item["points"],
                 item["reason"],
+                item.get("source"),
+                item.get("retrieved"),
                 json.dumps(dict(frame), sort_keys=True) if frame else None,
             )
 

@@ -89,8 +89,6 @@ V2_EVIDENCE_TYPES = [
     "project_active",
     "project_cap_adjustment",
     "project_completed",
-    "project_major",
-    "project_multi_permit",
     "project_neutralized",
     "rental_registration",
     "rental_stale",
@@ -749,18 +747,19 @@ def test_a_door_without_a_chip_plans_with_a_none_chip():
 # type the engine can emit; the templates are inspected — not generated — so
 # the phrasing rules are testable as strings.
 
-#: The engine's own V2 reason prose, verbatim from `scoring/v2.py`. Written for
-#: the evidence panel; never spoken at a door.
+#: Representative V2 reason prose as `scoring/v2.py` emits it (the dynamic
+#: fields filled with plausible values). Written for the evidence panel;
+#: never spoken at a door.
 V2_REASON_SENTENCES = [
-    "active qualifying project with recent lifecycle activity",
-    "assessed value above the median of the nearest comparables",
-    "assessed value ranks high among territory single-family properties",
-    "neighborhood-level ACS dual-income prior at or above 35% (block-group prior, not a household claim)",
+    "open municipal project with activity in the last 12 months: Roof Replacement, issued 2026-07-21",
+    "assessed at $850,000, 1.42× the $600,000 median of the nearest 20 single-family comparables",
+    "assessed value sits at the 92th percentile of the 540 territory single-family properties",
+    "58% of this block group's households are dual-income (at or above the 35% prior; a neighborhood-level prior, not a household claim)",
     "verified historical exterior-condition decline between the 2015 and 2020 imagery vintages",
-    "current verified rental registration demotes the door",
-    "home changed hands 30 days ago in a market sale — new owners are the "
-    "likeliest to start projects, so the score gets a large lift that fades "
-    "out over the first year",
+    "current verified rental registration (2026-01-05) demotes the door",
+    "home changed hands 30 days ago (2026-07-20) in a market sale — new owners "
+    "are the likeliest to start projects, so the score gets a large lift that "
+    "fades out over the first year",
 ]
 
 #: Words that only appear in prose derived from the file. None may be spoken.

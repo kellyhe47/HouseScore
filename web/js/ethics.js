@@ -27,7 +27,7 @@
  */
 
 /** The three base categories and their exact caps. */
-export const CATEGORY_CAPS = { project: 25, capacity: 25, fit: 30 };
+export const CATEGORY_CAPS = { project: 45, capacity: 25, fit: 48 };
 
 /**
  * The mover blend: a recent valid move blends the score toward the 90–100
@@ -119,51 +119,154 @@ export function icpTrace() {
       key: 'project',
       label: 'Project',
       cap: CATEGORY_CAPS.project,
+      capLabel: `max ${CATEGORY_CAPS.project}`,
       trait: 'Pays professionals rather than DIY',
       body:
-        'Permit lifecycle activity: an active qualifying project, or one '
-        + 'completed recently, shows this household already pays professionals '
-        + 'for home work. Read conservatively from the permit record alone.',
+        'Permit lifecycle activity: every qualifying permit shows this '
+        + 'household already pays professionals for home work. Read '
+        + 'conservatively from the permit record alone.',
+      signals: [
+        {
+          points: '+15',
+          description:
+            'Each qualifying permit — open with lifecycle activity in the '
+            + 'last 12 months, or completed within 24 — earns 15. A boiler '
+            + 'replacement counts the same as an addition: both are proof that '
+            + 'work here gets bought rather than done in-house. Three permits '
+            + 'reach the 45 cap.',
+        },
+      ],
     },
     {
       key: 'capacity',
       label: 'Capacity',
       cap: CATEGORY_CAPS.capacity,
+      capLabel: `max ${CATEGORY_CAPS.capacity}`,
       trait: 'Capacity to pay for years of service',
       body:
         'Assessed value against the territory and against the nearest local '
         + 'comparables, plus the small neighborhood dual-income prior read at '
         + 'the Census block group.',
+      signals: [
+        {
+          points: '+10',
+          description:
+            'Assessed at 1.5× or more of the median of the nearest 20 '
+            + 'single-family comparables (+7 from 1.2×, +3 above the median — '
+            + 'bands, never added together).',
+        },
+        {
+          points: '+10',
+          description:
+            'Assessed value at or above the 90th percentile of the territory’s '
+            + 'single-family homes (+7 from the 75th, +3 from the 50th).',
+        },
+        {
+          points: '+5',
+          description:
+            'A small prior when the ACS reports a dual-income share of 35% or '
+            + 'more for the surrounding block group — neighbourhood context, '
+            + 'never a reading of any address.',
+        },
+      ],
     },
     {
       key: 'fit',
-      label: 'Fit',
+      label: 'Need',
       cap: CATEGORY_CAPS.fit,
+      capLabel: `max ${CATEGORY_CAPS.fit}`,
       trait: 'Near-term service need',
       body:
-        'Roof age, a pool, lot size, and historical exterior decline between '
-        + 'the public imagery vintages: the properties where work is already '
-        + 'coming due.',
+        'Roof age, home age, a pool, solar, lot size, and historical exterior '
+        + 'decline between the public imagery vintages: the properties where '
+        + 'work is already coming due.',
+      signals: [
+        {
+          points: '+12',
+          description:
+            'A completed roof installation at least 20 years old (+8 at 15, '
+            + '+4 at 10) — at or past replacement age.',
+        },
+        {
+          points: '+10',
+          description:
+            'A home at least 75 years old (+8 at 50, +5 at 30), where original '
+            + 'systems are at or past replacement age.',
+        },
+        {
+          points: '+8',
+          description:
+            'Exterior condition moving down the poor → fair → good → excellent '
+            + 'scale between the 2015 and 2020 ortho vintages.',
+        },
+        {
+          points: '+8',
+          description:
+            'A pool, established by a completed permit or public-domain aerial '
+            + 'imagery — a standing maintenance commitment.',
+        },
+        {
+          points: '+5',
+          description:
+            'Solar panels, established by a completed permit or aerial imagery.',
+        },
+        {
+          points: '+5',
+          description:
+            'A lot of at least 0.5 acres — grounds that make outdoor work a '
+            + 'standing job rather than an afternoon.',
+        },
+      ],
     },
     {
       key: 'mover',
       label: 'Mover blend',
       cap: null,
+      // Not a capped point category, but its lift has a true ceiling: at an
+      // empty base the blend adds the full 90; richer bases gain less and
+      // land inside the 90-100 band.
+      capLabel: 'max 90',
       trait: 'Recently moved in',
       body:
         'A recent valid arm’s-length move does not add points: it blends '
         + 'the score toward the priority band, with a strength that decays as '
         + 'the move ages. The strongest trait gets the strongest mechanism.',
+      signals: [
+        {
+          points: '→ 90+',
+          description:
+            'Deed recorded within 90 days — the window in which a new owner is '
+            + 'still choosing every provider they will keep. The score blends '
+            + 'toward the low-90s priority band, whatever the base.',
+        },
+        {
+          points: 'fades',
+          description:
+            'From day 91 the pull decays on an exponential, reaching zero at '
+            + 'day 365 — a year in, a mover is a resident.',
+        },
+      ],
     },
     {
       key: 'rental',
       label: 'Rental modifier',
       cap: null,
+      capLabel: `max ${MINUS}25`,
       trait: 'Owner-occupier context (demotion only)',
       body:
         'A current verified municipal rental registration is the model’s '
         + `only demotion: ${MINUS}25 points, applied after the blend. A rented `
         + 'door still buys home services, so it moves down the list, never off it.',
+      signals: [
+        {
+          points: `${MINUS}25`,
+          description:
+            'A current verified match against the municipal rental '
+            + 'registration. Negative by design and dormant until the registry '
+            + 'is obtained: a rented address still buys home services, so this '
+            + 'moves a door down the list rather than off it.',
+        },
+      ],
     },
   ];
 }
@@ -177,19 +280,19 @@ function modelSection(report) {
         key: 'project',
         label: 'Project',
         cap: CATEGORY_CAPS.project,
-        body: 'Permit lifecycle evidence of bought work, capped at 25.',
+        body: `Permit lifecycle evidence of bought work, capped at ${CATEGORY_CAPS.project}.`,
       },
       {
         key: 'capacity',
         label: 'Capacity',
         cap: CATEGORY_CAPS.capacity,
-        body: 'Value and neighborhood-prior evidence of means, capped at 25.',
+        body: `Value and neighborhood-prior evidence of means, capped at ${CATEGORY_CAPS.capacity}.`,
       },
       {
         key: 'fit',
-        label: 'Fit',
+        label: 'Need',
         cap: CATEGORY_CAPS.fit,
-        body: 'Property evidence of near-term need, capped at 30.',
+        body: `Property evidence of near-term need, capped at ${CATEGORY_CAPS.fit}.`,
       },
     ],
     blend: {
@@ -264,7 +367,7 @@ const EVIDENCE_RULES = [
   + 'qualifying record in a live or recently completed state, nothing inferred '
   + 'beyond what the register says.',
   'Roof evidence is the latest explicit completed roof installation on record '
-  + '— old enough to need service counts toward Fit, and absence of a record '
+  + '— old enough to need service counts toward Need, and absence of a record '
   + 'is treated as unknown, not as an old roof.',
   'The exterior-condition signal is read as historical decline between the '
   + '2015 and 2020 orthophoto vintages — never a claim about the present state '

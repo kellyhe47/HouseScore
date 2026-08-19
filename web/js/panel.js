@@ -35,9 +35,9 @@ export const COPIED_MESSAGE = 'Address copied';
  * the evidence trail as its own explicit entry (R7).
  */
 const V2_CATEGORIES = [
-  { key: 'project', label: 'Project', cap: 25 },
+  { key: 'project', label: 'Project', cap: 45 },
   { key: 'capacity', label: 'Capacity', cap: 25 },
-  { key: 'fit', label: 'Fit', cap: 30 },
+  { key: 'fit', label: 'Need', cap: 48 },
 ];
 
 /**
@@ -99,6 +99,11 @@ function toRow(item) {
     hasSign,
     signed: hasSign ? (points > 0 ? `+${points}` : `${MINUS}${Math.abs(points)}`) : null,
     reason: item.reason,
+    // The attribution line: which record produced this evidence, fetched
+    // when. Derived entries (category caps) publish no source and fall back
+    // to the readable type label.
+    source: item.source ?? null,
+    retrieved: item.retrieved ?? null,
     imagery: item.imagery ?? null,
   };
 }

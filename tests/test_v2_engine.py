@@ -151,8 +151,8 @@ def test_rounding_adjustment_reconciles():
     "fixture_name",
     [
         "03-mover-flat-band-day-90.json",
-        "18-project-category-cap-25.json",
-        "30-fit-category-cap-30.json",
+        "18-project-category-cap-45.json",
+        "30-need-all-signals-stack-to-48.json",
         "36-rental-clamp-floor-zero.json",
     ],
 )
@@ -301,9 +301,9 @@ def test_roof_age_bands(completion, points):
     ("year", "points"),
     [
         (1997, None),  # 29y -> 0, no entry
-        (1996, 2),  # exactly 30
-        (1976, 5),  # exactly 50
-        (1951, 8),  # exactly 75 (fixture G-029/G-039 anchor)
+        (1996, 5),  # exactly 30
+        (1976, 8),  # exactly 50
+        (1951, 10),  # exactly 75 (fixture G-029/G-039 anchor)
     ],
 )
 def test_home_age_bands(year, points):

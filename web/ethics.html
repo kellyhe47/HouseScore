@@ -121,30 +121,42 @@ function icpSection(page) {
 }
 
 function traceSection(page) {
-  const rows = card(
-    ...page.trace.map((row) => {
-      const item = el('div', 'card__row card__row--trait');
-      item.appendChild(el('span', 'card__key', row.label));
-      item.appendChild(el('span', 'card__num', row.cap === null ? '—' : `cap ${row.cap}`));
-      const text = el('span', 'card__body');
-      text.appendChild(el('strong', null, `${row.trait}. `));
-      text.appendChild(el('span', null, row.body));
-      item.appendChild(text);
-      return item;
-    })
-  );
+  // One block per scoring group, in the launch layout and its exact CSS: a
+  // header row naming the group, its ceiling, and the ICP trait it serves,
+  // then one row per signal with its points badge and explanation.
+  const groups = page.trace.map((group) => {
+    const block = el('div', 'trace');
+
+    const head = el('div', 'trace__head');
+    head.appendChild(el('span', 'trace__name', group.label));
+    head.appendChild(
+      el('span', 'trace__max', group.capLabel ?? (group.cap === null ? '—' : `max ${group.cap}`))
+    );
+    head.appendChild(el('span', 'trace__trait', group.trait));
+    block.appendChild(head);
+
+    for (const signal of group.signals || []) {
+      const row = el('div', 'trace__row');
+      const points = el('span', 'trace__points', signal.points);
+      points.classList.add(String(signal.points).startsWith('−') ? 'is-neg' : 'is-pos');
+      row.appendChild(points);
+      row.appendChild(el('span', 'trace__desc', signal.description));
+      block.appendChild(row);
+    }
+    return block;
+  });
 
   return section(
     'Every scoring term, and the ICP trait it serves',
     el(
       'p',
       'doc__p',
-      'Each term below points at exactly one of the four traits above, and every '
+      'Each group below points at exactly one of the four traits above, and every '
         + 'cap and constant is mirrored from the scoring engine’s own contract — a '
         + 'published number that disagreed with the engine would make this page a '
         + 'lie about the map next to it.'
     ),
-    rows
+    ...groups
   );
 }
 

@@ -167,9 +167,9 @@
         "categories": {
           "project": 0,
           "capacity": 0,
-          "fit": 8
+          "fit": 10
         },
-        "base": 8,
+        "base": 10,
         "mover": {
           "eligible": false,
           "days_since_move": null,
@@ -177,16 +177,16 @@
         },
         "mover_lift": 0.0,
         "rental_modifier": 0,
-        "pre_rounding": 8.0,
+        "pre_rounding": 10.0,
         "adjustment": 0.0,
-        "score": 8,
         "evidence": [
           {
             "type": "fit_home_age",
-            "points": 8
+            "points": 10
           }
         ],
-        "data_gaps": []
+        "data_gaps": [],
+        "score": 10
       },
       "state_changes": [],
       "emitted_events": [],

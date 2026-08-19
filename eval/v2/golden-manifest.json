@@ -30,7 +30,7 @@
     },
     {
       "id": "B-002",
-      "statement": "Base B is the sum of three independently capped categories: project <=25, capacity <=25, fit <=30",
+      "statement": "Base B is the sum of three independently capped categories: project <=45, capacity <=25, fit <=48 (the sum of every fit signal)",
       "traces_to": [
         "R2"
       ],
@@ -89,7 +89,7 @@
     },
     {
       "id": "B-007",
-      "statement": "An active qualifying project adds 15 only with a qualifying lifecycle event in the last 12 months; an old Open label alone is not active",
+      "statement": "An active qualifying permit adds 15 only with a qualifying lifecycle event in the last 12 months; an old Open label alone is not active",
       "traces_to": [
         "R9"
       ],
@@ -100,7 +100,7 @@
     },
     {
       "id": "B-008",
-      "statement": "A qualifying project completed within 24 months adds 8, requiring a terminal disposition and a reliable completion date",
+      "statement": "A qualifying permit completed within 24 months adds 15, requiring a terminal disposition and a reliable completion date",
       "traces_to": [
         "R10"
       ],
@@ -111,7 +111,7 @@
     },
     {
       "id": "B-009",
-      "statement": "Two distinct qualifying permits in 24 months add 5 and a qualifying major scope adds another 5, inside the project cap",
+      "statement": "Every distinct qualifying permit earns 15 independently — three saturate the 45 project cap; there are no multi-permit or major-scope bonuses",
       "traces_to": [
         "R11"
       ],
@@ -198,7 +198,7 @@
     },
     {
       "id": "B-017",
-      "statement": "Home age scores 0/2/5/8 by construction-year bands",
+      "statement": "Home age scores 0/5/8/10 by construction-year bands",
       "traces_to": [
         "R18"
       ],
@@ -218,7 +218,7 @@
     },
     {
       "id": "B-019",
-      "statement": "Pool and solar each add 5 once, from a completed explicit permit or qualifying imagery; an active installation permit does not establish the feature",
+      "statement": "A pool adds 8 and solar adds 5, each once, from a completed explicit permit or qualifying imagery; an active installation permit does not establish the feature",
       "traces_to": [
         "R20"
       ],

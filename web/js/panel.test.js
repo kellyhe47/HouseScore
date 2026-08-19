@@ -21,9 +21,9 @@ const NO_IMAGERY_FOOTER = 'No imagery signals for this parcel';
 // R2: the three V2 categories and their caps — the only subtotal vocabulary
 // any surface may use (R30).
 const V2_CATEGORIES = [
-  ['project', 25],
+  ['project', 45],
   ['capacity', 25],
-  ['fit', 30],
+  ['fit', 48],
 ];
 
 // ---------- buildPanel: evidence rows ----------
@@ -242,7 +242,7 @@ test('the breakdown carries the three V2 categories in contract order', () => {
   );
 });
 
-test('each category declares its V2 cap: 25 / 25 / 30', () => {
+test('each category declares its V2 cap: 45 / 25 / 48', () => {
   const { breakdown } = buildPanel(detailedDoor());
   assert.deepEqual(
     breakdown.categories.map((c) => [c.key, c.cap]),
@@ -262,7 +262,7 @@ test('the category labels are the V2 names, capitalised for the reader', () => {
   const { breakdown } = buildPanel(detailedDoor());
   assert.deepEqual(
     breakdown.categories.map((c) => c.label),
-    ['Project', 'Capacity', 'Fit']
+    ['Project', 'Capacity', 'Need']
   );
 });
 
@@ -315,6 +315,17 @@ test('the evidence trail sums to base + mover lift + rental modifier (R7)', () =
 test('the math line shows the blend arithmetic for a fresh mover, in whole numbers', () => {
   const { breakdown } = buildPanel(detailedDoor());
   assert.equal(breakdown.mathLine, '39 + 56 + 0 + 0 = 95');
+});
+
+test('rows carry the source attribution for the subline, label as fallback', () => {
+  const { rows } = buildPanel(detailedDoor());
+  const active = rows.find((row) => row.type === 'project_active');
+  assert.equal(active.source, 'Ramsey municipal permits (SDL portal)');
+  assert.equal(active.retrieved, '2026-08-19');
+  // An entry the engine publishes without a source (e.g. a category cap)
+  // still renders: the readable type label stands in.
+  const capless = rows.find((row) => row.source === null || row.source === undefined);
+  if (capless) assert.ok(capless.label.length > 0);
 });
 
 test('no fractional number ever reaches the panel (whole-number display)', () => {

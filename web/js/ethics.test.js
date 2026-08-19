@@ -20,7 +20,7 @@ import {
  *
  * This page is the published rationale for the House Score, and it is only
  * worth anything if it describes the system that actually ran. V2 replaced
- * the additive V1 model with three capped base categories (project 25,
+ * the additive V1 model with three capped base categories (project 45,
  * capacity 25, fit 30), a mover blend into a 90–100 priority band with
  * exponential decay (flat to day 90, zero at day 365, the 275-day denominator
  * derived as 365 − 90), and a −25 verified-rental demotion that currently
@@ -32,7 +32,7 @@ import {
 // The V2 contract constants the page publishes. Mirrored from the plan's R2,
 // R4–R6 — a page constant that disagreed with the engine would make the
 // published rationale a lie about the map next to it.
-const V2_CAPS = { project: 25, capacity: 25, fit: 30 };
+const V2_CAPS = { project: 45, capacity: 25, fit: 48 };
 
 test('the page publishes the exact V2 category caps', () => {
   assert.deepEqual(CATEGORY_CAPS, V2_CAPS);
@@ -92,9 +92,9 @@ test('every traced row names the ICP trait it serves', () => {
 test('each traced category declares its V2 cap', () => {
   const byKey = Object.fromEntries(icpTrace().map((row) => [row.key, row]));
 
-  assert.equal(byKey.project.cap, 25);
+  assert.equal(byKey.project.cap, 45);
   assert.equal(byKey.capacity.cap, 25);
-  assert.equal(byKey.fit.cap, 30);
+  assert.equal(byKey.fit.cap, 48);
 });
 
 test('the mover row is a blend, not points', () => {
@@ -123,7 +123,7 @@ test('the model section renders one row per category with the exact caps', () =>
 
   assert.deepEqual(
     model.caps.map((row) => [row.key, row.cap]),
-    [['project', 25], ['capacity', 25], ['fit', 30]]
+    [['project', 45], ['capacity', 25], ['fit', 48]]
   );
 });
 
@@ -400,7 +400,7 @@ test('a page built with neither artifact still renders the rationale', () => {
   assert.ok(built.trace.length);
   assert.deepEqual(
     built.model.caps.map((row) => row.cap),
-    [25, 25, 30],
+    [45, 25, 48],
     'the contract is the page, with or without a run to report on'
   );
 });

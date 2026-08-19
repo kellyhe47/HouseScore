@@ -176,27 +176,26 @@
         "categories": {
           "project": 0,
           "capacity": 0,
-          "fit": 8
+          "fit": 10
         },
-        "base": 8,
+        "base": 10,
         "mover": {
           "eligible": true,
           "days_since_move": 47,
           "strength": 90.0
         },
-        "mover_lift": 83.0,
+        "mover_lift": 81.25,
         "rental_modifier": 0,
-        "pre_rounding": 91.0,
-        "adjustment": 0.0,
-        "score": 91,
+        "pre_rounding": 91.25,
+        "adjustment": -0.25,
         "evidence": [
           {
             "type": "fit_home_age",
-            "points": 8
+            "points": 10
           },
           {
             "type": "mover_recency",
-            "points": 83.0
+            "points": 81.25
           }
         ],
         "data_gaps": [
@@ -206,7 +205,8 @@
           {
             "type": "sdl_page_unavailable"
           }
-        ]
+        ],
+        "score": 91
       },
       "state_changes": [],
       "emitted_events": [],

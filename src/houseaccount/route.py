@@ -305,8 +305,6 @@ ANGLES: dict[str, Angle] = {
     "project_active": _CHURN_ANGLE,
     "project_cap_adjustment": _CHURN_ANGLE,
     "project_completed": _CHURN_ANGLE,
-    "project_major": _CHURN_ANGLE,
-    "project_multi_permit": _CHURN_ANGLE,
     "project_neutralized": _CHURN_ANGLE,
     "rental_registration": _DEFAULT_ANGLE,
     "rental_stale": _DEFAULT_ANGLE,

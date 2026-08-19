@@ -181,11 +181,11 @@
         "score_contract_version": "v2",
         "confidence": "normal",
         "categories": {
-          "project": 8,
+          "project": 15,
           "capacity": 0,
           "fit": 0
         },
-        "base": 8,
+        "base": 15,
         "mover": {
           "eligible": false,
           "days_since_move": null,
@@ -193,9 +193,8 @@
         },
         "mover_lift": 0.0,
         "rental_modifier": 0,
-        "pre_rounding": 8.0,
+        "pre_rounding": 15.0,
         "adjustment": 0.0,
-        "score": 8,
         "evidence": [
           {
             "type": "fit_roof_age",
@@ -203,10 +202,11 @@
           },
           {
             "type": "project_completed",
-            "points": 8
+            "points": 15
           }
         ],
-        "data_gaps": []
+        "data_gaps": [],
+        "score": 15
       },
       "state_changes": [],
       "emitted_events": [],

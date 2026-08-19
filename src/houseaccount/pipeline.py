@@ -81,7 +81,7 @@ from houseaccount.resolve import (
     ResolveReport,
     resolve,
 )
-from houseaccount.scoring.bundle import build_bundle, sdl_by_pin
+from houseaccount.scoring.bundle import _parse_us_date, build_bundle, sdl_by_pin
 from houseaccount.scoring.evidence import imagery_for
 from houseaccount.scoring.v2 import score_door_v2
 from houseaccount.sources.acs import AcsResult, AcsSource
@@ -602,6 +602,17 @@ def _score_doors(
         signals = vision.signals.get(door.pams_pin)
         sdl = sdl_pages.get(door.pams_pin)
         sdl_collected = bool(sdl) and sdl.get("collection_status") == "collected"
+        # AE10: one municipal permit present in both the SDL page and the
+        # statewide feed must count once. Socrata rows carry no municipal
+        # permit number (only their own recordid), so the id-based coalesce in
+        # the bundle can never match them — the join key here is the issue
+        # date, and the richer SDL record wins.
+        sdl_issue_dates = set()
+        if sdl_collected:
+            for app in (sdl.get("construction") or {}).get("permit_applications") or ():
+                issued = _parse_us_date(app.get("issue_date"))
+                if issued is not None:
+                    sdl_issue_dates.add(issued)
         ctx = {
             "parcel": {
                 "pams_pin": door.pams_pin,
@@ -622,6 +633,7 @@ def _score_doors(
                     "issue_date": record.date.isoformat() if record.date else None,
                 }
                 for index, record in enumerate(door.permits_2yr)
+                if record.date not in sdl_issue_dates
             ),
             "acs_block_group": (
                 {"dual_income_pct": door.block_group.dual_income_pct}

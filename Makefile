@@ -28,9 +28,11 @@ setup:
 pipeline:
 	$(DOTENV) $(PY) -m houseaccount.pipeline
 
-# The V1 harness is deleted with the V1 engine (ticket 103/R32); the V2 golden
-# suite is the fixture gate until ticket 104 rebuilds a dedicated eval run.
+# The eval run (ticket 104/R34): the 42-fixture V2 golden suite, then the
+# recalculation report built from the published artifacts — deterministic, no
+# network. The report builder exits nonzero on a PII violation (R25).
 eval: test-golden
+	$(PY) -m eval.v2.report
 
 test: test-py test-web
 

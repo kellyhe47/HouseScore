@@ -1,15 +1,74 @@
 {
-  "fixtures_total": 13,
-  "fixtures_passed": 13,
-  "fixture_failures": [],
-  "precision": 0.8181818181818182,
-  "recall": 0.9,
-  "hallucination_rate": 0.05,
-  "metrics_source": "frozen fixture 09 (hand labels not yet collected)",
-  "cost_total_usd": 0.0,
-  "doors_scored": 540,
-  "cost_per_door": 0.0,
-  "resolve_match_rate": 0.9741379310344828,
-  "resolve_match_rate_threshold": 0.95,
-  "ok": true
+  "score_contract_version": "v2",
+  "as_of": "2026-08-15",
+  "golden": {
+    "fixtures_total": 42
+  },
+  "coverage": {
+    "doors_total": 540,
+    "doors_scored": 540,
+    "coverage": 1.0
+  },
+  "categories": {
+    "project": {
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0
+    },
+    "capacity": {
+      "min": 0.0,
+      "max": 20.0,
+      "mean": 5.590741
+    },
+    "fit": {
+      "min": 0.0,
+      "max": 13.0,
+      "mean": 6.298148
+    }
+  },
+  "score_distribution": {
+    "min": 2.0,
+    "max": 92.0,
+    "mean": 12.383333,
+    "quantiles": {
+      "q10": 5.0,
+      "q20": 5.0,
+      "q30": 8.0,
+      "q40": 8.0,
+      "q50": 11.0,
+      "q60": 13.0,
+      "q70": 15.0,
+      "q80": 19.0,
+      "q90": 22.0
+    }
+  },
+  "missing_signals": {
+    "acs_missing": 540,
+    "imagery_missing": 540,
+    "rental_data_missing": 540
+  },
+  "source_freshness": {
+    "parcel": "2026-08-19",
+    "permits": "2026-08-19",
+    "acs": "2026-08-19",
+    "sales": "2026-08-19"
+  },
+  "exclusions": {
+    "stale_open_neutralized": 115,
+    "non_arms_length_sales": 78,
+    "voided_or_admin": 0,
+    "cross_source_dedup_collapsed": 0
+  },
+  "vision": {
+    "precision": 0.818182,
+    "recall": 0.9,
+    "hallucination_rate": 0.05,
+    "cost_per_door": 0.0,
+    "metrics_source": "frozen fixture 09 (hand labels not yet collected)",
+    "banner": "NOT A MEASUREMENT: precision/recall/hallucination are frozen fixture arithmetic over fixture 09's confusion set, not scores over hand-labeled imagery. Hand labels have not been collected yet."
+  },
+  "pii_scan": {
+    "ok": true,
+    "findings": []
+  }
 }

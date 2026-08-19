@@ -27,8 +27,8 @@ Per-ticket cap: 5 implementation iterations.
 | 103 | Cutover: pipeline/publish/SQLite/manifest V2 + delete V1 path + 540-door versioned run (R27/R28) | green | 1 | 102 | seq |
 | 104 | R34 recalculation report + PII check + eval harness replacement (R32/R34) + R36 outcome-log contract | green | 1 | 103 | seq |
 | 105 | Server + route surfaces: API, MCP, published, talk-track template map (R30) | green | 1 | 103 | seq |
-| 106 | Web UI: map ramp restop (R38), panel math, route chips, degradation copy | pending | 0 | 104,105 | batch W-web |
-| 107 | Ethics page V2 (R29) | pending | 0 | 104 | batch W-web |
+| 106 | Web UI: map ramp restop (R38), panel math, route chips, degradation copy | green | 1 | 104,105 | batch W-web |
+| 107 | Ethics page V2 (R29) | green | 1 | 104 | batch W-web |
 | 108 | R35 stale audit + allowlist; docs R31 (README/PRD/DEPLOY/handoff/wireframes pointers) | pending | 0 | 103,104,105,106,107 | seq |
 
 ## Wave plan
@@ -48,3 +48,4 @@ chain); 104/105 could parallelize but share eval-report consumers and the Makefi
   540/540 republished v2 (as_of 2026-08-15, warm cache, $0, zero network; scores 2-92, mean 12.4).
   KNOWN BRIDGE: 4 js reds in ethics.test.js (pins of deleted weights.py) — owned by 106/107.
 - 104 green iter 1: eval/v2/report.py + outcomes.py + make eval; deciles [5,5,8,8,11,13,15,19,22]; report.json regenerated; py exit 0.
+- 106+107 green iter 1 (batched; impl f188543): quantile ramp from report.json deciles, panel reconciliation, r2 share tokens, R29 ethics rewrite; js 271/0; live browser probe passed (map+panel math+ethics). 4-red JS bridge cleared.

@@ -1,11 +1,11 @@
 ---
 id: 106
 title: Web UI — map ramp restop (R38), panel math, route chips, degradation copy
-status: pending
+status: green
 depends_on: [104, 105]
 touches: [web/js/map.js, web/js/panel.js, web/js/route.js, web/js/*.test.js (V1-encoding fixtures)]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [web/js ramp/panel/route-ui/share/no-v1-strings tests + test-fixtures.js]
 branch: ""
 ---
 

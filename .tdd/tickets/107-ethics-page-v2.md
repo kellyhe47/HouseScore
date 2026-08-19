@@ -1,11 +1,11 @@
 ---
 id: 107
 title: Data & Ethics page V2 (R29)
-status: pending
+status: green
 depends_on: [104]
 touches: [web/js/ethics.js, web/js/ethics.test.js]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [web/js/ethics.test.js]
 branch: ""
 ---
 

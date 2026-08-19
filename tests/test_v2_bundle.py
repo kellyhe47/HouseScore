@@ -255,6 +255,26 @@ def test_r22_statewide_fills_only_sdl_absent_records():
     assert tuple(by_id["20240111"]["sources"]) == ("statewide",)
 
 
+def test_sdl_permit_dates_are_normalized_to_iso():
+    """SDL displays US-format dates; the engine's date reader is ISO-only, so
+    the bundle must convert or every SDL permit silently earns nothing."""
+    ctx = make_ctx(
+        sdl=make_sdl(
+            construction={
+                "permit_applications": [
+                    sdl_permit(issue_date="4/20/2023", close_date="6/26/2023")
+                ],
+                "inspections": [],
+                "violations": [],
+            }
+        ),
+    )
+    bundle = build_bundle(ctx, AS_OF)
+    (permit,) = bundle.permits
+    assert permit["issue_date"] == "2023-04-20"
+    assert permit["close_date"] == "2023-06-26"
+
+
 def test_r8_same_record_in_both_sources_coalesces_with_sdl_detail():
     ctx = make_ctx(
         sdl=make_sdl(

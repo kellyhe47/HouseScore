@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "pretest": "node scripts/gen-ramp-stops.mjs",
     "test": "node --test 'js/**/*.test.js'"
   }
 }

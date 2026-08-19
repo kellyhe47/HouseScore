@@ -160,7 +160,9 @@ OAK_PROPERTIES = scored_properties(
         evidence(
             "mover_recency",
             55.875,
-            "recent valid arm's-length move blends the score toward the mover priority band",
+            "home changed hands 30 days ago in a market sale — new owners are "
+            "the likeliest to start projects, so the score gets a large lift "
+            "that fades out over the first year",
         ),
     ],
 )

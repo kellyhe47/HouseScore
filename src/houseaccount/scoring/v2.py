@@ -454,7 +454,13 @@ def score_door_v2(bundle: V2Bundle, as_of: date) -> Mapping[str, Any]:
     pre_rental = blend(float(base), strength)
     mover_lift = pre_rental - base
     if mover_lift > 0:
-        add("mover_recency", mover_lift, "recent valid arm's-length move blends the score toward the mover priority band")
+        add(
+            "mover_recency",
+            mover_lift,
+            f"home changed hands {mover['days_since_move']} days ago in a market "
+            "sale — new owners are the likeliest to start projects, so the score "
+            "gets a large lift that fades out over the first year",
+        )
 
     # --- Rental (R6) ---
     rental_modifier = 0

@@ -15,7 +15,7 @@
 
 import { scoreColor, UNSCORED_COLOR, RAMP_CSS_GRADIENT } from './ramp.js';
 import { coverageText, filterDoors } from './filter.js';
-import { buildPanel, copyAddress, panelLayout } from './panel.js';
+import { buildPanel, copyAddress, evidenceLabel, panelLayout } from './panel.js';
 import { createMapState } from './state.js';
 import { createRoutePlanner, routeLine, REFRESH_PROMPT } from './route-ui.js';
 import { createWalk, readWalk, clearWalk, resumeOffer } from './walk.js';
@@ -83,8 +83,7 @@ const HOURS_OPTIONS = ['0.5', '1', '1.5', '2', '3'];
  * selection rule, never re-derived in the browser from a label table. The map
  * only formats it for reading.
  */
-const chipText = (reasonChip) =>
-  reasonChip ? String(reasonChip).replace(/_/g, ' ') : null;
+const chipText = (reasonChip) => (reasonChip ? evidenceLabel(reasonChip) : null);
 
 /* ── Element handles ─────────────────────────────────────────────────────── */
 
@@ -1288,7 +1287,7 @@ function evidenceRow(row) {
 
   const text = el('div', 'evidence__text');
   text.appendChild(el('div', 'evidence__sentence', row.reason));
-  text.appendChild(el('div', 'evidence__source', row.type.replace(/_/g, ' ')));
+  text.appendChild(el('div', 'evidence__source', row.label));
   wrapper.appendChild(text);
 
   return wrapper;
@@ -1308,7 +1307,7 @@ function thumbnail(row) {
   frame.appendChild(image);
   card.appendChild(frame);
 
-  const meta = el('div', 'thumb__meta', row.type.replace(/_/g, ' '));
+  const meta = el('div', 'thumb__meta', row.label);
   meta.appendChild(document.createElement('br'));
   meta.appendChild(el('span', null, imageryMeta(row.imagery)));
   card.appendChild(meta);
@@ -1331,7 +1330,7 @@ function imageryMeta(imagery) {
 function openLightbox(row) {
   clear(els.lightboxFrame);
   const image = new Image();
-  image.alt = `${row.type.replace(/_/g, ' ')} imagery`;
+  image.alt = `${row.label} imagery`;
   image.src = row.imagery.image_url;
   image.addEventListener('error', () => {
     clear(els.lightboxFrame);

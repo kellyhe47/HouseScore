@@ -101,10 +101,12 @@ class TestReportContent:
     def test_missing_signal_counts_by_gap_type(self, report):
         rep, _ = report
         gaps = rep["missing_signals"]
-        # This run published all three gap types on every door.
-        assert gaps["acs_missing"] == 540
-        assert gaps["imagery_missing"] == 540
+        # The rental registry is OPRA-only and absent from every live run, so
+        # its gap is on all 540 doors; the other counts vary with which keys
+        # and caches the run had, and are asserted only to be well-formed.
         assert gaps["rental_data_missing"] == 540
+        for key, count in gaps.items():
+            assert isinstance(count, int) and 0 <= count <= 540, key
 
     def test_source_freshness_from_manifest(self, report):
         rep, _ = report

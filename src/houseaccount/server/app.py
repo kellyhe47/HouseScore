@@ -74,6 +74,25 @@ _LOCAL_HOSTS = ("127.0.0.1:*", "localhost:*", "[::1]:*")
 _LOCAL_ORIGINS = ("http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*")
 
 
+class _RevalidatingStaticFiles(StaticFiles):
+    """StaticFiles that forces revalidation on every request.
+
+    Without a `Cache-Control` header browsers apply heuristic freshness to the
+    `Last-Modified` stamp and serve JS modules straight from cache without
+    asking the server. The Map UI is an ES-module graph, so after a deploy that
+    can mix a fresh `map.js` with a stale cached `share.js` — the import throws
+    before `loadDoors` ever runs and the map is stuck on "loading doors…".
+    `no-cache` means "revalidate every time", and the ETag StaticFiles already
+    sends keeps every unchanged file a 304, so the only cost is the conditional
+    request itself.
+    """
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def _deployed_hosts() -> list[str]:
     """The public hostnames this process is reachable at, read off the platform.
 
@@ -191,5 +210,5 @@ def create_app(data_dir: Path | None = None, eval_report: Path | None = None) ->
     # deployment URL the map rather than a 404.
     web_dir = Config.from_env().repo_root / WEB_DIR_NAME
     if web_dir.is_dir():
-        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+        app.mount("/", _RevalidatingStaticFiles(directory=web_dir, html=True), name="web")
     return app

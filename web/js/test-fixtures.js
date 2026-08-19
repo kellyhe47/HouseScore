@@ -204,7 +204,8 @@ export function doorWithScore(score, pin = 'pin_' + String(score)) {
  *
  * Evidence sums to base + mover_lift + rental_modifier:
  *   15 + 7 + 5 + 12 + 55.875 = 94.875 = 39 + 55.875 + 0
- * and 39 + 55.875 + 0 + 0.125 = 95, the displayed integer.
+ * and 39 + 55.875 + 0 + 0.125 = 95, the displayed integer. The fractional
+ * blend terms are deliberate: the panel must round them for display.
  */
 export function detailedDoor(overrides = {}) {
   return {
@@ -246,7 +247,9 @@ export function detailedDoor(overrides = {}) {
       {
         type: 'mover_recency',
         points: 55.875,
-        reason: 'recent valid arm\'s-length move blends the score toward the mover priority band',
+        reason: 'home changed hands 12 days ago in a market sale — new owners '
+          + 'are the likeliest to start projects, so the score gets a large '
+          + 'lift that fades out over the first year',
         imagery: null,
       },
     ],
@@ -573,8 +576,8 @@ export function evalReport(overrides = {}) {
       capacity: { min: 0.0, max: 20.0, mean: 5.590741 },
       fit: { min: 0.0, max: 13.0, mean: 6.298148 },
     },
-    // The distribution the map ramp is restopped against (R38): the ramp's
-    // stops are derived from these quantiles, never hand-picked.
+    // Published for the R34 report; the map ramp is fixed on the absolute
+    // 0–100 scale and does not consume these quantiles.
     score_distribution: {
       min: 2.0,
       max: 92.0,

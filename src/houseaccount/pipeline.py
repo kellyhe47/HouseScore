@@ -81,7 +81,7 @@ from houseaccount.resolve import (
     ResolveReport,
     resolve,
 )
-from houseaccount.scoring.bundle import build_bundle
+from houseaccount.scoring.bundle import build_bundle, sdl_by_pin
 from houseaccount.scoring.evidence import imagery_for
 from houseaccount.scoring.v2 import score_door_v2
 from houseaccount.sources.acs import AcsResult, AcsSource
@@ -270,7 +270,7 @@ def run_pipeline(
     )
 
     # --- score (V2: bundle -> score_door_v2, R27) -----------------------------
-    scored = _score_doors(doors, as_of=as_of, vision=vision)
+    scored = _score_doors(doors, as_of=as_of, vision=vision, data_dir=config.data_dir)
 
     # --- publish ------------------------------------------------------------
     manifest = RunManifest(
@@ -567,6 +567,7 @@ def _score_doors(
     *,
     as_of: date,
     vision: VisionStage,
+    data_dir: Path | None = None,
 ) -> list[tuple[DoorFacts, dict[str, Any] | None]]:
     """Every door through the V2 seam: build its evidence bundle, score it,
     and enrich imagery-derived evidence with its re-openable frame.
@@ -587,12 +588,20 @@ def _score_doors(
         for door in doors
     )
 
+    # The SDL property-history snapshot (permits, displayed sales, assessed
+    # valuations) is R22's primary lifecycle source. Without it, no door can
+    # ever earn project points from a municipal permit: the statewide feed
+    # below carries no dispositions and lags the portal.
+    sdl_pages = sdl_by_pin(data_dir) if data_dir is not None else {}
+
     scored: list[tuple[DoorFacts, dict[str, Any] | None]] = []
     for door in doors:
         if parcel_record_incomplete(door):
             scored.append((door, None))
             continue
         signals = vision.signals.get(door.pams_pin)
+        sdl = sdl_pages.get(door.pams_pin)
+        sdl_collected = bool(sdl) and sdl.get("collection_status") == "collected"
         ctx = {
             "parcel": {
                 "pams_pin": door.pams_pin,
@@ -625,6 +634,14 @@ def _score_doors(
             "rental_registry": {},
             "imagery": _imagery_inputs(signals, available=vision.available),
         }
+        if sdl_pages:
+            # R23: with the snapshot on disk, an uncollected page is a data
+            # gap, never proof of absence — flagged so the engine emits it.
+            # With no snapshot at all the keys stay out, and the bundle treats
+            # SDL as unknown rather than flooding every door with the gap.
+            ctx["sdl"] = sdl if sdl_collected else None
+            ctx["sdl_available"] = sdl_collected
+            ctx["sdl_match_exact_current"] = sdl_collected
         envelope = dict(score_door_v2(build_bundle(ctx, as_of), as_of))
         envelope["evidence"] = _attach_frames(envelope["evidence"], signals)
         scored.append((door, envelope))

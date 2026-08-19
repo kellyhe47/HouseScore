@@ -1,6 +1,6 @@
 {
   "score_contract_version": "v2",
-  "as_of": "2026-08-15",
+  "as_of": "2026-08-19",
   "golden": {
     "fixtures_total": 42
   },
@@ -12,40 +12,39 @@
   "categories": {
     "project": {
       "min": 0.0,
-      "max": 0.0,
-      "mean": 0.0
+      "max": 25.0,
+      "mean": 2.157407
     },
     "capacity": {
       "min": 0.0,
-      "max": 20.0,
-      "mean": 5.590741
+      "max": 25.0,
+      "mean": 9.525926
     },
     "fit": {
       "min": 0.0,
-      "max": 13.0,
-      "mean": 6.298148
+      "max": 21.0,
+      "mean": 7.648148
     }
   },
   "score_distribution": {
-    "min": 2.0,
-    "max": 92.0,
-    "mean": 12.383333,
+    "min": 5.0,
+    "max": 95.0,
+    "mean": 19.709259,
     "quantiles": {
-      "q10": 5.0,
-      "q20": 5.0,
-      "q30": 8.0,
-      "q40": 8.0,
-      "q50": 11.0,
-      "q60": 13.0,
-      "q70": 15.0,
-      "q80": 19.0,
-      "q90": 22.0
+      "q10": 10.0,
+      "q20": 10.0,
+      "q30": 13.0,
+      "q40": 15.0,
+      "q50": 18.0,
+      "q60": 20.0,
+      "q70": 24.0,
+      "q80": 27.0,
+      "q90": 31.0
     }
   },
   "missing_signals": {
-    "acs_missing": 540,
-    "imagery_missing": 540,
-    "rental_data_missing": 540
+    "rental_data_missing": 540,
+    "sdl_page_unavailable": 8
   },
   "source_freshness": {
     "parcel": "2026-08-19",
@@ -54,8 +53,8 @@
     "sales": "2026-08-19"
   },
   "exclusions": {
-    "stale_open_neutralized": 115,
-    "non_arms_length_sales": 78,
+    "stale_open_neutralized": 452,
+    "non_arms_length_sales": 82,
     "voided_or_admin": 0,
     "cross_source_dedup_collapsed": 0
   },

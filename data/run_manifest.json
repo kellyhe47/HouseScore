@@ -1,8 +1,8 @@
 {
-  "run_at": "2026-08-19T06:35:46.721939+00:00",
-  "as_of": "2026-08-15",
+  "run_at": "2026-08-19T15:54:21.157457+00:00",
+  "as_of": "2026-08-19",
   "score_contract_version": "v2",
-  "code_version": "5327cc5",
+  "code_version": "1557b00",
   "acs_dual_income_threshold": 0.35,
   "retrieved": {
     "parcel": "2026-08-19",
@@ -29,34 +29,32 @@
     }
   },
   "vision": {
-    "available": false,
-    "declination_reason": "OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms.",
+    "available": true,
+    "declination_reason": null,
     "answers_total": 0,
     "answers_lost": 0,
-    "doors_with_imagery": 0
+    "doors_with_imagery": 125
   },
   "degradations": [
-    "CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so block-group statistics were not fetched",
-    "municipal rental registration not obtained via OPRA",
-    "OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms."
+    "municipal rental registration not obtained via OPRA"
   ],
   "resolve": {
     "doors_total": 540,
-    "doors_with_signal": 115,
-    "coverage": 0.21296296296296297,
-    "permits_total": 1740,
+    "doors_with_signal": 540,
+    "coverage": 1.0,
+    "permits_total": 1732,
     "permits_in_territory": 232,
     "permits_matched": 144,
     "permits_unmatched": 88,
-    "permits_in_window": 1740,
-    "permits_matched_municipal": 1695,
+    "permits_in_window": 1732,
+    "permits_matched_municipal": 1688,
     "permit_match_rate": 0.6206896551724138,
-    "municipal_match_rate": 0.9741379310344828,
+    "municipal_match_rate": 0.9745958429561201,
     "block_lot_match_rate": 0.6206896551724138,
     "address_match_rate": 0.0,
-    "doors_with_block_group": 0,
-    "acs_available": false,
-    "acs_reason": "CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so block-group statistics were not fetched",
+    "doors_with_block_group": 540,
+    "acs_available": true,
+    "acs_reason": null,
     "rental_declination_reason": "municipal rental registration not obtained via OPRA"
   }
 }

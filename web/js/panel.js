@@ -67,6 +67,19 @@ export const GAP_MESSAGES = {
 };
 
 /**
+ * Reader-facing names for evidence types whose underscore-spelling is jargon.
+ * Every other type reads fine as its own words; the fallback is the type with
+ * underscores as spaces.
+ */
+const TYPE_LABELS = {
+  mover_recency: 'recent move-in',
+};
+
+/** The doorstep name for one evidence type. */
+export const evidenceLabel = (type) =>
+  TYPE_LABELS[type] ?? String(type).replace(/_/g, ' ');
+
+/**
  * One evidence line, ready to render.
  *
  * `signed` and `hasSign` are separate because a zero-point line is not "+0" —
@@ -75,10 +88,13 @@ export const GAP_MESSAGES = {
  * decides that there is one.
  */
 function toRow(item) {
-  const points = item.points;
+  // Whole numbers only at the doorstep: the engine's mover blend is fractional,
+  // but a rep must never read "+61.23400494288421" off the panel.
+  const points = Math.round(item.points);
   const hasSign = points !== 0;
   return {
     type: item.type,
+    label: evidenceLabel(item.type),
     points,
     hasSign,
     signed: hasSign ? (points > 0 ? `+${points}` : `${MINUS}${Math.abs(points)}`) : null,
@@ -104,15 +120,19 @@ function toRow(item) {
 function buildBreakdown(door, scored) {
   if (!scored || !door.categories) return null;
 
-  const base = door.base ?? 0;
-  const moverLift = door.mover_lift ?? 0;
-  const rentalModifier = door.rental_modifier ?? 0;
-  const adjustment = door.adjustment ?? 0;
-
   // What the trail summed to before the clamp/rounding adjustment: below 0 the
   // published 0 was a floor, above 100 the published 100 was a ceiling. Saying
   // so is what keeps the arithmetic honest for the one reader who checks.
-  const unclamped = base + moverLift + rentalModifier;
+  const unclamped =
+    (door.base ?? 0) + (door.mover_lift ?? 0) + (door.rental_modifier ?? 0);
+
+  // Whole numbers only: each displayed term is rounded, and the adjustment is
+  // re-derived from the rounded terms — not rounded itself — so the shown
+  // arithmetic still sums exactly to the published integer score.
+  const base = Math.round(door.base ?? 0);
+  const moverLift = Math.round(door.mover_lift ?? 0);
+  const rentalModifier = Math.round(door.rental_modifier ?? 0);
+  const adjustment = door.score - base - moverLift - rentalModifier;
 
   return {
     categories: V2_CATEGORIES.map((category) => ({
@@ -130,8 +150,8 @@ function buildBreakdown(door, scored) {
 }
 
 /**
- * The reconciling line under the subtotals, e.g. `39 + 55.875 + 0 + 0.125 = 95`
- * — or, for the demoted rental floored at 0, `13 + 0 − 25 + 12 = 0`, where the
+ * The reconciling line under the subtotals, e.g. `39 + 56 + 0 + 0 = 95` — or,
+ * for the demoted rental floored at 0, `13 + 0 − 25 + 12 = 0`, where the
  * 12-point adjustment is the clamp made visible. Negative terms wear the
  * typographic minus the rest of the panel uses.
  */

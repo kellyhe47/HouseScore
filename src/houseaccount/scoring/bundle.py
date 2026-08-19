@@ -64,7 +64,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from houseaccount.normalize import parse_deed_date
 from houseaccount.scoring.v2 import V2Bundle
 
-__all__ = ["build_bundle", "build_bundles"]
+__all__ = ["build_bundle", "build_bundles", "sdl_by_pin"]
 
 #: Single-family residential MOD-IV property class.
 _SINGLE_FAMILY = "2"
@@ -220,14 +220,19 @@ def _sdl_projects(sdl: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
         if not municipal_id:
             continue
         is_amendment = str(app.get("work_type") or "").strip().lower() in _AMENDMENT_TYPES
+        # SDL displays US-format dates ("4/20/2023"); the engine's date reader
+        # is ISO-only, so an unconverted issue date silently disqualifies the
+        # permit from ever earning project points.
+        issue = _parse_us_date(app.get("issue_date"))
+        close = _parse_us_date(app.get("close_date"))
         record = {
             "municipal_id": municipal_id,
             "sources": ("SDL",),
             "description": app.get("work_description"),
             "work_type": app.get("work_type"),
             "status": app.get("status"),
-            "issue_date": app.get("issue_date"),
-            "close_date": app.get("close_date"),
+            "issue_date": issue.isoformat() if issue else None,
+            "close_date": close.isoformat() if close else None,
             "certificates": app.get("certificates"),
             "subcodes": app.get("subcodes"),
             "total_cost": _parse_money(app.get("total_cost")),
@@ -388,8 +393,14 @@ def _territory_parcels(data_dir: Path) -> list[dict[str, Any]]:
     return parcels
 
 
-def _sdl_by_pin(data_dir: Path) -> dict[str, Mapping[str, Any]]:
-    snapshot = _load_json(data_dir / "sdl_property_history_territory.json")
+def sdl_by_pin(data_dir: Path) -> dict[str, Mapping[str, Any]]:
+    path = data_dir / "sdl_property_history_territory.json"
+    if not path.is_file():
+        # No snapshot collected (e.g. a fresh checkout or a test tmpdir): SDL
+        # is unknown for every door, which callers treat as "keys stay out of
+        # the ctx" rather than "every page is unavailable".
+        return {}
+    snapshot = _load_json(path)
     records: Iterable[Mapping[str, Any]] = snapshot.get("properties") or ()
     return {str(r.get("pams_pin")): r for r in records}
 
@@ -408,12 +419,12 @@ def build_bundles(
     root = Path(data_dir)
     parcels = _territory_parcels(root)
     territory = tuple(parcels)
-    sdl_by_pin = _sdl_by_pin(root)
+    by_pin = sdl_by_pin(root)
 
     bundles: dict[str, V2Bundle] = {}
     for parcel in parcels:
         pin = parcel["pams_pin"]
-        sdl = sdl_by_pin.get(pin)
+        sdl = by_pin.get(pin)
         collected = bool(sdl) and sdl.get("collection_status") == "collected"
         ctx = {
             "parcel": parcel,

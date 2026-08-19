@@ -758,7 +758,9 @@ V2_REASON_SENTENCES = [
     "neighborhood-level ACS dual-income prior at or above 35% (block-group prior, not a household claim)",
     "verified historical exterior-condition decline between the 2015 and 2020 imagery vintages",
     "current verified rental registration demotes the door",
-    "recent valid arm's-length move blends the score toward the mover priority band",
+    "home changed hands 30 days ago in a market sale — new owners are the "
+    "likeliest to start projects, so the score gets a large lift that fades "
+    "out over the first year",
 ]
 
 #: Words that only appear in prose derived from the file. None may be spoken.

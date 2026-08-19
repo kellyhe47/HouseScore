@@ -273,11 +273,14 @@ test('the category subtotals sum to the base', () => {
   assert.equal(breakdown.base, 39);
 });
 
-test('the breakdown carries the blend arithmetic fields', () => {
+test('the breakdown carries the blend arithmetic fields, rounded for display', () => {
+  // The envelope's mover_lift is 55.875 and its adjustment 0.125; the panel
+  // shows whole numbers, with the adjustment re-derived from the rounded
+  // terms so the arithmetic still lands exactly on the published score.
   const { breakdown } = buildPanel(detailedDoor());
-  assert.equal(breakdown.moverLift, 55.875);
+  assert.equal(breakdown.moverLift, 56);
   assert.equal(breakdown.rentalModifier, 0);
-  assert.equal(breakdown.adjustment, 0.125);
+  assert.equal(breakdown.adjustment, 0);
   assert.equal(breakdown.score, 95);
 });
 
@@ -296,8 +299,10 @@ test('the breakdown arithmetic reconciles to the displayed integer', () => {
 test('the evidence trail sums to base + mover lift + rental modifier (R7)', () => {
   // Including the cap-adjustment entry: scoredDoor's capacity signals exceed
   // the 25 cap, and the explicit −3 entry is what makes the trail add up.
+  // Both sides round per-term for display; the only fractional term (the
+  // mover blend) appears once in each, so the rounded sums still agree.
   for (const door of [detailedDoor(), clampedDoor(), scoredDoor()]) {
-    const total = door.evidence.reduce((sum, item) => sum + item.points, 0);
+    const total = door.evidence.reduce((sum, item) => sum + Math.round(item.points), 0);
     const { breakdown } = buildPanel(door);
     assert.equal(
       total,
@@ -307,9 +312,25 @@ test('the evidence trail sums to base + mover lift + rental modifier (R7)', () =
   }
 });
 
-test('the math line shows the blend arithmetic for a fresh mover', () => {
+test('the math line shows the blend arithmetic for a fresh mover, in whole numbers', () => {
   const { breakdown } = buildPanel(detailedDoor());
-  assert.equal(breakdown.mathLine, '39 + 55.875 + 0 + 0.125 = 95');
+  assert.equal(breakdown.mathLine, '39 + 56 + 0 + 0 = 95');
+});
+
+test('no fractional number ever reaches the panel (whole-number display)', () => {
+  for (const door of [detailedDoor(), clampedDoor(), scoredDoor()]) {
+    const { rows, breakdown } = buildPanel(door);
+    for (const row of rows) {
+      assert.ok(Number.isInteger(row.points), `row ${row.type} shows ${row.points}`);
+      if (row.signed !== null) {
+        assert.doesNotMatch(row.signed, /\./, `row ${row.type} shows ${row.signed}`);
+      }
+    }
+    for (const key of ['base', 'moverLift', 'rentalModifier', 'adjustment']) {
+      assert.ok(Number.isInteger(breakdown[key]), `${key} shows ${breakdown[key]}`);
+    }
+    assert.doesNotMatch(breakdown.mathLine, /\./, breakdown.mathLine);
+  }
 });
 
 test('the math line shows the rental demotion and the floor clamp', () => {

@@ -63,7 +63,88 @@ terms that apply to that use.
 | `sdl_roof_permit_details.json` | The 210 collected roof permit-detail pages, keyed by SDL URL. |
 | `territory.geojson` | The 540-parcel territory and authoritative PAMS parcel IDs. |
 | `../scripts/build_sdl_property_history.py` | Offline deterministic coalescer and privacy guard; performs no network access. |
+| `../scripts/match_sdl_permits.py` | Offline exact-address matcher and roof-keyword relevance classifier used to build the roof sidecar. |
 | `../tests/test_build_sdl_property_history.py` | Tests for territory completeness, per-house grouping, privacy exclusions, roof enrichment, and supplemental permits. |
+| `../tests/test_match_sdl_permits.py` | Tests for roof-search address matching, range handling, detail enrichment, and keyword false positives. |
+
+## Roof keyword snapshot provenance
+
+The coalesced dataset includes an earlier, separately collected SDL permit
+search for the keyword `roof`. Its exact source was the
+[Ramsey permit search](https://www.sdlportal.com/towns/nj/bergen/ramsey/search2?st=permits&limit=100&as=1&pc=&loc=&kw=roof&wt=&stps=all&ug=all&stpd=all&psd=0&ped=0).
+That snapshot is retained because it supplies richer detail-page fields and
+shows where the property-page permit tables were incomplete.
+
+| Roof snapshot item | Value |
+|---|---:|
+| Search-result records | 2,043 |
+| Records matched to territory properties | 210 |
+| Territory properties with at least one match | 198 |
+| Matched records with explicit roofing language | 207 |
+| Properties with explicit roof work | 197 |
+| SDL keyword-only results without explicit roofing language | 3 |
+| Matched detail pages collected | 210 of 210 |
+| Ambiguous address matches | 0 |
+
+The 342 properties without a match mean only that no exact address match was
+present in this keyword snapshot. They do not establish that a property has no
+permit or no historic roof work.
+
+The roof search was collected and reconciled as follows:
+
+1. Date-filtered result batches were saved in intervals small enough to avoid
+   SDL's 100-result display cap. The unrestricted latest-100 batch was also
+   retained so recent records without a displayed issue date were not lost.
+2. Overlapping rows were deduplicated while preserving the accepted source
+   batches in each record's `retrieval_batches` field.
+3. Rows were normalized and matched to `territory.geojson` by exact normalized
+   situs address. Ambiguous addresses were not matched, address ranges were not
+   expanded, landmark suffixes were removed only when the preceding text began
+   with a street number, and no owner or occupant data was used.
+4. Detail pages were collected for all 210 territory matches and joined by SDL
+   detail URL.
+5. A conservative whole-word classifier separated explicit roofing work from
+   rows SDL returned only because `roof` appeared as a substring elsewhere.
+
+The accepted date-filtered batches cover displayed issue dates from 2002-01-01
+through 2026-12-31. The snapshot was collected on 2026-08-18, so the end date is
+a query boundary rather than a claim about future records. SDL's date picker
+could not produce a bounded pre-2002 search, and pre-2002 queries that still
+hit the 100-result cap were excluded. Coverage before 2002 is therefore not
+complete.
+
+Three matched results contained phrases such as “child proof” rather than an
+explicit roofing description. They remain for auditability with
+`keyword_relevance.classification: "portal_keyword_only"`; the other 207 are
+classified as `explicit_roof_work`. Use that classification when conducting a
+roof-specific analysis.
+
+The roof sidecar's `detail_page` may include the displayed timeline, comments,
+use group, status and plan-review history, subcodes, related permits,
+construction costs, fees and balances, inspections, attachments, contractors,
+and status history. Empty arrays mean that SDL displayed no entry in this
+snapshot, not that the underlying event or contractor did not exist. All 210
+detail pages displayed comments, 207 displayed a construction cost, and 247
+inspection rows appeared across 118 permits. No contractor entries were
+displayed.
+
+The property-history artifact remains the primary dataset. As an intermediate
+matching audit artifact, `sdl_roof_permits_territory.json` has a `properties[]`
+entry for each territory parcel with `pams_pin`, `block`, `lot`, `address`,
+`normalized_address`, and `permits`. Matched permits preserve
+`control_number`, `permit_number`, `issue_date`, `location`, `status`,
+`work_type`, `subcodes`, `work_description`, `detail_url`, and
+`retrieval_batches`; matching adds `match_method`, `normalized_location`,
+`keyword_relevance`, and `detail_page`.
+
+For audits that need the intermediate matching record,
+`sdl_roof_permits_territory.json` also preserves `coverage`,
+`accepted_batches`, `match_policy`, summary counts, and the unmatched,
+ambiguous, and duplicate-territory-address collections. There were no duplicate
+normalized territory addresses and no ambiguous matches in this snapshot. Any
+search row with no territory match remains in `unmatched_records`; a row whose
+normalized address identifies multiple territory parcels remains in
+`ambiguous_records`. Each retained row includes its matching reason.
 
 ## Primary schema
 
@@ -143,14 +224,28 @@ PYTHONPATH=. .venv/bin/python scripts/build_sdl_property_history.py \
   --output data/sdl_property_history_territory.json
 ```
 
+If the roof matching inputs change, rebuild that sidecar first:
+
+```sh
+PYTHONPATH=src .venv/bin/python scripts/match_sdl_permits.py \
+  --raw data/sdl_roof_permits_raw.json \
+  --territory data/territory.geojson \
+  --details data/sdl_roof_permit_details.json \
+  --output data/sdl_roof_permits_territory.json
+```
+
 Run the focused tests and useful integrity checks:
 
 ```sh
-PYTHONPATH=. .venv/bin/pytest -q tests/test_build_sdl_property_history.py
+PYTHONPATH=. .venv/bin/pytest -q \
+  tests/test_build_sdl_property_history.py \
+  tests/test_match_sdl_permits.py
 jq '.summary' data/sdl_property_history_territory.json
 jq '.properties | length' data/sdl_property_history_territory.json
 jq '[.. | objects | select(has("owner") or has("agent"))] | length' \
   data/sdl_property_history_territory.json
+jq '.summary' data/sdl_roof_permits_territory.json
+jq '.records | length' data/sdl_roof_permit_details.json
 ```
 
 The expected results are 540 properties, 210 roof enrichments, and zero owner
@@ -167,5 +262,7 @@ source documents before an official or property-specific decision.
 A suggested citation is:
 
 > SDL Portal — Ramsey Borough, public property and construction-history pages;
-> browser snapshot collected 2026-08-18 for the HouseAccount 540-parcel Ramsey
-> territory; owner and mailing fields excluded; eight SDL pages unavailable.
+> plus public permit-search and detail pages for keyword “roof”; browser
+> snapshots collected 2026-08-18 for the HouseAccount 540-parcel Ramsey
+> territory; exact normalized situs-address matching; owner and mailing fields
+> excluded; eight SDL property pages unavailable.

@@ -78,9 +78,8 @@ including 14 supplemental roof records absent from the property-page tables.
 Owner/mailing and permit-agent fields are excluded. This remains supplemental
 research, not a replacement for the Socrata source used by scoring. See
 [`data/README-sdl-property-history.md`](../data/README-sdl-property-history.md)
-for provenance, schema, privacy choices, and limitations, and the
-[roof-specific README](../data/README-sdl-roof-permits.md) for keyword coverage
-and false-positive handling.
+for provenance, schema, privacy choices, property-page limitations, roof
+keyword coverage, and false-positive handling.
 
 **Census ACS5:** B23007 (children × parents' employment — dual-income proxy), B19013 (median HH income), B08303 (commute time) confirmed; block-group level; Ramsey = state 34 / county 003 / cousub 61170. Free API key required (keyless calls now blocked).
 

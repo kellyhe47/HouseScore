@@ -81,7 +81,12 @@ from houseaccount.resolve import (
     ResolveReport,
     resolve,
 )
-from houseaccount.scoring.bundle import _parse_us_date, build_bundle, sdl_by_pin
+from houseaccount.scoring.bundle import (
+    _parse_us_date,
+    build_bundle,
+    roof_permits_by_pin,
+    sdl_by_pin,
+)
 from houseaccount.scoring.evidence import imagery_for
 from houseaccount.scoring.v2 import score_door_v2
 from houseaccount.sources.acs import AcsResult, AcsSource
@@ -593,6 +598,7 @@ def _score_doors(
     # ever earn project points from a municipal permit: the statewide feed
     # below carries no dispositions and lags the portal.
     sdl_pages = sdl_by_pin(data_dir) if data_dir is not None else {}
+    roof_pages = roof_permits_by_pin(data_dir) if data_dir is not None else {}
 
     scored: list[tuple[DoorFacts, dict[str, Any] | None]] = []
     for door in doors:
@@ -607,12 +613,17 @@ def _score_doors(
         # permit number (only their own recordid), so the id-based coalesce in
         # the bundle can never match them — the join key here is the issue
         # date, and the richer SDL record wins.
+        roof_permits = roof_pages.get(door.pams_pin, ())
         sdl_issue_dates = set()
         if sdl_collected:
             for app in (sdl.get("construction") or {}).get("permit_applications") or ():
                 issued = _parse_us_date(app.get("issue_date"))
                 if issued is not None:
                     sdl_issue_dates.add(issued)
+        for permit in roof_permits:
+            raw = permit.get("issue_date")
+            if raw:
+                sdl_issue_dates.add(date.fromisoformat(raw))
         ctx = {
             "parcel": {
                 "pams_pin": door.pams_pin,
@@ -654,6 +665,8 @@ def _score_doors(
             ctx["sdl"] = sdl if sdl_collected else None
             ctx["sdl_available"] = sdl_collected
             ctx["sdl_match_exact_current"] = sdl_collected
+        if roof_permits:
+            ctx["sdl_roof_permits"] = roof_permits
         envelope = dict(score_door_v2(build_bundle(ctx, as_of), as_of))
         envelope["evidence"] = _attach_frames(envelope["evidence"], signals)
         scored.append((door, envelope))

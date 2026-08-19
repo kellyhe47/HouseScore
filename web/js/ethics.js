@@ -116,6 +116,35 @@ const ICP_TRAITS = [
 export function icpTrace() {
   return [
     {
+      key: 'mover',
+      label: 'Mover',
+      cap: null,
+      // Not a capped point category, but its lift has a true ceiling: at an
+      // empty base the blend adds the full 90; richer bases gain less and
+      // land inside the 90-100 band.
+      capLabel: 'max 90',
+      trait: 'Recently moved in',
+      body:
+        'A recent valid arm’s-length move does not add points: it blends '
+        + 'the score toward the priority band, with a strength that decays as '
+        + 'the move ages. The strongest trait gets the strongest mechanism.',
+      signals: [
+        {
+          points: '→ 90+',
+          description:
+            'Deed recorded within 90 days — the window in which a new owner is '
+            + 'still choosing every provider they will keep. The score blends '
+            + 'toward the low-90s priority band, whatever the base.',
+        },
+        {
+          points: 'fades',
+          description:
+            'From day 91 the pull decays on an exponential, reaching zero at '
+            + 'day 365 — a year in, a mover is a resident.',
+        },
+      ],
+    },
+    {
       key: 'project',
       label: 'Project',
       cap: CATEGORY_CAPS.project,
@@ -215,35 +244,6 @@ export function icpTrace() {
           description:
             'A lot of at least 0.5 acres — grounds that make outdoor work a '
             + 'standing job rather than an afternoon.',
-        },
-      ],
-    },
-    {
-      key: 'mover',
-      label: 'Mover blend',
-      cap: null,
-      // Not a capped point category, but its lift has a true ceiling: at an
-      // empty base the blend adds the full 90; richer bases gain less and
-      // land inside the 90-100 band.
-      capLabel: 'max 90',
-      trait: 'Recently moved in',
-      body:
-        'A recent valid arm’s-length move does not add points: it blends '
-        + 'the score toward the priority band, with a strength that decays as '
-        + 'the move ages. The strongest trait gets the strongest mechanism.',
-      signals: [
-        {
-          points: '→ 90+',
-          description:
-            'Deed recorded within 90 days — the window in which a new owner is '
-            + 'still choosing every provider they will keep. The score blends '
-            + 'toward the low-90s priority band, whatever the base.',
-        },
-        {
-          points: 'fades',
-          description:
-            'From day 91 the pull decays on an exponential, reaching zero at '
-            + 'day 365 — a year in, a mover is a resident.',
         },
       ],
     },

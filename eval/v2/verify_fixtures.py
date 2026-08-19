@@ -43,7 +43,7 @@ MOVER_ZERO_DAY = 365
 RENTAL_MODIFIER = -25
 NOMINAL_PRICE_MAX = 100  # R3: at or below $100 is non-arm's-length
 
-ROOF_INSTALL_KEYWORDS = ("roof replacement", "reroof", "reshingle")
+ROOF_INSTALL_KEYWORDS = ("roof replacement", "reroof", "re-roof", "reshingle", "new roof")
 EXTERIOR_KEYWORDS = ("siding", "roof", "window", "facade", "paint", "stucco")
 TERMINAL_COMPLETED = "completed"
 NON_QUALIFYING_DISPOSITIONS = {"voided", "abandoned", "denied", "expired", "administrative"}

@@ -64,7 +64,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from houseaccount.normalize import parse_deed_date
 from houseaccount.scoring.v2 import V2Bundle
 
-__all__ = ["build_bundle", "build_bundles", "sdl_by_pin"]
+__all__ = ["build_bundle", "build_bundles", "roof_permits_by_pin", "sdl_by_pin"]
 
 #: Single-family residential MOD-IV property class.
 _SINGLE_FAMILY = "2"
@@ -205,6 +205,33 @@ def _sales(ctx: Mapping[str, Any], as_of: date) -> tuple[dict[str, Any], ...]:
     return ()
 
 
+def _sdl_disposition(status: Any) -> str | None:
+    """Map SDL's displayed status vocabulary onto the engine's dispositions.
+
+    SDL never says "completed" — a finished Ramsey permit displays
+    "CA and Close Date Issued", "CO/CCO and Close Date Issued",
+    "Closed with Date" or "Certificate (CA) Issued". Without this mapping no
+    SDL permit can ever be completed, which silently kills both the
+    completed-project points and every roof-age band. Conservative on the
+    edges: "Finals Passed", "Certificate (TCO) Issued" (temporary) and
+    review states stay None (eligible as active, never completed);
+    "Stale" reads as expired.
+    """
+    text = str(status or "").strip().lower()
+    if not text:
+        return None
+    if "close date issued" in text or text == "closed with date" or text.startswith(
+        "certificate (ca)"
+    ):
+        return "completed"
+    for terminal in ("voided", "abandoned", "denied", "expired"):
+        if terminal in text:
+            return terminal
+    if text == "stale":
+        return "expired"
+    return None
+
+
 def _sdl_projects(sdl: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
     """SDL permit applications grouped by municipal record identity (R8).
 
@@ -225,14 +252,21 @@ def _sdl_projects(sdl: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
         # permit from ever earning project points.
         issue = _parse_us_date(app.get("issue_date"))
         close = _parse_us_date(app.get("close_date"))
+        disposition = _sdl_disposition(app.get("status"))
         record = {
             "municipal_id": municipal_id,
             "sources": ("SDL",),
             "description": app.get("work_description"),
             "work_type": app.get("work_type"),
             "status": app.get("status"),
+            "disposition": disposition,
             "issue_date": issue.isoformat() if issue else None,
             "close_date": close.isoformat() if close else None,
+            # The engine's completion reader looks at `completion_date`; SDL's
+            # close date is that fact under its municipal name.
+            "completion_date": (
+                close.isoformat() if close and disposition == "completed" else None
+            ),
             "certificates": app.get("certificates"),
             "subcodes": app.get("subcodes"),
             "total_cost": _parse_money(app.get("total_cost")),
@@ -252,9 +286,25 @@ def _sdl_projects(sdl: Mapping[str, Any] | None) -> dict[str, dict[str, Any]]:
 
 
 def _permits(ctx: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
-    """R22 row: SDL primary for lifecycle; statewide fills SDL-absent records
-    and coalesces (R8) when both carry the same municipal record."""
+    """R22 row: SDL primary for lifecycle; the roof-permit collection fills the
+    descriptions the property-history pages leave blank; statewide fills
+    SDL-absent records and coalesces (R8) when both carry the same municipal
+    record."""
     projects = _sdl_projects(ctx.get("sdl"))
+    for permit in ctx.get("sdl_roof_permits") or ():
+        municipal_id = str(permit.get("municipal_id") or "")
+        if not municipal_id:
+            continue
+        existing = projects.get(municipal_id)
+        if existing is None:
+            projects[municipal_id] = dict(permit)
+        else:
+            # Same municipal record, richer detail page: the keyword-searched
+            # roof collection carries the work description ("RE-ROOF/ICE
+            # SHIELD") that pre-2015 property-history rows display blank.
+            for key in ("description", "disposition", "issue_date", "work_type"):
+                if not existing.get(key):
+                    existing[key] = permit.get(key)
     for permit in ctx.get("statewide_permits") or ():
         municipal_id = str(permit.get("municipal_id") or permit.get("id") or "")
         if not municipal_id:
@@ -393,6 +443,52 @@ def _territory_parcels(data_dir: Path) -> list[dict[str, Any]]:
     return parcels
 
 
+def roof_permits_by_pin(data_dir: Path) -> dict[str, tuple[dict[str, Any], ...]]:
+    """The keyword-searched roof-permit collection, in the SDL permit shape.
+
+    data/sdl_roof_permits_territory.json is a portal-wide search for "roof"
+    joined back to territory parcels, and its detail pages carry the work
+    descriptions the property-history rows display blank — without them no
+    pre-2015 roof install can ever be recognized as one. Missing file -> {}.
+    """
+    path = data_dir / "sdl_roof_permits_territory.json"
+    if not path.is_file():
+        return {}
+    snapshot = _load_json(path)
+    out: dict[str, tuple[dict[str, Any], ...]] = {}
+    for prop in snapshot.get("properties") or ():
+        permits = []
+        for p in prop.get("permits") or ():
+            municipal_id = str(p.get("permit_number") or p.get("control_number") or "")
+            if not municipal_id:
+                continue
+            detail = p.get("detail_page") or {}
+            description = (
+                str(p.get("work_description") or "").strip()
+                or str(detail.get("comments") or "").strip()
+                or None
+            )
+            issue = _parse_us_date(p.get("issue_date"))
+            permits.append(
+                {
+                    "municipal_id": municipal_id,
+                    "sources": ("SDL",),
+                    "description": description,
+                    "work_type": p.get("work_type"),
+                    "status": p.get("status"),
+                    "disposition": _sdl_disposition(p.get("status")),
+                    # The search listing shows no close date; for a terminal
+                    # record the engine's R10/R17 fallback reads the issue
+                    # date, which is the right vintage for a roof's age.
+                    "issue_date": issue.isoformat() if issue else None,
+                    "control_number": p.get("control_number"),
+                }
+            )
+        if permits:
+            out[str(prop.get("pams_pin"))] = tuple(permits)
+    return out
+
+
 def sdl_by_pin(data_dir: Path) -> dict[str, Mapping[str, Any]]:
     path = data_dir / "sdl_property_history_territory.json"
     if not path.is_file():
@@ -420,6 +516,7 @@ def build_bundles(
     parcels = _territory_parcels(root)
     territory = tuple(parcels)
     by_pin = sdl_by_pin(root)
+    roof_by_pin = roof_permits_by_pin(root)
 
     bundles: dict[str, V2Bundle] = {}
     for parcel in parcels:
@@ -434,6 +531,7 @@ def build_bundles(
             # proof of absence — flagged so the engine emits the gap.
             "sdl_available": collected,
             "sdl_match_exact_current": collected,
+            "sdl_roof_permits": roof_by_pin.get(pin, ()),
             "statewide_permits": (),
             "territory_parcels": territory,
             "acs_block_group": {},

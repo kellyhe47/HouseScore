@@ -161,7 +161,7 @@ _TERMINAL_NONQUALIFYING = {
     "administrative",
 }
 _ROOF_KEYWORDS = ("roof", "reroof", "reshingle")
-_ROOF_INSTALL_KEYWORDS = ("replacement", "reroof", "reshingle")
+_ROOF_INSTALL_KEYWORDS = ("replacement", "reroof", "re-roof", "reshingle", "new roof")
 _ROOF_DISQUALIFIERS = (
     "repair",
     "partial",
@@ -448,14 +448,16 @@ def score_door_v2(bundle: V2Bundle, as_of: date) -> Mapping[str, Any]:
                 "fit_roof_age",
                 roof_pts,
                 f"latest completed roof installation was {roof_when.isoformat()} "
-                f"— {roof_age} years old, old enough to need service",
+                f"— {roof_age} year{'s' if roof_age != 1 else ''} old, "
+                "old enough to need service",
                 _permit_source(roof_installs),
             )
         else:
             add(
                 "fit_roof_age",
                 0,
-                f"roof installed {roof_when.isoformat()} — {roof_age} years old, "
+                f"roof installed {roof_when.isoformat()} — "
+                f"{roof_age} year{'s' if roof_age != 1 else ''} old, "
                 "younger than 10 years",
                 _permit_source(roof_installs),
             )

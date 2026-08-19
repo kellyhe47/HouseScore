@@ -79,7 +79,7 @@ test('the page states who the score is for', () => {
 test('the trace covers the three V2 categories, the mover blend and the rental modifier', () => {
   const keys = icpTrace().map((row) => row.key);
 
-  assert.deepEqual(keys, ['project', 'capacity', 'fit', 'mover', 'rental']);
+  assert.deepEqual(keys, ['mover', 'project', 'capacity', 'fit', 'rental']);
 });
 
 test('every traced row names the ICP trait it serves', () => {

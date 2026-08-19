@@ -255,6 +255,108 @@ def test_r22_statewide_fills_only_sdl_absent_records():
     assert tuple(by_id["20240111"]["sources"]) == ("statewide",)
 
 
+def test_sdl_terminal_status_maps_to_completed_disposition():
+    """SDL never says "completed" — its finished permits display "CA and Close
+    Date Issued" / "Closed with Date". Without the mapping, no SDL permit can
+    earn completed-project points or establish a roof's installation age."""
+    ctx = make_ctx(
+        sdl=make_sdl(
+            construction={
+                "permit_applications": [
+                    sdl_permit(status="CA and Close Date Issued", close_date="6/26/2023")
+                ],
+                "inspections": [],
+                "violations": [],
+            }
+        ),
+    )
+    (permit,) = build_bundle(ctx, AS_OF).permits
+    assert permit["disposition"] == "completed"
+    assert permit["completion_date"] == "2023-06-26"
+
+
+def test_sdl_voided_status_maps_to_nonqualifying_disposition():
+    ctx = make_ctx(
+        sdl=make_sdl(
+            construction={
+                "permit_applications": [sdl_permit(status="Voided")],
+                "inspections": [],
+                "violations": [],
+            }
+        ),
+    )
+    (permit,) = build_bundle(ctx, AS_OF).permits
+    assert permit["disposition"] == "voided"
+
+
+def test_sdl_open_status_stays_active_eligible():
+    ctx = make_ctx(
+        sdl=make_sdl(
+            construction={
+                "permit_applications": [sdl_permit(status="Open", close_date="")],
+                "inspections": [],
+                "violations": [],
+            }
+        ),
+    )
+    (permit,) = build_bundle(ctx, AS_OF).permits
+    assert permit["disposition"] is None
+
+
+def test_roof_collection_fills_the_blank_description_of_the_same_record():
+    """Pre-2015 property-history rows display blank descriptions; the roof
+    collection's detail page carries the actual scope for the same municipal
+    record, keyed by the same permit number."""
+    ctx = make_ctx(
+        sdl=make_sdl(
+            construction={
+                "permit_applications": [
+                    sdl_permit(
+                        number="20090980",
+                        work_description="",
+                        status="CA and Close Date Issued",
+                        issue_date="11/16/2009",
+                        close_date="",
+                    )
+                ],
+                "inspections": [],
+                "violations": [],
+            }
+        ),
+        sdl_roof_permits=(
+            {
+                "municipal_id": "20090980",
+                "sources": ("SDL",),
+                "description": "RE-ROOF/ICE SHIELD",
+                "status": "CA and Close Date Issued",
+                "disposition": "completed",
+                "issue_date": "2009-11-16",
+            },
+        ),
+    )
+    (permit,) = build_bundle(ctx, AS_OF).permits
+    assert permit["description"] == "RE-ROOF/ICE SHIELD"
+    assert permit["disposition"] == "completed"
+
+
+def test_roof_collection_adds_a_record_the_history_page_lacks():
+    ctx = make_ctx(
+        sdl_roof_permits=(
+            {
+                "municipal_id": "20020455",
+                "sources": ("SDL",),
+                "description": "RE-ROOF/ICE SHIELD",
+                "status": "CA and Close Date Issued",
+                "disposition": "completed",
+                "issue_date": "2002-04-15",
+            },
+        ),
+    )
+    (permit,) = build_bundle(ctx, AS_OF).permits
+    assert permit["municipal_id"] == "20020455"
+    assert permit["disposition"] == "completed"
+
+
 def test_sdl_permit_dates_are_normalized_to_iso():
     """SDL displays US-format dates; the engine's date reader is ISO-only, so
     the bundle must convert or every SDL permit silently earns nothing."""

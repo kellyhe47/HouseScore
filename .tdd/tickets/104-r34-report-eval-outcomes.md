@@ -1,11 +1,11 @@
 ---
 id: 104
 title: R34 recalculation report + PII check + eval harness replacement + R36 outcome-log contract
-status: pending
+status: green
 depends_on: [103]
 touches: [eval/v2/report.py (new), eval/report.json, Makefile (eval target), src/houseaccount/outcomes.py (new), tests/test_v2_report.py, tests/test_outcomes.py]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [tests/test_v2_report.py, tests/test_outcomes.py]
 branch: ""
 ---
 

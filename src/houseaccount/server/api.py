@@ -76,6 +76,14 @@ class RouteRequest(BaseModel):
             "Unknown PINs are ignored."
         ),
     )
+    score_contract_version: str | None = Field(
+        default=None,
+        description=(
+            "The score contract the caller's shared route was planned under. "
+            "A stale version gets a refresh signal instead of a mixed-version "
+            "route (R27/R30); omitted means current."
+        ),
+    )
 
 
 def _artifact_or_404(path: Path, *, error: str) -> Response:
@@ -174,6 +182,7 @@ def build_router(territory: Territory, eval_report: Path | None = None) -> APIRo
             start_point=request.start_point,
             max_doors=request.max_doors,
             exclude=request.exclude,
+            score_contract_version=request.score_contract_version,
         )
 
     return router

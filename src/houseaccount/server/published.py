@@ -42,7 +42,6 @@ looks like a working deployment of a town with no houses in it.
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import asdict, dataclass
 from difflib import get_close_matches
 from pathlib import Path
@@ -51,7 +50,12 @@ from typing import Any, Mapping, Sequence
 from houseaccount import route as route_module
 from houseaccount.config import Config
 from houseaccount.normalize import normalize_address
-from houseaccount.publish import DOORS_GEOJSON_NAME, RUN_MANIFEST_NAME, SQLITE_NAME
+from houseaccount.publish import (
+    DOORS_GEOJSON_NAME,
+    RUN_MANIFEST_NAME,
+    SCORE_CONTRACT_VERSION,
+    SQLITE_NAME,
+)
 from houseaccount.route import RouteDoor
 from houseaccount.streets import build_walk_network
 
@@ -71,18 +75,18 @@ class DataUnavailable(RuntimeError):
 
 @dataclass(frozen=True)
 class Door:
-    """One published door: its browser-facing properties, plus what only the
-    server needs — where it is, and how its score broke down.
+    """One published door: its browser-facing properties, plus where it is.
 
-    `properties` is the R11.1 allowlist verbatim, so `GET /api/door/{pin}` can
-    serve it without reshaping and the evidence panel sees what the map saw.
+    `properties` is the V2 R11.1 allowlist verbatim, so `GET /api/door/{pin}`
+    can serve it without reshaping and the evidence panel sees what the map
+    saw. The V1 group math (`groups`, `raw_total`) is gone (R27/R28): the V2
+    breakdown — categories, base, mover, lift, modifier, adjustment — ships in
+    the properties themselves.
     """
 
     pams_pin: str
     properties: Mapping[str, Any]
     centroid: tuple[float, float] | None
-    groups: Mapping[str, int] | None
-    raw_total: int | None
 
     @property
     def situs(self) -> str:
@@ -105,26 +109,11 @@ class Door:
         return self.properties["exclusion_reason"]
 
     @property
-    def top_evidence(self) -> Mapping[str, Any] | None:
-        """The highest-scoring line of the trail.
-
-        Ties keep the engine's order, which is the order it built the trail in,
-        so the same door always produces the same opener.
-        """
-        if not self.evidence:
-            return None
-        return max(self.evidence, key=lambda item: item["points"])
-
-    @property
-    def top_evidence_type(self) -> str | None:
-        """The *type* of that line — which is all the talk track is allowed.
-
-        The sentence beside it is written for the evidence panel and recites what
-        we worked out about the household; the type names the angle to open on
-        without any of that reaching the doorstep (R7.2).
-        """
-        top = self.top_evidence
-        return top.get("type") if top else None
+    def reason_chip(self) -> str | None:
+        """The door's route reason chip (R30): the highest-point speakable
+        evidence entry, computed by the planner's one rule so the map and the
+        tools show one chip. Unspeakable types never surface (PRD R7.2.1)."""
+        return route_module.reason_chip(self.evidence)
 
 
 @dataclass(frozen=True)
@@ -244,8 +233,25 @@ def load_territory(data_dir: Path | None = None) -> Territory:
     except (json.JSONDecodeError, KeyError, TypeError) as error:
         raise DataUnavailable(f"{geojson_path} is not a published door collection") from error
 
-    group_math = _read_group_math(sqlite_path)
-    doors = tuple(_door(feature, group_math) for feature in features)
+    # R27: mixed-version outputs are rejected at boot. A published record still
+    # claiming another contract version is a stale run, not a servable
+    # territory — the failure names the offending version so the operator
+    # knows to re-run the pipeline.
+    stale = sorted(
+        {
+            str(feature.get("properties", {}).get("score_contract_version"))
+            for feature in features
+        }
+        - {SCORE_CONTRACT_VERSION}
+    )
+    if stale:
+        raise DataUnavailable(
+            f"the published run in {resolved} carries records with "
+            f"score_contract_version {', '.join(stale)}; this server serves only "
+            f"{SCORE_CONTRACT_VERSION!r}. Re-run `make pipeline` to publish a fresh run."
+        )
+
+    doors = tuple(_door(feature) for feature in features)
 
     by_pin: dict[str, Door] = {}
     by_address: dict[str, Door] = {}
@@ -273,6 +279,7 @@ def route_payload(
     start_point: tuple[float, float],
     max_doors: int | None = None,
     exclude: Sequence[str] | None = None,
+    score_contract_version: str | None = None,
 ) -> dict[str, Any]:
     """The one route answer both surfaces return (R10.3).
 
@@ -289,6 +296,21 @@ def route_payload(
     ordering in JavaScript, which R10.3 forbids. Unknown PINs name no candidate
     and therefore change nothing.
     """
+    if (
+        score_contract_version is not None
+        and score_contract_version != route_module.SCORE_CONTRACT_VERSION
+    ):
+        # R27/R30: a share link minted under a dead contract must not replay
+        # as a current route — the answer is refresh, and no stops.
+        return {
+            "refresh_required": True,
+            "score_contract_version": route_module.SCORE_CONTRACT_VERSION,
+            "stops": [],
+            "total_minutes": 0.0,
+            "average_score": None,
+            "estimate_disclosure": route_module.ESTIMATE_DISCLOSURE,
+        }
+
     planned = route_module.plan_route(
         territory.route_doors(),
         hours=hours,
@@ -298,43 +320,40 @@ def route_payload(
     )
     if exclude:
         planned = planned.exclude(exclude)
+    scores = [stop.score for stop in planned.stops]
     return {
         "stops": [asdict(stop) for stop in planned.stops],
         "total_minutes": planned.total_minutes,
+        # R30: aggregates are arithmetic over the displayed V2 scores.
+        "average_score": (sum(scores) / len(scores)) if scores else None,
+        "score_contract_version": route_module.SCORE_CONTRACT_VERSION,
         "estimate_disclosure": planned.estimate_disclosure,
     }
 
 
 def door_payload(door: Door) -> dict[str, Any]:
-    """One door as `GET /api/door/{pin}` serves it (R7.2, R8.1, R9.1).
+    """One door as `GET /api/door/{pin}` serves it (R7.2, R9.1, R30).
 
-    The R11.1 published properties verbatim, plus the three fields only a
-    single-door lookup can afford to carry:
+    The published V2 properties verbatim — the whole breakdown already lives
+    there — plus exactly three presentation fields only a single-door lookup
+    carries: `talk_track`, `talk_track_branches`, `reason_chip`. All built
+    through `route` off the same `RouteDoor` the planner builds, so the panel
+    and the route list are one script rather than two implementations.
 
-    * `groups` / `raw_total` — the group math the panel's "Score breakdown"
-      draws. It lives in SQLite rather than in `doors.geojson` on purpose: the
-      map downloads the allowlist for 540 doors and has no use for arithmetic it
-      will never draw 539 of.
-    * `talk_track` / `talk_track_branches` — built here through `route` off the
-      same `RouteDoor` the planner would build, so the opener in the evidence
-      panel and the opener in the route list are one script rather than two
-      implementations that agree today.
-
-    All are `None` for an unscored door: no score, no breakdown, no opener — the
-    panel shows its exclusion instead (R9.4).
+    All three are `None` for an unscored door: no score, no opener, no chip —
+    the panel shows its exclusion instead (R9.4).
     """
     payload = dict(door.properties)
     scored = door.score is not None
     candidate = _route_door(door)
 
-    payload["groups"] = dict(door.groups) if scored and door.groups else None
-    payload["raw_total"] = door.raw_total if scored else None
     payload["talk_track"] = route_module.talk_track_for(candidate) if scored else None
     payload["talk_track_branches"] = (
         [asdict(branch) for branch in route_module.talk_track_branches_for(candidate)]
         if scored
         else None
     )
+    payload["reason_chip"] = door.reason_chip if scored else None
     return payload
 
 
@@ -354,43 +373,20 @@ def _route_door(door: Door) -> RouteDoor:
         address=door.situs,
         score=door.score,
         centroid=door.centroid,
-        evidence_type=door.top_evidence_type,
+        # The chip drives the words too: it is speakable by construction
+        # (PRD R7.2.1), so the angle it selects never recites the file.
+        evidence_type=door.reason_chip,
+        reason_chip=door.reason_chip,
     )
 
 
-def _door(feature: Mapping[str, Any], group_math: Mapping[str, tuple[Any, Any]]) -> Door:
+def _door(feature: Mapping[str, Any]) -> Door:
     properties = feature["properties"]
-    pams_pin = properties["PAMS_PIN"]
-    groups, raw_total = group_math.get(pams_pin, (None, None))
     return Door(
-        pams_pin=pams_pin,
+        pams_pin=properties["PAMS_PIN"],
         properties=properties,
         centroid=_centroid(feature.get("geometry")),
-        groups=groups,
-        raw_total=raw_total,
     )
-
-
-def _read_group_math(path: Path) -> dict[str, tuple[Mapping[str, int] | None, int | None]]:
-    """Every scored door's group breakdown, keyed by PIN.
-
-    A door published before the columns existed reads as `(None, None)` — the
-    same shape an unscored door has — so an old database degrades to "no
-    breakdown" instead of failing the boot.
-    """
-    connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    try:
-        columns = {row[1] for row in connection.execute("PRAGMA table_info(doors)")}
-        if not {"groups", "raw_total"} <= columns:
-            return {}
-        rows = connection.execute("SELECT pams_pin, groups, raw_total FROM doors").fetchall()
-    finally:
-        connection.close()
-
-    return {
-        pams_pin: (json.loads(groups) if groups else None, raw_total)
-        for pams_pin, groups, raw_total in rows
-    }
 
 
 def _walk_network(features: Sequence[Mapping[str, Any]]) -> Any:

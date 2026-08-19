@@ -29,8 +29,12 @@ import math
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
-from houseaccount.scoring.weights import CONDITION_ORDER
 from houseaccount.vision.tiles import bbox_for_ref
+
+#: Exterior condition as an ordinal scale, worst first. A decline is any move
+#: toward the front of this tuple between two ortho vintages. The vision
+#: schema's own vocabulary after V1 weights.py's deletion (ticket 103 / R27).
+CONDITION_ORDER: tuple[str, ...] = ("poor", "fair", "good", "excellent")
 
 #: The legal `signal` vocabulary. The R4 booleans plus one entry per R6 grade —
 #: derived from CONDITION_ORDER rather than restated, so the engine's ordinal

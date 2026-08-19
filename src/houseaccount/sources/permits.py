@@ -18,9 +18,9 @@ honest answer rather than a gap to paper over.
 *The join keys are `block`/`lot`.* There is no address on a permit record, so a
 permit reaches a door only via the parcel's block/lot (T006 owns that join).
 
-The record type here is `PermitRecord`, not `Permit`: `Permit` belongs to the
-score engine and is merely re-exported below, so the codebase has exactly one
-of it. `PermitRecord.to_score_permit()` is the one-way door between the two.
+The record type here is `PermitRecord`. The V2 engine consumes permit records
+as plain mappings through the evidence bundle (`scoring.bundle`), so this
+module owns only the source contract — including the contractor-None fact.
 
 Paging is walked until a short page arrives, because an exactly-full page cannot
 be assumed final. Everything goes through `http.fetch_json`, so a warm cache
@@ -35,7 +35,6 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from houseaccount.cache import Cache
 from houseaccount.http import Transport, requests_transport, fetch_json
-from houseaccount.scoring.engine import Permit as Permit  # re-export; the score engine owns it
 
 #: Socrata SODA endpoint for the NJ statewide construction-permit dataset.
 SOCRATA_PERMITS_URL = "https://data.nj.gov/resource/w9se-dmra.json"
@@ -112,14 +111,6 @@ class PermitRecord:
             or str(row.get("permittype") or "").strip(),
             contractor=None,
             cost=_parse_cost(row.get("constcost")),
-        )
-
-    def to_score_permit(self) -> Permit:
-        """Narrow this row to the three fields the score engine actually reads."""
-        return Permit(
-            permit_date=self.date,
-            permit_type=self.type,
-            contractor=self.contractor,
         )
 
 

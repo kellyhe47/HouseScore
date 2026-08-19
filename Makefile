@@ -28,8 +28,9 @@ setup:
 pipeline:
 	$(DOTENV) $(PY) -m houseaccount.pipeline
 
-eval:
-	$(DOTENV) $(PY) -m eval.harness
+# The V1 harness is deleted with the V1 engine (ticket 103/R32); the V2 golden
+# suite is the fixture gate until ticket 104 rebuilds a dedicated eval run.
+eval: test-golden
 
 test: test-py test-web
 

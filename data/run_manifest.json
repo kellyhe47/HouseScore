@@ -1,14 +1,14 @@
 {
-  "run_at": "2026-08-15T01:06:13.983360+00:00",
+  "run_at": "2026-08-19T06:35:46.721939+00:00",
   "as_of": "2026-08-15",
-  "code_version": "f6b3fb9",
-  "territory_median_value": 743350.0,
+  "score_contract_version": "v2",
+  "code_version": "5327cc5",
   "acs_dual_income_threshold": 0.35,
   "retrieved": {
-    "parcel": "2026-08-15",
-    "permits": "2026-08-15",
-    "acs": "2026-08-15",
-    "sales": "2026-08-15"
+    "parcel": "2026-08-19",
+    "permits": "2026-08-19",
+    "acs": "2026-08-19",
+    "sales": "2026-08-19"
   },
   "cost_usd": 0,
   "cost_per_door": 0.0,
@@ -20,8 +20,6 @@
     "latest_deed_date": "2026-06-15",
     "mover_window_days": 90,
     "doors_in_mover_window": 2,
-    "doors_in_top_band": 0,
-    "top_band_days": 30,
     "sales_register": {
       "latest_sale_date": "2026-06-15",
       "source_files": [
@@ -31,20 +29,21 @@
     }
   },
   "vision": {
-    "available": true,
-    "declination_reason": null,
+    "available": false,
+    "declination_reason": "OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms.",
     "answers_total": 0,
     "answers_lost": 0,
-    "doors_with_imagery": 119
+    "doors_with_imagery": 0
   },
   "degradations": [
+    "CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so block-group statistics were not fetched",
     "municipal rental registration not obtained via OPRA",
-    "no door is inside the 30-day top mover band: the freshest sale in the SR1A register closed 2026-06-15, 61 days ago, because a deed reaches the published register only after county recording and the state's next file release. The Mover group did fire in the wider 90-day window; the 30-day tier is unreachable at this source's publication cadence, not because the rule failed."
+    "OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar and exterior-condition signals are unavailable; every door still scores, but without the R4 imagery terms."
   ],
   "resolve": {
     "doors_total": 540,
-    "doors_with_signal": 540,
-    "coverage": 1.0,
+    "doors_with_signal": 115,
+    "coverage": 0.21296296296296297,
     "permits_total": 1740,
     "permits_in_territory": 232,
     "permits_matched": 144,
@@ -55,9 +54,9 @@
     "municipal_match_rate": 0.9741379310344828,
     "block_lot_match_rate": 0.6206896551724138,
     "address_match_rate": 0.0,
-    "doors_with_block_group": 540,
-    "acs_available": true,
-    "acs_reason": null,
+    "doors_with_block_group": 0,
+    "acs_available": false,
+    "acs_reason": "CENSUS_API_KEY is not set; the ACS API refuses keyless callers, so block-group statistics were not fetched",
     "rental_declination_reason": "municipal rental registration not obtained via OPRA"
   }
 }

@@ -1,49 +1,85 @@
 // Test-only fixtures. NOT app code — nothing in web/js/*.js (other than *.test.js)
-// should import this. Shapes mirror data/doors.geojson feature `properties` exactly:
-//   { PAMS_PIN, score, confidence, evidence[], situs, exclusion_reason }
+// should import this. Shapes mirror the V2 data/doors.geojson feature `properties`
+// exactly (R11.1/R27/R30):
+//   { PAMS_PIN, score, confidence, evidence[], situs, exclusion_reason,
+//     score_contract_version, categories{project,capacity,fit}, base,
+//     mover{eligible,days_since_move,strength}, mover_lift, rental_modifier,
+//     adjustment, data_gaps[] }
 // and each evidence item:
-//   { type, points, sentence, source, retrieved, imagery }
+//   { type, points, reason, imagery }
+// Arithmetic in every scored fixture reconciles per R7:
+//   sum(evidence points) == base + mover_lift + rental_modifier
+//   base + mover_lift + rental_modifier + adjustment == score
 // Every export is a FACTORY so tests never share mutable state.
 
-/** A normal-confidence scored door, no vision-derived evidence. */
+const NO_MOVER = () => ({ eligible: false, days_since_move: null, strength: 0.0 });
+
+/**
+ * A normal-confidence scored door with a capacity cap adjustment.
+ *
+ * Capacity signals total 28 against the 25 cap, so the trail carries an
+ * explicit −3 cap-adjustment entry (R7): 15 + 15 + 8 + 5 − 3 + 5 + 0 = 45.
+ */
 export function scoredDoor(overrides = {}) {
   return {
     PAMS_PIN: '0248_1503_7',
-    score: 62,
+    score: 45,
     confidence: 'normal',
     situs: '128 SNYDER AVE, Ramsey NJ 07446',
     exclusion_reason: null,
+    score_contract_version: 'v2',
+    categories: { project: 15, capacity: 25, fit: 5 },
+    base: 45,
+    mover: NO_MOVER(),
+    mover_lift: 0.0,
+    rental_modifier: 0,
+    adjustment: 0.0,
+    data_gaps: [{ type: 'imagery_missing' }, { type: 'rental_data_missing' }],
     evidence: [
       {
-        type: 'assessed_value',
+        type: 'project_active',
         points: 15,
-        sentence: 'Assessed at $880,700, at or above the $743,350 territory median.',
-        source: 'NJ MOD-IV parcel record',
-        retrieved: '2026-08-14',
+        reason: 'active qualifying project with recent lifecycle activity',
         imagery: null,
       },
       {
-        type: 'home_age',
+        type: 'capacity_territory_percentile',
+        points: 15,
+        reason: 'assessed value ranks high among territory single-family properties',
+        imagery: null,
+      },
+      {
+        type: 'capacity_local_relative_value',
         points: 8,
-        sentence: 'Built 1983, so roughly 43 years old.',
-        source: 'NJ MOD-IV parcel record',
-        retrieved: '2026-08-14',
+        reason: 'assessed value above the median of the nearest comparables',
         imagery: null,
       },
       {
-        type: 'non_arms_length_transfer',
-        points: -20,
-        sentence: 'Deed recorded as a non-arms-length transfer between related parties.',
-        source: 'NJ deed record',
-        retrieved: '2026-08-14',
+        type: 'capacity_acs_dual_income_prior',
+        points: 5,
+        reason:
+          'neighborhood-level dual-income prior: the ACS block group reports a '
+          + 'dual-income share at or above the 35% threshold',
         imagery: null,
       },
       {
-        type: 'tenure',
+        type: 'capacity_cap_adjustment',
+        points: -3,
+        reason: 'capacity signals total 28; subtotal capped at 25',
+        imagery: null,
+      },
+      {
+        type: 'fit_lot',
+        points: 5,
+        reason: 'lot of at least half an acre',
+        imagery: null,
+      },
+      {
+        type: 'mover_invalid_sale',
         points: 0,
-        sentence: '28-year tenure with no permits on record.',
-        source: 'NJ MOD-IV parcel record',
-        retrieved: '2026-08-14',
+        reason:
+          'a transfer was disqualified from mover influence (nominal price, '
+          + 'disqualifying code, or invalid/future date)',
         imagery: null,
       },
     ],
@@ -55,17 +91,23 @@ export function scoredDoor(overrides = {}) {
 export function visionDoor(overrides = {}) {
   return {
     PAMS_PIN: '0248_3502_8.01',
-    score: 81,
+    score: 28,
     confidence: 'normal',
     situs: '27 FAWN HILL RD, Ramsey NJ 07446',
     exclusion_reason: null,
+    score_contract_version: 'v2',
+    categories: { project: 8, capacity: 0, fit: 20 },
+    base: 28,
+    mover: NO_MOVER(),
+    mover_lift: 0.0,
+    rental_modifier: 0,
+    adjustment: 0.0,
+    data_gaps: [{ type: 'acs_missing' }],
     evidence: [
       {
-        type: 'pool',
-        points: 12,
-        sentence: 'In-ground pool visible in 2020 aerial imagery.',
-        source: 'NJ 2020 orthoimagery',
-        retrieved: '2026-08-14',
+        type: 'fit_pool',
+        points: 8,
+        reason: 'in-ground pool visible in aerial imagery',
         imagery: {
           image_url: 'https://example.invalid/tiles/0248_3502_8.01_2020.jpg',
           bbox: [-74.14, 41.05, -74.139, 41.051],
@@ -74,11 +116,15 @@ export function visionDoor(overrides = {}) {
         },
       },
       {
-        type: 'permit_history',
-        points: 22,
-        sentence: 'Three permits since 2021 with no repeat contractor.',
-        source: 'NJ construction permit dataset',
-        retrieved: '2026-08-14',
+        type: 'fit_roof_age',
+        points: 12,
+        reason: 'latest explicit completed roof installation is old enough to need service',
+        imagery: null,
+      },
+      {
+        type: 'project_completed',
+        points: 8,
+        reason: 'qualifying project completed within 24 months',
         imagery: null,
       },
     ],
@@ -95,6 +141,14 @@ export function unscoredDoor(overrides = {}) {
     situs: '9 CRESCENT DR, Ramsey NJ 07446',
     exclusion_reason: 'parcel record incomplete',
     evidence: [],
+    score_contract_version: 'v2',
+    categories: null,
+    base: null,
+    mover: null,
+    mover_lift: null,
+    rental_modifier: null,
+    adjustment: null,
+    data_gaps: null,
     ...overrides,
   };
 }
@@ -103,10 +157,23 @@ export function unscoredDoor(overrides = {}) {
 export function noEvidenceDoor(overrides = {}) {
   return {
     PAMS_PIN: '0248_2201_1',
-    score: 4,
+    score: 0,
     confidence: 'low',
     situs: '412 MAIN ST, Ramsey NJ 07446',
     exclusion_reason: null,
+    score_contract_version: 'v2',
+    categories: { project: 0, capacity: 0, fit: 0 },
+    base: 0,
+    mover: NO_MOVER(),
+    mover_lift: 0.0,
+    rental_modifier: 0,
+    adjustment: 0.0,
+    data_gaps: [
+      { type: 'acs_missing' },
+      { type: 'imagery_missing' },
+      { type: 'rental_data_missing' },
+      { type: 'sdl_page_unavailable' },
+    ],
     evidence: [],
     ...overrides,
   };
@@ -120,27 +187,71 @@ export function doorWithScore(score, pin = 'pin_' + String(score)) {
     confidence: score === null ? null : 'normal',
     situs: '1 TEST RD, Ramsey NJ 07446',
     exclusion_reason: score === null ? 'parcel record incomplete' : null,
+    score_contract_version: 'v2',
     evidence: [],
   };
 }
 
-// --- T013 ---------------------------------------------------------------------
-// The route/walk surfaces read two more shapes: the widened `GET /api/door/{pin}`
-// body (published properties + `groups`, `raw_total`, `talk_track`) and the
-// `POST /api/route` payload, whose stops are `houseaccount.route.Stop` verbatim.
+// --- T013 / T106 ----------------------------------------------------------------
+// The route/walk surfaces read two more shapes: the `GET /api/door/{pin}` body —
+// the V2 published properties plus exactly three detail fields (`talk_track`,
+// `talk_track_branches`, `reason_chip`) — and the `POST /api/route` payload,
+// whose stops are `houseaccount.route.Stop` verbatim.
 
 /**
- * A door as `GET /api/door/{pin}` serves it after the T013 amendment: the same
- * published properties plus the group math and the rep's opener.
+ * A door as `GET /api/door/{pin}` serves it under V2: a fresh mover on the
+ * blend, arithmetic mirroring tests/test_server.py's OAK door.
+ *
+ * Evidence sums to base + mover_lift + rental_modifier:
+ *   15 + 7 + 5 + 12 + 55.875 = 94.875 = 39 + 55.875 + 0
+ * and 39 + 55.875 + 0 + 0.125 = 95, the displayed integer.
  */
 export function detailedDoor(overrides = {}) {
   return {
     ...scoredDoor(),
-    // The group math reconciles with `scoredDoor()`'s evidence trail:
-    // 15 + 8 − 20 + 0 = 3, which is also the sum of these five groups.
-    groups: { mover: 0, hires_out: 0, capacity: 15, need: 8, modifier: -20 },
-    raw_total: 3,
-    score: 3,
+    categories: { project: 15, capacity: 12, fit: 12 },
+    base: 39,
+    mover: { eligible: true, days_since_move: 12, strength: 1.0 },
+    mover_lift: 55.875,
+    rental_modifier: 0,
+    adjustment: 0.125,
+    data_gaps: [],
+    evidence: [
+      {
+        type: 'project_active',
+        points: 15,
+        reason: 'active qualifying project with recent lifecycle activity',
+        imagery: null,
+      },
+      {
+        type: 'capacity_local_relative_value',
+        points: 7,
+        reason: 'assessed value above the median of the nearest comparables',
+        imagery: null,
+      },
+      {
+        type: 'capacity_acs_dual_income_prior',
+        points: 5,
+        reason:
+          'neighborhood-level dual-income prior: the ACS block group reports a '
+          + 'dual-income share at or above the 35% threshold',
+        imagery: null,
+      },
+      {
+        type: 'fit_roof_age',
+        points: 12,
+        reason: 'latest explicit completed roof installation is old enough to need service',
+        imagery: null,
+      },
+      {
+        type: 'mover_recency',
+        points: 55.875,
+        reason: 'recent valid arm\'s-length move blends the score toward the mover priority band',
+        imagery: null,
+      },
+    ],
+    score: 95,
+    reason_chip: 'mover_recency',
     // Assessed value is the top evidence here, and it is one of the signals a
     // rep can never say out loud — so the opener falls through to the angle
     // that mentions nothing about the house. The evidence trail above still
@@ -169,6 +280,59 @@ export function detailedDoor(overrides = {}) {
 }
 
 /**
+ * The clamp case as `GET /api/door/{pin}` serves it: a demoted rental floored
+ * at 0, arithmetic mirroring tests/test_server.py's CEDAR door.
+ *
+ *   evidence 8 + 5 − 25 + 0 = −12 = 13 + 0 − 25
+ *   13 + 0 − 25 + 12 = 0, the clamp surfacing as `adjustment: 12`.
+ */
+export function clampedDoor(overrides = {}) {
+  return {
+    ...scoredDoor(),
+    PAMS_PIN: '0248_01101_00031',
+    situs: '31 CEDAR CT, Ramsey NJ 07446',
+    confidence: 'low',
+    categories: { project: 8, capacity: 0, fit: 5 },
+    base: 13,
+    mover: NO_MOVER(),
+    mover_lift: 0.0,
+    rental_modifier: -25,
+    adjustment: 12.0,
+    data_gaps: [{ type: 'acs_missing' }, { type: 'assessed_value_missing' }],
+    evidence: [
+      {
+        type: 'project_completed',
+        points: 8,
+        reason: 'qualifying project completed within 24 months',
+        imagery: null,
+      },
+      { type: 'fit_lot', points: 5, reason: 'lot of at least half an acre', imagery: null },
+      {
+        type: 'rental_registration',
+        points: -25,
+        reason: 'current verified rental registration demotes the door',
+        imagery: null,
+      },
+      {
+        type: 'mover_invalid_sale',
+        points: 0,
+        reason:
+          'a transfer was disqualified from mover influence (nominal price, '
+          + 'disqualifying code, or invalid/future date)',
+        imagery: null,
+      },
+    ],
+    score: 0,
+    reason_chip: 'project_completed',
+    talk_track:
+      "Hey, I'm with HouseAccount — we're doing work for a few of your neighbors "
+      + 'here on Cedar Ct this week. Who handles the house stuff here?',
+    talk_track_branches: [],
+    ...overrides,
+  };
+}
+
+/**
  * One stop exactly as the server serializes `houseaccount.route.Stop`.
  *
  * `path` is the leg the planner measured — `[lon, lat]` from wherever the rep
@@ -181,6 +345,7 @@ export function stop(overrides = {}) {
     pams_pin: '0248_01101_00012',
     address: '12 OAK ST, Ramsey NJ 07446',
     score: 100,
+    reason_chip: 'mover_recency',
     walk_minutes: 0.0,
     cumulative_minutes: 0.0,
     talk_track:
@@ -234,6 +399,7 @@ export function routePayload(overrides = {}) {
         pams_pin: '0248_01101_00020',
         address: '20 MAPLE AVE, Ramsey NJ 07446',
         score: 58,
+        reason_chip: 'fit_lot',
         walk_minutes: 4.4,
         cumulative_minutes: 4.4,
         talk_track:
@@ -273,6 +439,7 @@ export function routePayload(overrides = {}) {
         pams_pin: '0248_3502_8.01',
         address: '27 FAWN HILL RD, Ramsey NJ 07446',
         score: 81,
+        reason_chip: 'fit_pool',
         walk_minutes: 37.9,
         cumulative_minutes: 42.3,
         talk_track:
@@ -304,6 +471,26 @@ export function routePayload(overrides = {}) {
     estimate_disclosure:
       'Walking times follow the streets between the parcels, at 3 mph — '
       + 'estimated from parcel geometry, not turn-by-turn directions.',
+    // R27/R30: every route payload names the contract its scores came from,
+    // and the server's aggregate is arithmetic over the displayed scores.
+    score_contract_version: 'v2',
+    average_score: (100 + 58 + 81) / 3,
+    ...overrides,
+  };
+}
+
+/**
+ * What `POST /api/route` answers when the request declared a stale score
+ * contract (R27/R30): a refresh signal and no stops — never a mixed-version
+ * route.
+ */
+export function refreshPayload(overrides = {}) {
+  return {
+    stops: [],
+    total_minutes: 0,
+    estimate_disclosure: '',
+    score_contract_version: 'v2',
+    refresh_required: true,
     ...overrides,
   };
 }
@@ -322,6 +509,7 @@ export function routeRows() {
     cumulativeMinutes: item.cumulative_minutes,
     elapsedLabel: `+${Math.round(item.cumulative_minutes)} min`,
     talkTrack: item.talk_track,
+    reasonChip: item.reason_chip,
     path: item.path,
   }));
 }
@@ -371,27 +559,55 @@ export function memoryStorage(initial = {}) {
 // The Data & Ethics page reads two published artifacts. Neither exists in a fresh
 // clone, so the tests build them here in the real shape rather than reading disk.
 
-/** `eval/report.json` as `make eval` writes it today. */
+/** `eval/report.json` as the V2 R34 recalculation run writes it today. */
 export function evalReport(overrides = {}) {
   return {
-    // T025: the published `eval/report.json` reports thirteen fixtures, and the
-    // harness pins that count (`tests/test_harness.py`). This fixture said twelve,
-    // which is the same stale number the page had spelled into its prose.
-    fixtures_total: 13,
-    fixtures_passed: 13,
-    fixture_failures: [],
-    precision: 0.8181818181818182,
-    recall: 0.9,
-    hallucination_rate: 0.05,
-    // The honest caveat: no hand labels exist yet, so the vision metrics come
-    // from a frozen fixture. This string has to reach the reader.
-    metrics_source: 'frozen fixture 09 (hand labels not yet collected)',
-    cost_total_usd: 3.2,
-    doors_scored: 540,
-    cost_per_door: 0.006,
-    resolve_match_rate: null,
-    resolve_match_rate_threshold: 0.95,
-    ok: true,
+    score_contract_version: 'v2',
+    as_of: '2026-08-15',
+    // Counts are measurements: the page must read them from here, never spell
+    // them into prose (regression of V1 ticket 025).
+    golden: { fixtures_total: 42 },
+    coverage: { doors_total: 540, doors_scored: 540, coverage: 1.0 },
+    categories: {
+      project: { min: 0.0, max: 0.0, mean: 0.0 },
+      capacity: { min: 0.0, max: 20.0, mean: 5.590741 },
+      fit: { min: 0.0, max: 13.0, mean: 6.298148 },
+    },
+    // The distribution the map ramp is restopped against (R38): the ramp's
+    // stops are derived from these quantiles, never hand-picked.
+    score_distribution: {
+      min: 2.0,
+      max: 92.0,
+      mean: 12.383333,
+      quantiles: { q10: 5, q20: 5, q30: 8, q40: 8, q50: 11, q60: 13, q70: 15, q80: 19, q90: 22 },
+    },
+    missing_signals: { acs_missing: 540, imagery_missing: 540, rental_data_missing: 540 },
+    vision: {
+      precision: 0.818182,
+      recall: 0.9,
+      hallucination_rate: 0.05,
+      cost_per_door: 0.0,
+      // The honest caveat: no hand labels exist yet, so the vision metrics come
+      // from a frozen fixture. This string has to reach the reader.
+      metrics_source: 'frozen fixture 09 (hand labels not yet collected)',
+      banner:
+        "NOT A MEASUREMENT: precision/recall/hallucination are frozen fixture "
+        + "arithmetic over fixture 09's confusion set, not scores over hand-labeled "
+        + 'imagery. Hand labels have not been collected yet.',
+    },
+    exclusions: {
+      stale_open_neutralized: 115,
+      non_arms_length_sales: 78,
+      voided_or_admin: 0,
+      cross_source_dedup_collapsed: 0,
+    },
+    pii_scan: { ok: true, findings: [] },
+    source_freshness: {
+      parcel: '2026-08-19',
+      permits: '2026-08-19',
+      acs: '2026-08-19',
+      sales: '2026-08-19',
+    },
     ...overrides,
   };
 }
@@ -401,6 +617,7 @@ export function runManifest(overrides = {}) {
   return {
     run_at: '2026-08-14T08:38:26.522178+00:00',
     as_of: '2026-08-14',
+    score_contract_version: 'v2',
     code_version: '125f61e',
     territory_median_value: 743350.0,
     acs_dual_income_threshold: 0.35,
@@ -427,9 +644,9 @@ export function runManifest(overrides = {}) {
       'OPENAI_API_KEY is not set, so the vision stage was skipped. Pool, solar '
       + 'and exterior-condition signals are unavailable; every door still scores, '
       + 'but without the R4 imagery terms.',
-      'no door in this territory has a deed inside the 90-day mover window — the '
-      + 'newest deed in the MOD-IV extract is dated 2024-12-06 — so the Mover group '
-      + 'could not fire on this extract vintage',
+      'no door in this territory has a deed inside the mover decay window — the '
+      + 'newest deed in the extract is dated 2024-12-06, more than 365 days before '
+      + 'as_of — so no door carries a mover lift on this extract vintage',
     ],
     resolve: {
       doors_total: 540,

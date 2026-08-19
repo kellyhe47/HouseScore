@@ -1,8 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { requestRoute, createRoutePlanner, routeLine } from './route-ui.js';
-import { fakeFetch, routePayload } from './test-fixtures.js';
+import {
+  requestRoute,
+  createRoutePlanner,
+  routeLine,
+  SCORE_CONTRACT_VERSION,
+  REFRESH_PROMPT,
+} from './route-ui.js';
+import { fakeFetch, routePayload, refreshPayload } from './test-fixtures.js';
 
 const START = [-74.156, 41.0447];
 const REQUEST = { hours: 2, start: START, maxDoors: 20 };
@@ -344,4 +350,102 @@ test('a leg with no path falls back to the door the map already has', () => {
 test('a route with nothing to draw draws nothing', () => {
   assert.deepEqual(routeLine([], null), []);
   assert.deepEqual(routeLine([], START), []);
+});
+
+/* ── T106: the V2 route surface (R30/R27) ─────────────────────────────────────
+ *
+ * The chip beside each stop is the API's `reason_chip` — assembled on the
+ * server from the door's own top evidence under the R30 selection rule — never
+ * re-derived in the browser from a label table. The list's average is
+ * arithmetic over the scores the list displays. And a shared URL minted under
+ * another score contract gets a refresh prompt, never a mixed-version route.
+ */
+
+test('a row carries the API reason chip verbatim', async () => {
+  const view = await requestRoute(REQUEST, options());
+
+  assert.deepEqual(
+    view.rows.map((row) => row.reasonChip),
+    ['mover_recency', 'fit_lot', 'fit_pool']
+  );
+});
+
+test('a stop from an older payload without a chip leaves the row chipless', async () => {
+  const legacy = routePayload();
+  delete legacy.stops[0].reason_chip;
+  const view = await requestRoute(REQUEST, options(legacy));
+
+  assert.equal(view.rows[0].reasonChip, null);
+});
+
+test('the view average is computed from the displayed scores', async () => {
+  const view = await requestRoute(REQUEST, options());
+
+  const displayed = view.rows.map((row) => row.score);
+  const mean = displayed.reduce((a, b) => a + b, 0) / displayed.length;
+  assert.ok(Math.abs(view.averageScore - mean) < 1e-9, `${view.averageScore} != ${mean}`);
+});
+
+test('the average comes from the rows even when the payload publishes none', async () => {
+  const payload = routePayload();
+  delete payload.average_score;
+  const view = await requestRoute(REQUEST, options(payload));
+
+  assert.ok(Math.abs(view.averageScore - (100 + 58 + 81) / 3) < 1e-9);
+});
+
+test('an empty route has no average rather than a zero', async () => {
+  const view = await requestRoute(REQUEST, options(routePayload({ stops: [] })));
+
+  assert.equal(view.averageScore, null);
+});
+
+test('the client declares the score contract it was built against', () => {
+  assert.equal(SCORE_CONTRACT_VERSION, 'v2');
+});
+
+test('every route request declares the current contract version by default', async () => {
+  const opts = options();
+  await requestRoute(REQUEST, opts);
+
+  assert.equal(opts.fetch.calls[0].body.score_contract_version, 'v2');
+});
+
+test('a shared URL from another contract declares that version instead', async () => {
+  // Opening a `r1` share link: the browser tells the planner what vintage the
+  // link was minted under, and lets the server answer with the refresh signal.
+  const opts = options(refreshPayload());
+  await requestRoute({ ...REQUEST, scoreContractVersion: 'v1' }, opts);
+
+  assert.equal(opts.fetch.calls[0].body.score_contract_version, 'v1');
+});
+
+test('a refresh signal becomes a refresh prompt, never a route', async () => {
+  const view = await requestRoute(
+    { ...REQUEST, scoreContractVersion: 'v1' },
+    options(refreshPayload())
+  );
+
+  assert.equal(view.refreshRequired, true);
+  assert.deepEqual(view.rows, []);
+  assert.equal(view.isEmpty, true);
+  assert.equal(view.refreshPrompt, REFRESH_PROMPT);
+});
+
+test('the refresh prompt tells the rep the scores were re-issued', () => {
+  assert.match(REFRESH_PROMPT, /refresh/i);
+  assert.match(REFRESH_PROMPT, /score/i);
+});
+
+test('a current-version route carries no refresh prompt', async () => {
+  const view = await requestRoute(REQUEST, options());
+
+  assert.equal(view.refreshRequired, false);
+  assert.equal(view.refreshPrompt, null);
+});
+
+test('the view carries the contract version the server answered with', async () => {
+  const view = await requestRoute(REQUEST, options());
+
+  assert.equal(view.scoreContractVersion, 'v2');
 });

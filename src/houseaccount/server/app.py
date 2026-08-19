@@ -40,6 +40,7 @@ from houseaccount.config import Config
 from houseaccount.server.api import build_router
 from houseaccount.server.mcp_tools import mcp_server_for
 from houseaccount.server.published import DataUnavailable, load_territory
+from houseaccount.server.streetview import build_streetview_router
 
 __all__ = ["UI_ORIGINS", "DataUnavailable", "create_app"]
 
@@ -173,6 +174,11 @@ def create_app(data_dir: Path | None = None, eval_report: Path | None = None) ->
     # keeps `create_app(...).routes` introspectable, which is what lets a test
     # assert that the routes and `web/ethics.html`'s fetches are one decision.
     app.routes.extend(build_router(territory, eval_report=eval_report).routes)
+    # Street View is context for the panel, never evidence for the score; the
+    # proxy lives beside the API so the browser never holds the Google key.
+    app.routes.extend(
+        build_streetview_router(territory, Config.from_env().google_maps_key).routes
+    )
     app.routes.extend(mcp_app.routes)
 
     # Mounted *last*, and only if the directory shipped. Starlette matches

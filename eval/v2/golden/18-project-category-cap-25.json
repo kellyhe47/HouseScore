@@ -192,6 +192,7 @@
     "exact": {
       "result": {
         "score_contract_version": "v2",
+        "confidence": "normal",
         "categories": {
           "project": 25,
           "capacity": 0,
@@ -212,6 +213,10 @@
           {
             "type": "project_active",
             "points": 15
+          },
+          {
+            "type": "project_cap_adjustment",
+            "points": -8
           },
           {
             "type": "project_completed",

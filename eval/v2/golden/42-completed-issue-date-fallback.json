@@ -1,38 +1,39 @@
 {
   "schema_version": 1,
-  "id": "G-035",
-  "name": "sdl-and-imagery-unavailable-still-scores",
-  "why": "AE11/R23: one of the eight unavailable SDL pages with no imagery still scores from parcel, sale, and ACS evidence (B=8 fresh mover -> 91) and carries explicit gaps.",
+  "id": "G-042",
+  "name": "completed-issue-date-fallback",
+  "why": "R10: an explicitly terminal completed record with no displayed close date and no later lifecycle event counts via its issue date (within 24 months -> 8).",
   "covers": [
-    "B-021"
+    "B-008"
   ],
   "case_type": "degenerate",
   "traces_to": [
-    "AE11",
-    "R16",
-    "R23",
-    "R26"
+    "R10"
   ],
-  "defends_against": "Treating SDL or imagery absence as disqualifying (score 0) or as negative evidence fails; absence is a gap, not proof.",
+  "defends_against": "Requiring a completion date outright drops a terminal record the contract admits via the issue-date fallback.",
   "time_sensitive": true,
   "given": {
     "inputs": {
       "parcel": {
-        "pin": "0248_V2_GAP",
+        "pin": "0248_V2_SUBJ",
         "assessed_value": 400000,
-        "construction_year": 1946,
+        "construction_year": 2020,
         "lot_acres": 0.2,
-        "sdl_page_available": false
+        "sdl_page_available": true
       },
-      "sales": [
+      "sales": [],
+      "permits": [
         {
-          "source": "SR1A",
-          "date": "2026-07-02",
-          "price": 850000,
-          "sales_code": ""
+          "id": "P-WH-NODATE",
+          "sources": [
+            "SDL"
+          ],
+          "municipal_id": "SDL-2025-411",
+          "description": "water heater replacement",
+          "issue_date": "2025-06-01",
+          "disposition": "completed"
         }
       ],
-      "permits": [],
       "local_comparables": [
         {
           "pin": "0248_CMP_00",
@@ -156,7 +157,8 @@
         "registrations": []
       },
       "imagery": {
-        "available": false
+        "available": true,
+        "observations": []
       }
     },
     "preexisting_state": {},
@@ -172,41 +174,30 @@
     "exact": {
       "result": {
         "score_contract_version": "v2",
-        "confidence": "low",
+        "confidence": "normal",
         "categories": {
-          "project": 0,
+          "project": 8,
           "capacity": 0,
-          "fit": 8
+          "fit": 0
         },
         "base": 8,
         "mover": {
-          "eligible": true,
-          "days_since_move": 47,
-          "strength": 90.0
+          "eligible": false,
+          "days_since_move": null,
+          "strength": 0.0
         },
-        "mover_lift": 83.0,
+        "mover_lift": 0.0,
         "rental_modifier": 0,
-        "pre_rounding": 91.0,
+        "pre_rounding": 8.0,
         "adjustment": 0.0,
-        "score": 91,
+        "score": 8,
         "evidence": [
           {
-            "type": "fit_home_age",
+            "type": "project_completed",
             "points": 8
-          },
-          {
-            "type": "mover_recency",
-            "points": 83.0
           }
         ],
-        "data_gaps": [
-          {
-            "type": "imagery_missing"
-          },
-          {
-            "type": "sdl_page_unavailable"
-          }
-        ]
+        "data_gaps": []
       },
       "state_changes": [],
       "emitted_events": [],

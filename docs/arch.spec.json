@@ -1,46 +1,224 @@
 {
   "groups": [
-    { "id": "sources", "label": "Public data sources ($0)" },
-    { "id": "pipeline", "label": "Agentic pipeline (Python, scheduled)" },
-    { "id": "serve", "label": "Serving (deployed)" }
+    {
+      "id": "sources",
+      "label": "Public data sources ($0)"
+    },
+    {
+      "id": "pipeline",
+      "label": "Agentic pipeline (Python, as_of-parameterized runs)"
+    },
+    {
+      "id": "serve",
+      "label": "Serving (deployed)"
+    }
   ],
   "nodes": [
-    { "id": "njparcels", "label": "NJ Parcels+MOD-IV\nArcGIS REST", "layer": 0, "group": "sources" },
-    { "id": "permits", "label": "NJ Permits\nSocrata API", "layer": 0, "group": "sources" },
-    { "id": "acs", "label": "Census ACS5\nblock groups", "layer": 0, "group": "sources" },
-    { "id": "orthos", "label": "NJ Orthos 2015/2020\n+ NAIP (free)", "layer": 0, "group": "sources" },
-    { "id": "sv", "label": "Street View\n(demo-scale, ToS-disclosed)", "layer": 0, "group": "sources" },
-    { "id": "rental", "label": "Rental registration\n(OPRA, conditional)", "layer": 0, "group": "sources" },
-    { "id": "territory", "label": "territory.geojson\n(ours, definitive)", "layer": 0, "group": "sources" },
-    { "id": "labels", "label": "Hand labels\n40 parcels + 20 negatives", "layer": 2, "group": "pipeline" },
-    { "id": "harvest", "label": "Harvest agents\ndiscover + fetch + cache", "layer": 1, "group": "pipeline" },
-    { "id": "resolve", "label": "Entity resolution\naddress normalize, PAMS_PIN join", "layer": 2, "group": "pipeline" },
-    { "id": "vision", "label": "Vision extraction\ngpt-4o-mini on image tiles", "layer": 2, "group": "pipeline" },
-    { "id": "evals", "label": "Eval harness\nP/R, hallucination, cost", "layer": 3, "group": "pipeline" },
-    { "id": "score", "label": "House Score engine\ndeterministic, fixture-tested", "layer": 3, "group": "pipeline" },
-    { "id": "db", "label": "doors.geojson + SQLite\nscores + evidence", "layer": 4, "group": "pipeline" },
-    { "id": "mcp", "label": "MCP server (FastAPI, Fly.io)\nget_door_score / explain_score / plan_route", "layer": 5, "group": "serve" },
-    { "id": "map", "label": "Map UI (MapLibre, Vercel)\nscore choropleth + evidence panel", "layer": 5, "group": "serve" }
+    {
+      "id": "sr1a",
+      "label": "NJ SR1A sales\n(arm's-length move dates)",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "njparcels",
+      "label": "NJ Parcels+MOD-IV\nArcGIS REST",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "permits",
+      "label": "NJ Permits\nSocrata API",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "acs",
+      "label": "Census ACS5\nblock groups",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "orthos",
+      "label": "NJ Orthos 2015/2020\n+ NAIP (free)",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "sv",
+      "label": "Street View\n(demo-scale, ToS-disclosed)",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "rental",
+      "label": "Rental registration\n(OPRA, conditional)",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "sdl",
+      "label": "SDL property history\n(authorized point-in-time snapshot)",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "territory",
+      "label": "territory.geojson\n(ours, definitive)",
+      "layer": 0,
+      "group": "sources"
+    },
+    {
+      "id": "labels",
+      "label": "Hand labels 40 parcels + 20 negatives\n(vision eval only, not scoring)",
+      "layer": 2,
+      "group": "pipeline"
+    },
+    {
+      "id": "harvest",
+      "label": "Harvest agents\ndiscover + fetch + cache",
+      "layer": 1,
+      "group": "pipeline"
+    },
+    {
+      "id": "resolve",
+      "label": "Entity resolution\naddress normalize, PAMS_PIN join",
+      "layer": 2,
+      "group": "pipeline"
+    },
+    {
+      "id": "vision",
+      "label": "Vision extraction\ngpt-4o-mini on image tiles",
+      "layer": 2,
+      "group": "pipeline"
+    },
+    {
+      "id": "evals",
+      "label": "Eval harness\nvision P/R + V2 golden-fixture & recalc reports",
+      "layer": 3,
+      "group": "pipeline"
+    },
+    {
+      "id": "score",
+      "label": "House Score engine\ndeterministic, fixture-tested",
+      "layer": 3,
+      "group": "pipeline"
+    },
+    {
+      "id": "db",
+      "label": "doors.geojson + SQLite\nscores + evidence + score-contract version",
+      "layer": 4,
+      "group": "pipeline"
+    },
+    {
+      "id": "mcp",
+      "label": "MCP server (FastAPI, Fly.io)\nget_door_score / explain_score / plan_route",
+      "layer": 5,
+      "group": "serve"
+    },
+    {
+      "id": "map",
+      "label": "Map UI (MapLibre, Vercel)\nscore choropleth + evidence panel",
+      "layer": 5,
+      "group": "serve"
+    }
   ],
   "edges": [
-    { "from": "njparcels", "to": "harvest" },
-    { "from": "permits", "to": "harvest" },
-    { "from": "acs", "to": "harvest" },
-    { "from": "orthos", "to": "harvest" },
-    { "from": "sv", "to": "harvest" },
-    { "from": "rental", "to": "harvest" },
-    { "from": "territory", "to": "harvest", "label": "scope filter" },
-    { "from": "labels", "to": "evals", "label": "ground truth" },
-    { "from": "score", "to": "evals", "label": "golden fixtures" },
-    { "from": "map", "to": "mcp", "label": "plan_route call" },
-    { "from": "harvest", "to": "resolve", "label": "raw cache" },
-    { "from": "harvest", "to": "vision", "label": "image tiles" },
-    { "from": "resolve", "to": "score", "label": "per-door facts" },
-    { "from": "vision", "to": "score", "label": "visual signals" },
-    { "from": "vision", "to": "evals", "label": "predictions vs labels" },
-    { "from": "score", "to": "db" },
-    { "from": "evals", "to": "db", "label": "metrics" },
-    { "from": "db", "to": "mcp" },
-    { "from": "db", "to": "map" }
+    {
+      "from": "sr1a",
+      "to": "harvest",
+      "label": "arm's-length sales"
+    },
+    {
+      "from": "njparcels",
+      "to": "harvest"
+    },
+    {
+      "from": "permits",
+      "to": "harvest"
+    },
+    {
+      "from": "acs",
+      "to": "harvest"
+    },
+    {
+      "from": "orthos",
+      "to": "harvest"
+    },
+    {
+      "from": "sv",
+      "to": "harvest"
+    },
+    {
+      "from": "rental",
+      "to": "harvest"
+    },
+    {
+      "from": "sdl",
+      "to": "harvest",
+      "label": "coalesced permits + roof detail"
+    },
+    {
+      "from": "territory",
+      "to": "harvest",
+      "label": "scope filter"
+    },
+    {
+      "from": "labels",
+      "to": "evals",
+      "label": "ground truth"
+    },
+    {
+      "from": "score",
+      "to": "evals",
+      "label": "golden fixtures"
+    },
+    {
+      "from": "map",
+      "to": "mcp",
+      "label": "plan_route call"
+    },
+    {
+      "from": "harvest",
+      "to": "resolve",
+      "label": "raw cache"
+    },
+    {
+      "from": "harvest",
+      "to": "vision",
+      "label": "image tiles"
+    },
+    {
+      "from": "resolve",
+      "to": "score",
+      "label": "per-door facts"
+    },
+    {
+      "from": "vision",
+      "to": "score",
+      "label": "visual signals"
+    },
+    {
+      "from": "vision",
+      "to": "evals",
+      "label": "predictions vs labels"
+    },
+    {
+      "from": "score",
+      "to": "db"
+    },
+    {
+      "from": "evals",
+      "to": "db",
+      "label": "metrics"
+    },
+    {
+      "from": "db",
+      "to": "mcp"
+    },
+    {
+      "from": "db",
+      "to": "map"
+    }
   ]
 }

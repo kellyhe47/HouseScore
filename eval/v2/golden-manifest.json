@@ -105,7 +105,8 @@
         "R10"
       ],
       "required_case_types": [
-        "happy"
+        "happy",
+        "degenerate"
       ]
     },
     {
@@ -245,6 +246,37 @@
         "R26"
       ],
       "required_case_types": [
+        "degenerate"
+      ]
+    },
+    {
+      "id": "B-022",
+      "statement": "Every temporal window and age derives from the declared as_of date, never wall-clock time",
+      "traces_to": [
+        "R24"
+      ],
+      "required_case_types": [
+        "happy"
+      ]
+    },
+    {
+      "id": "B-023",
+      "statement": "Owner names, mailing addresses, and agent identity present in source records never influence matching, scoring, or the emitted envelope",
+      "traces_to": [
+        "R25"
+      ],
+      "required_case_types": [
+        "negative_control"
+      ]
+    },
+    {
+      "id": "B-024",
+      "statement": "A lower-precedence source may fill a missing parcel fact only on an exact current match and must never overwrite a present higher-precedence value",
+      "traces_to": [
+        "R22"
+      ],
+      "required_case_types": [
+        "precedence",
         "degenerate"
       ]
     }

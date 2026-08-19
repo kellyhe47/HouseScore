@@ -208,6 +208,7 @@
     "exact": {
       "result": {
         "score_contract_version": "v2",
+        "confidence": "normal",
         "categories": {
           "project": 0,
           "capacity": 0,
@@ -225,6 +226,10 @@
         "adjustment": 0.0,
         "score": 30,
         "evidence": [
+          {
+            "type": "fit_cap_adjustment",
+            "points": -13
+          },
           {
             "type": "fit_condition_decline",
             "points": 8

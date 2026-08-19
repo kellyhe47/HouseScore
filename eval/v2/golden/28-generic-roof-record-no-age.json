@@ -176,6 +176,7 @@
     "exact": {
       "result": {
         "score_contract_version": "v2",
+        "confidence": "normal",
         "categories": {
           "project": 0,
           "capacity": 0,

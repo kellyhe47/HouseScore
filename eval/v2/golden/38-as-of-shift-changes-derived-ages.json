@@ -1,38 +1,58 @@
 {
   "schema_version": 1,
-  "id": "G-035",
-  "name": "sdl-and-imagery-unavailable-still-scores",
-  "why": "AE11/R23: one of the eight unavailable SDL pages with no imagery still scores from parcel, sale, and ACS evidence (B=8 fresh mover -> 91) and carries explicit gaps.",
+  "id": "G-038",
+  "name": "as-of-shift-changes-derived-ages",
+  "why": "R24: identical evidence scored at an earlier as_of yields different derived quantities (mover day 6 -> flat band, roof age 19 -> 8 pts) purely from the declared date.",
   "covers": [
-    "B-021"
+    "B-022"
   ],
-  "case_type": "degenerate",
+  "case_type": "happy",
   "traces_to": [
-    "AE11",
-    "R16",
-    "R23",
-    "R26"
+    "R24"
   ],
-  "defends_against": "Treating SDL or imagery absence as disqualifying (score 0) or as negative evidence fails; absence is a gap, not proof.",
+  "defends_against": "An implementation that reads wall-clock time anywhere produces G-005's envelope regardless of the declared as_of.",
   "time_sensitive": true,
   "given": {
     "inputs": {
       "parcel": {
-        "pin": "0248_V2_GAP",
-        "assessed_value": 400000,
+        "pin": "0248_V2_B40",
+        "assessed_value": 650000,
         "construction_year": 1946,
-        "lot_acres": 0.2,
-        "sdl_page_available": false
+        "lot_acres": 0.55,
+        "sdl_page_available": true
       },
       "sales": [
         {
           "source": "SR1A",
-          "date": "2026-07-02",
+          "date": "2026-02-19",
           "price": 850000,
           "sales_code": ""
         }
       ],
-      "permits": [],
+      "permits": [
+        {
+          "id": "P-ROOF-2006",
+          "sources": [
+            "SDL"
+          ],
+          "municipal_id": "SDL-2006-014",
+          "description": "roof replacement - remove and reshingle",
+          "issue_date": "2006-05-01",
+          "disposition": "completed",
+          "completion_date": "2006-06-20"
+        },
+        {
+          "id": "P-WH-2025",
+          "sources": [
+            "SDL"
+          ],
+          "municipal_id": "SDL-2025-201",
+          "description": "water heater replacement",
+          "issue_date": "2025-07-10",
+          "disposition": "completed",
+          "completion_date": "2025-08-15"
+        }
+      ],
       "local_comparables": [
         {
           "pin": "0248_CMP_00",
@@ -136,17 +156,17 @@
         }
       ],
       "territory_assessed_values": [
-        400000,
+        600000,
+        610000,
+        620000,
+        630000,
+        650000,
         700000,
         710000,
         720000,
         730000,
         740000,
-        750000,
-        760000,
-        770000,
-        780000,
-        790000
+        750000
       ],
       "acs_block_group": {
         "dual_income_pct": 0.3
@@ -156,13 +176,14 @@
         "registrations": []
       },
       "imagery": {
-        "available": false
+        "available": true,
+        "observations": []
       }
     },
     "preexisting_state": {},
     "configuration": {},
     "clock": {
-      "as_of": "2026-08-18T00:00:00Z"
+      "as_of": "2026-02-25T00:00:00Z"
     }
   },
   "when": {
@@ -172,41 +193,50 @@
     "exact": {
       "result": {
         "score_contract_version": "v2",
-        "confidence": "low",
+        "confidence": "normal",
         "categories": {
-          "project": 0,
-          "capacity": 0,
-          "fit": 8
+          "project": 8,
+          "capacity": 7,
+          "fit": 21
         },
-        "base": 8,
+        "base": 36,
         "mover": {
           "eligible": true,
-          "days_since_move": 47,
+          "days_since_move": 6,
           "strength": 90.0
         },
-        "mover_lift": 83.0,
+        "mover_lift": 58.5,
         "rental_modifier": 0,
-        "pre_rounding": 91.0,
-        "adjustment": 0.0,
-        "score": 91,
+        "pre_rounding": 94.5,
+        "adjustment": 0.5,
+        "score": 95,
         "evidence": [
+          {
+            "type": "capacity_local_relative_value",
+            "points": 7
+          },
           {
             "type": "fit_home_age",
             "points": 8
           },
           {
-            "type": "mover_recency",
-            "points": 83.0
-          }
-        ],
-        "data_gaps": [
-          {
-            "type": "imagery_missing"
+            "type": "fit_lot",
+            "points": 5
           },
           {
-            "type": "sdl_page_unavailable"
+            "type": "fit_roof_age",
+            "points": 8
+          },
+          {
+            "type": "mover_recency",
+            "points": 58.5
+          },
+          {
+            "type": "project_completed",
+            "points": 8
           }
-        ]
+        ],
+        "data_gaps": []
       },
       "state_changes": [],
       "emitted_events": [],

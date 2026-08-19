@@ -119,6 +119,9 @@
           </div>
           <button id="panel-close" class="iconbtn" type="button" aria-label="Close evidence panel">✕</button>
         </div>
+        <!-- Street View: visual context under the address, never evidence.
+             Rendered by map.js from the streetview.js view model. -->
+        <div class="panel__photo" id="panel-photo" hidden></div>
         <div class="panel__body" id="panel-body"></div>
         <div class="panel__foot" id="panel-foot">
           <button id="copy-address" class="btn btn--ghost btn--block" type="button">Copy address</button>
@@ -209,6 +212,21 @@
           <button id="lightbox-close" class="iconbtn" type="button" aria-label="Close imagery">✕</button>
         </div>
       </div>
+    </div>
+
+    <!-- ── Street View full-screen ("View house") ──────────────────────────── -->
+    <!-- Covers the map entirely; Back (or Escape) returns to the panel. -->
+    <div id="photo-full" class="photofull" role="dialog" aria-label="Street View photo" hidden>
+      <div class="photofull__bar">
+        <button id="photo-back" class="photofull__back" type="button">← Back</button>
+        <div class="photofull__ident">
+          <div class="photofull__addr" id="photo-addr"></div>
+          <div class="photofull__sub" id="photo-sub"></div>
+        </div>
+        <a id="photo-maps" class="photofull__maps" target="_blank" rel="noopener">Open in Google Maps ↗</a>
+      </div>
+      <div class="photofull__frame" id="photo-frame"></div>
+      <div class="photofull__foot">Visual context only — not used in the score · Imagery © Google</div>
     </div>
 
   </div>

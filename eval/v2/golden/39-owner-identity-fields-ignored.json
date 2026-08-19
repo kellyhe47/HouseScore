@@ -1,37 +1,29 @@
 {
   "schema_version": 1,
-  "id": "G-035",
-  "name": "sdl-and-imagery-unavailable-still-scores",
-  "why": "AE11/R23: one of the eight unavailable SDL pages with no imagery still scores from parcel, sale, and ACS evidence (B=8 fresh mover -> 91) and carries explicit gaps.",
+  "id": "G-039",
+  "name": "owner-identity-fields-ignored",
+  "why": "R25: owner-name and mailing-address fields present in the source record must not affect scoring or appear anywhere in the envelope; the result is identical to the same parcel without them.",
   "covers": [
-    "B-021"
+    "B-023"
   ],
-  "case_type": "degenerate",
+  "case_type": "negative_control",
   "traces_to": [
-    "AE11",
-    "R16",
-    "R23",
-    "R26"
+    "R25"
   ],
-  "defends_against": "Treating SDL or imagery absence as disqualifying (score 0) or as negative evidence fails; absence is a gap, not proof.",
+  "defends_against": "An implementation that profiles or echoes owner identity produces a different envelope than the PII-free twin (G-029).",
   "time_sensitive": true,
   "given": {
     "inputs": {
       "parcel": {
-        "pin": "0248_V2_GAP",
+        "pin": "0248_V2_SUBJ",
         "assessed_value": 400000,
-        "construction_year": 1946,
+        "construction_year": 1951,
         "lot_acres": 0.2,
-        "sdl_page_available": false
+        "sdl_page_available": true,
+        "owner_name": "JANE Q PUBLIC",
+        "mailing_address": "PO BOX 7, RAMSEY NJ"
       },
-      "sales": [
-        {
-          "source": "SR1A",
-          "date": "2026-07-02",
-          "price": 850000,
-          "sales_code": ""
-        }
-      ],
+      "sales": [],
       "permits": [],
       "local_comparables": [
         {
@@ -156,7 +148,8 @@
         "registrations": []
       },
       "imagery": {
-        "available": false
+        "available": true,
+        "observations": []
       }
     },
     "preexisting_state": {},
@@ -172,7 +165,7 @@
     "exact": {
       "result": {
         "score_contract_version": "v2",
-        "confidence": "low",
+        "confidence": "normal",
         "categories": {
           "project": 0,
           "capacity": 0,
@@ -180,33 +173,22 @@
         },
         "base": 8,
         "mover": {
-          "eligible": true,
-          "days_since_move": 47,
-          "strength": 90.0
+          "eligible": false,
+          "days_since_move": null,
+          "strength": 0.0
         },
-        "mover_lift": 83.0,
+        "mover_lift": 0.0,
         "rental_modifier": 0,
-        "pre_rounding": 91.0,
+        "pre_rounding": 8.0,
         "adjustment": 0.0,
-        "score": 91,
+        "score": 8,
         "evidence": [
           {
             "type": "fit_home_age",
             "points": 8
-          },
-          {
-            "type": "mover_recency",
-            "points": 83.0
           }
         ],
-        "data_gaps": [
-          {
-            "type": "imagery_missing"
-          },
-          {
-            "type": "sdl_page_unavailable"
-          }
-        ]
+        "data_gaps": []
       },
       "state_changes": [],
       "emitted_events": [],

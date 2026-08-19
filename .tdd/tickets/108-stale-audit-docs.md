@@ -1,11 +1,11 @@
 ---
 id: 108
 title: R35 stale-contract audit + versioned allowlist; docs reconciliation (R31/R33)
-status: pending
+status: green
 depends_on: [103, 104, 105, 106, 107]
 touches: [scripts/audit_stale_contract.py (new), eval/v2/allowlist-historical.json (new), tests/test_stale_audit.py, README.md, docs/PRD.md, docs/DEPLOY.md, docs/handoff-prompt.md, Makefile]
-iterations: 0
-test_files: []
+iterations: 1
+test_files: [tests/test_stale_audit.py]
 branch: ""
 ---
 

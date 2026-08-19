@@ -29,7 +29,7 @@ Per-ticket cap: 5 implementation iterations.
 | 105 | Server + route surfaces: API, MCP, published, talk-track template map (R30) | green | 1 | 103 | seq |
 | 106 | Web UI: map ramp restop (R38), panel math, route chips, degradation copy | green | 1 | 104,105 | batch W-web |
 | 107 | Ethics page V2 (R29) | green | 1 | 104 | batch W-web |
-| 108 | R35 stale audit + allowlist; docs R31 (README/PRD/DEPLOY/handoff/wireframes pointers) | pending | 0 | 103,104,105,106,107 | seq |
+| 108 | R35 stale audit + allowlist; docs R31 (README/PRD/DEPLOY/handoff/wireframes pointers) | green | 1 | 103,104,105,106,107 | seq |
 
 ## Wave plan
 
@@ -49,3 +49,25 @@ chain); 104/105 could parallelize but share eval-report consumers and the Makefi
   KNOWN BRIDGE: 4 js reds in ethics.test.js (pins of deleted weights.py) — owned by 106/107.
 - 104 green iter 1: eval/v2/report.py + outcomes.py + make eval; deciles [5,5,8,8,11,13,15,19,22]; report.json regenerated; py exit 0.
 - 106+107 green iter 1 (batched; impl f188543): quantile ramp from report.json deciles, panel reconciliation, r2 share tokens, R29 ethics rewrite; js 271/0; live browser probe passed (map+panel math+ethics). 4-red JS bridge cleared.
+- 108 green iter 1: audit + allowlist (2 reviewed additions: rubric, scratchpad/); docs reconciled to 42/540/V2;
+  audit wired into make test. Mutate-and-revert demo: planted V1 formula -> exit 2 naming README.md:238; reverted -> clean.
+- Phase 3 (2026-08-19): clean-state gates all green — make test exit 0 (1472 py + 271 js + audit),
+  test-golden 43/43, validate-spec OK (42 fixtures, anchors hold), make eval OK. No CI infra exists in
+  repo (no .github/); golden suite runs inside make test, which is what any CI would invoke.
+
+## Phase 3 — V2 requirement walk
+
+R1-R7 core arithmetic: 42 fixtures + 59 boundary unit tests (101). R8-R12 project: fixtures 15-20,37
++ unit tests; conservative rules counted in R34 report (project_neutralized=115). R13-R16 capacity:
+fixtures 21-25 + bands unit-tested. R17-R21 fit: fixtures 26-34 + caps. R22-R23 precedence: fixtures
+40-41 + bundle tests (102). R24 as_of: fixture 38; R25 PII: fixture 39 + report scan + redaction guards.
+R26 evidence: envelope conventions enforced by golden deep-compare. R27: V1 deleted, one run, version on
+every record, boot + route reject v1 (105). R28: manifest V2-shaped, byte-identical republish test (103).
+R29: ethics page-scan tests + browser probe (107). R30: template-map exhaustiveness, chips, unspeakables,
+API-boundary reconciliation (105/106). R31: docs pins (108). R32: V1 tests/fixtures replaced through
+test-writers (103/105/106 surveys). R33/R35: audit + versioned allowlist, demo verified. R34: report.py
+(104). R36: outcomes.py validator + band_lift; no absolute target (source-scanned). R37: confidence rule
+fixture 14/35 + unit. R38: ramp stops derived from report deciles, test-compared (106).
+Deferred/dormant honestly: rental -25 fixture-only (no registry); vision metrics remain frozen-fixture
+arithmetic under NOT-A-MEASUREMENT banner; no CI infra in repo; nothing deployed (V1 ticket 016 still
+blocked-on-human).

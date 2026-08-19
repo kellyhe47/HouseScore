@@ -6,24 +6,19 @@ that takes a PAMS_PIN and returns a bool, a Null implementation that answers
 False for everything and says why, and a fixture implementation for the golden
 fixtures and the eval harness.
 
-The privacy shape is the point. The score engine consumes exactly one bit
-(`rental_registration_match`), so these providers must never return, store or
+The privacy shape is the point. Scoring consumes exactly one bit per door
+(is this PIN currently a registered rental), so these providers must never return, store or
 infer anything else about whoever lives at an address (R11.1, R11.3). The tests
 below pin the surface, not just the answers.
 """
 
-from datetime import date
-
 import pytest
 
-from houseaccount.scoring.engine import ScoreInput, score_door
 from houseaccount.sources.rental import (
     FixtureRentalProvider,
     NullRentalProvider,
     RentalRegistrationProvider,
 )
-
-AS_OF = date(2026, 8, 14)
 
 #: PAMS_PIN shapes: municipality_block_lot, as MOD-IV writes them.
 SEEDED_PIN = "0248_2702_15"
@@ -113,33 +108,12 @@ def test_an_empty_fixture_provider_matches_nothing():
     assert FixtureRentalProvider([]).is_registered_rental(SEEDED_PIN) is False
 
 
-# --- what the score engine does with the bit --------------------------------
-
-
-def door(match):
-    return ScoreInput(
-        as_of=AS_OF,
-        territory_median_value=500_000.0,
-        acs_dual_income_threshold=0.35,
-        pams_pin=SEEDED_PIN,
-        net_value=600_000.0,
-        yr_constr=1965,
-        rental_registration_match=match,
-    )
-
-
-def test_the_null_provider_leaves_every_door_undemoted():
-    provider = NullRentalProvider()
-    match = provider.is_registered_rental(SEEDED_PIN)
-
-    assert score_door(door(match)).groups["modifier"] == 0
-    assert "absentee_likely" not in {item.type for item in score_door(door(match)).evidence}
-
-
-def test_a_seeded_pin_earns_the_absentee_demotion():
-    provider = FixtureRentalProvider([SEEDED_PIN])
-    match = provider.is_registered_rental(SEEDED_PIN)
-
-    result = score_door(door(match))
-    assert result.groups["modifier"] == -15
-    assert "absentee_likely" in {item.type for item in result.evidence}
+# --- what the score does with the bit ----------------------------------------
+#
+# V1's engine consumed this bit as a -15 "absentee_likely" modifier; that
+# contract is deleted (plan R27/R32). V2 consumes rental evidence through the
+# bundle's `rental_registry` block, where a current verified registration is
+# -25 and a missing registry is the `rental_data_missing` gap — pinned by the
+# locked tests/test_v2_engine.py and tests/test_v2_golden.py, and end-to-end
+# (every real door carries the gap) by tests/test_v2_cutover.py. This module
+# keeps pinning only the provider seam above.

@@ -24,7 +24,6 @@ import pytest
 
 from houseaccount.cache import Cache
 from houseaccount.http import Response
-from houseaccount.scoring.engine import ScoreInput, score_door
 from houseaccount.sources import acs as acs_module
 from houseaccount.sources.acs import (
     ACS_YEAR,
@@ -303,21 +302,12 @@ def test_an_upstream_refusal_degrades_rather_than_crashing(keyed_env, cache):
 
 
 def test_a_caller_with_no_acs_data_can_still_score(keyless_env, cache):
-    """The ACS component contributes 0; the door still scores and still explains."""
+    """The ACS component contributes 0 and becomes a typed data gap; the door
+    still scores. V2 pins the scoring side (acs_missing gap, no
+    capacity_acs_dual_income_prior evidence) in the locked tests/test_v2_engine.py
+    and tests/test_v2_golden.py — this module pins only that the source reports
+    the absence a scorer can degrade on."""
     result = AcsSource(cache=cache, transport=ExplodingTransport()).fetch()
     stats = result.block_groups.get("340030113001")
     assert stats is None
-
-    scored = score_door(
-        ScoreInput(
-            as_of=date(2026, 8, 14),
-            territory_median_value=500_000.0,
-            acs_dual_income_threshold=0.35,
-            net_value=600_000.0,
-            yr_constr=1965,
-            dual_income_pct=None,
-            median_hh_income=None,
-        )
-    )
-    assert scored.score > 0
-    assert "acs_dual_income_prior" not in {item.type for item in scored.evidence}
+    assert result.available is False

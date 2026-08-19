@@ -25,7 +25,9 @@ import dataclasses
 import pytest
 
 from houseaccount.scoring.evidence import IMAGERY_FIELDS, imagery_for
-from houseaccount.scoring.weights import CONDITION_ORDER
+# CONDITION_ORDER is the vision schema's own vocabulary once V1 weights.py is
+# deleted (ticket 103); it must be importable from the schema module itself.
+from houseaccount.vision.schema import CONDITION_ORDER
 from houseaccount.vision.schema import (
     CONFIDENCE_FLOOR,
     SIGNALS,

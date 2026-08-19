@@ -52,8 +52,6 @@ from houseaccount.pipeline import (
 )
 from houseaccount.publish import DOORS_GEOJSON_NAME, EXCLUSION_REASON, RUN_MANIFEST_NAME
 from houseaccount.resolve import ResolveReport
-from houseaccount.scoring.engine import SOURCE_ACS, SOURCE_IMAGERY, SOURCE_SR1A
-from houseaccount.scoring.weights import THRESHOLDS
 from houseaccount.sources import parcels as parcels_module
 from houseaccount.sources import permits as permits_module
 import test_sales
@@ -472,13 +470,17 @@ def test_the_run_carries_every_stage_through_to_the_artifacts(tmp_path):
     assert isinstance(result.report, ResolveReport)
     # vision: a pool claim became a scored, re-openable evidence line
     assert any(
-        item["source"] == SOURCE_IMAGERY and item["imagery"] is not None
+        item["type"] == "fit_pool" and item.get("imagery") is not None
         for item in doors[PIN_MOVER]["evidence"]
     )
-    # ACS reached the score as a block-group prior
-    assert any(item["source"] == SOURCE_ACS for item in doors[PIN_MOVER]["evidence"])
-    # score + publish
+    # ACS reached the score as a block-group prior (V2 capacity evidence)
+    assert any(
+        item["type"] == "capacity_acs_dual_income_prior" for item in doors[PIN_MOVER]["evidence"]
+    )
+    # score + publish, V2-shaped (R27): every record names the contract version
     assert isinstance(doors[PIN_MOVER]["score"], int)
+    assert doors[PIN_MOVER]["score_contract_version"] == "v2"
+    assert set(doors[PIN_MOVER]["categories"]) == {"project", "capacity", "fit"}
     assert result.published.geojson_path.is_file()
     assert result.published.sqlite_path.is_file()
     assert result.published.manifest_path.is_file()
@@ -520,10 +522,10 @@ def test_the_manifest_records_the_inputs_the_run_was_computed_against(tmp_path):
     result = go(config, RoutingTransport())
 
     payload = manifest(config)
-    # Median over the *territory's* class-2 parcels with a value on record —
-    # the 620k and 980k doors. The 5M parcel across town is not in the territory
-    # and the zero-value record is not an assessment.
-    assert payload["territory_median_value"] == 800000.0
+    # R28: the manifest identifies the scoring contract and drops the V1
+    # territory-median input (V2 capacity is percentile/comparable-based).
+    assert payload["score_contract_version"] == "v2"
+    assert "territory_median_value" not in payload
     assert payload["acs_dual_income_threshold"] == ACS_DUAL_INCOME_THRESHOLD
     assert payload["as_of"] == AS_OF.isoformat()
     assert {"parcel", "permits", "acs"} <= set(payload["retrieved"])
@@ -604,8 +606,10 @@ def test_a_missing_census_key_degrades_the_acs_term_and_the_run_completes(tmp_pa
     assert ACS_NO_KEY_REASON in manifest(config)["degradations"]
     assert by_pin(config)[PIN_MOVER]["score"] is not None
     assert not any(
-        item["source"] == SOURCE_ACS for item in by_pin(config)[PIN_MOVER]["evidence"]
+        item["type"] == "capacity_acs_dual_income_prior"
+        for item in by_pin(config)[PIN_MOVER]["evidence"]
     )
+    assert {"type": "acs_missing"} in by_pin(config)[PIN_MOVER]["data_gaps"]
 
 
 def test_a_missing_openai_key_skips_vision_without_fetching_a_single_tile(tmp_path):
@@ -741,17 +745,20 @@ def test_the_parcel_harvest_failing_stops_the_run(tmp_path):
 # --- the MOD-IV deed vintage (T019) -------------------------------------------
 #
 # On the live Ramsey extract the newest deed is roughly 20 months old, so no door
-# is inside the 90-day mover window and the model's highest-weighted group cannot
-# fire at all. A reviewer reading the map cannot otherwise tell "no movers here
-# right now" from "the mover rule is broken", so the run says which.
+# is inside the mover decay window and the heaviest V2 signal cannot fire. A
+# reviewer reading the map cannot otherwise tell "no movers here right now" from
+# "the mover rule is broken", so the run publishes the measured vintage. R28
+# deletes the V1 90-day-cutoff degradation *prose*: the numbers disclose, the
+# sentence is gone.
 #
 # Everything below is measured from the scripted harvest. Nothing is asserted
 # against a constant the pipeline could have hardcoded: each test that pins a
 # vintage also changes the deeds the transport serves, so a hardcoded answer
 # fails at least one of them.
 
-#: Read, never re-typed — the disclosure describes the rule the engine scores on.
-MOVER_WINDOW_DAYS = THRESHOLDS["mover_90d_days"]
+#: V2's fresh-mover band (plan R4): 0-90 days is full strength, decaying to 365.
+#: The disclosure keeps describing the fresh band the engine scores on.
+MOVER_WINDOW_DAYS = 90
 
 #: 90 days before AS_OF, and one day older: the inclusive edge of the window.
 DEED_AT_THE_EDGE = "2026-05-16"
@@ -826,17 +833,18 @@ def test_the_counted_doors_are_the_doors_the_engine_scored_as_movers(tmp_path):
     movers = [
         pin
         for pin, props in by_pin(config).items()
-        if any(item["type"] == "deed_recency" for item in props["evidence"])
+        if any(item["type"] == "mover_recency" for item in props["evidence"])
     ]
     assert movers == [PIN_MOVER]
     assert deed_vintage(config)["doors_in_mover_window"] == len(movers)
 
 
-def test_a_different_extract_reports_a_different_vintage_and_says_the_mover_group_could_not_fire(
+def test_a_different_extract_reports_a_different_vintage_without_the_v1_prose(
     tmp_path,
 ):
     """The load-bearing "never hardcoded" test: same code, older deeds, a
-    different published date — and the note the live run needs."""
+    different published date. R28 drops the 90-day-cutoff degradation prose —
+    the measured numbers are the whole disclosure now."""
     config = config_for(tmp_path)
 
     result = go(config, RoutingTransport(parcels=collection(STALE_PARCEL_FEATURES)))
@@ -844,17 +852,14 @@ def test_a_different_extract_reports_a_different_vintage_and_says_the_mover_grou
     block = deed_vintage(config)
     assert block["latest_deed_date"] == STALE_DEED
     assert block["doors_in_mover_window"] == 0
-    assert "deed_recency" not in evidence_types(config), "the group is unearnable here"
+    assert "mover_recency" not in evidence_types(config), "the signal is unearnable here"
 
-    notes = mover_notes(result.degradations)
-    assert len(notes) == 1, notes
-    note = notes[0]
-    assert isinstance(note, str)
-    assert str(int(MOVER_WINDOW_DAYS)) in note, note
-    assert STALE_DEED in note, note
-    # Recorded in the same voice, and the same list, as a declined provider.
+    # The V1 "mover group could not fire / 90-day window" sentence is a claim
+    # about a deleted rule and must not be recorded or published (R28).
+    assert mover_notes(result.degradations) == []
+    published = json.dumps(manifest(config)["degradations"])
+    assert not re.search(r"90-day|could not fire|top band|top-band", published, re.I)
     assert manifest(config)["degradations"] == list(result.degradations)
-    assert note in manifest(config)["degradations"]
 
 
 def test_the_latest_deed_is_measured_across_the_municipality_not_the_territory(tmp_path):
@@ -881,7 +886,7 @@ def test_the_latest_deed_is_measured_across_the_municipality_not_the_territory(t
     block = deed_vintage(config)
     assert block["latest_deed_date"] == "2026-07-01"
     assert block["doors_in_mover_window"] == 0
-    assert len(mover_notes(result.degradations)) == 1
+    assert mover_notes(result.degradations) == []
 
 
 def test_the_counted_window_is_inclusive_at_its_edge(tmp_path):
@@ -909,8 +914,8 @@ def test_the_counted_window_is_inclusive_at_its_edge(tmp_path):
 
 
 def test_an_extract_with_no_readable_deed_reports_no_vintage_at_all(tmp_path):
-    """Sad path: every deed unparseable. There is no latest date, and the note
-    must not print a placeholder where a date would go."""
+    """Sad path: every deed unparseable. There is no latest date — and no prose
+    about it either (R28); the null vintage is the disclosure."""
     config = config_for(tmp_path)
     unreadable = [
         parcel_feature(PIN_MOVER, lot="3", loc="3 MAPLE ST", deed="not a date"),
@@ -924,15 +929,13 @@ def test_an_extract_with_no_readable_deed_reports_no_vintage_at_all(tmp_path):
     block = deed_vintage(config)
     assert block["latest_deed_date"] is None
     assert block["doors_in_mover_window"] == 0
-
-    notes = mover_notes(result.degradations)
-    assert len(notes) == 1, notes
-    assert not re.search(r"\bNone\b|\bnull\b|\bundefined\b", notes[0]), notes[0]
+    assert mover_notes(result.degradations) == []
+    assert result.published.doors_total == 2
 
 
 def test_an_empty_territory_discloses_the_gap_without_crashing(tmp_path):
     """No parcels is a publishable run (see above), so it is also a disclosable
-    one: nothing measured, and the note that nothing could fire."""
+    one: nothing measured, disclosed as zeros — with no V1 prose (R28)."""
     config = config_for(tmp_path)
 
     result = go(config, RoutingTransport(parcels=collection([])))
@@ -942,7 +945,7 @@ def test_an_empty_territory_discloses_the_gap_without_crashing(tmp_path):
     assert block["doors_in_mover_window"] == 0
     assert block["mover_window_days"] == MOVER_WINDOW_DAYS
     assert result.published.doors_total == 0
-    assert len(mover_notes(manifest(config)["degradations"])) == 1
+    assert mover_notes(manifest(config)["degradations"]) == []
 
 
 def test_the_disclosure_never_reaches_a_door(tmp_path):
@@ -956,10 +959,14 @@ def test_the_disclosure_never_reaches_a_door(tmp_path):
     for props in by_pin(config).values():
         if props["score"] is None:
             continue
-        points = sum(item["points"] for item in props["evidence"])
-        assert props["score"] == max(0, min(100, points))
+        # R7 reconciliation on the published record: capped subtotals + mover
+        # lift + rental modifier + rounding/clamp adjustment == the integer.
+        assert props["score"] == pytest.approx(
+            props["base"] + props["mover_lift"] + props["rental_modifier"] + props["adjustment"]
+        )
+        assert sum(props["categories"].values()) == props["base"]
         for item in props["evidence"]:
-            assert not re.search(r"vintage|extract|could not fire", item["sentence"], re.I), item
+            assert not re.search(r"vintage|extract|could not fire", item["reason"], re.I), item
 
 
 # --- the command line ---------------------------------------------------------
@@ -1016,28 +1023,17 @@ def test_a_fresh_sale_makes_the_mover_group_fire_on_a_stale_extract(tmp_path):
     movers = [
         pin
         for pin, props in by_pin(config).items()
-        if any(item["type"] == "deed_recency" for item in props["evidence"])
+        if any(item["type"] == "mover_recency" for item in props["evidence"])
     ]
     assert movers == [PIN_MOVER], "the register should have moved exactly the sold door"
     assert deed_vintage(config)["doors_in_mover_window"] == 1
     assert result.report.sales_applied == 1
 
 
-def test_the_mover_evidence_names_the_register_not_the_parcel_record(tmp_path):
-    config = config_for(tmp_path)
-
-    go(
-        config,
-        RoutingTransport(
-            parcels=collection(STALE_PARCEL_FEATURES),
-            sales=raw(sr1a_zip(sr1a_sale(**{"DEED-DATE": "260601"}))),
-        ),
-    )
-
-    (recency,) = [
-        item for item in by_pin(config)[PIN_MOVER]["evidence"] if item["type"] == "deed_recency"
-    ]
-    assert recency["source"] == SOURCE_SR1A
+# V1 published a per-line `source` naming the register behind the mover
+# evidence; the V2 envelope carries no per-line source (locked
+# tests/test_v2_engine.py owns the evidence shape) — the register's identity is
+# published once, in the manifest's `sales_register` block, pinned below.
 
 
 def test_the_manifest_reports_the_register_it_actually_read(tmp_path):
@@ -1061,11 +1057,10 @@ def test_the_manifest_reports_the_register_it_actually_read(tmp_path):
     assert deed_vintage(config)["latest_deed_date"] == "2026-06-01"
 
 
-def test_the_unreachable_top_band_is_disclosed_rather_than_left_looking_broken(tmp_path):
-    """The residual limit T019 must not lose. A deed reaches the published
-    register only after county recording and the state's next release, so the
-    freshest sale a run can see is already weeks old and the 100-point tier
-    cannot be earned — a property of the source's cadence, not of the rule."""
+def test_the_v1_top_band_disclosure_is_gone(tmp_path):
+    """R28: V2 has no 30-day top band — mover strength is flat to 90 days and
+    decays to 365 — so the V1 `top_band_days`/`doors_in_top_band` fields and
+    the recording-lag prose are deleted, not nulled."""
     config = config_for(tmp_path)
 
     result = go(
@@ -1078,18 +1073,14 @@ def test_the_unreachable_top_band_is_disclosed_rather_than_left_looking_broken(t
 
     block = deed_vintage(config)
     assert block["doors_in_mover_window"] == 1
-    assert block["doors_in_top_band"] == 0
-    assert block["top_band_days"] == int(THRESHOLDS["mover_30d_days"])
-
-    (note,) = mover_notes(result.degradations)
-    assert "2026-06-01" in note
-    assert "recording" in note.lower()
-    assert note in manifest(config)["degradations"]
+    assert "doors_in_top_band" not in block
+    assert "top_band_days" not in block
+    assert mover_notes(result.degradations) == []
 
 
-def test_a_sale_inside_the_top_band_earns_the_top_band_and_says_nothing(tmp_path):
-    """The disclosure above is a measurement, not a fixed string: give the run a
-    sale from last week and it disappears."""
+def test_a_last_week_sale_earns_full_mover_strength(tmp_path):
+    """A move 7 days ago is inside V2's fresh band: strength 90, and the
+    published record blends toward the mover priority band (R4/R5)."""
     config = config_for(tmp_path)
     last_week = (AS_OF - timedelta(days=7)).strftime("%y%m%d")
 
@@ -1101,9 +1092,13 @@ def test_a_sale_inside_the_top_band_earns_the_top_band_and_says_nothing(tmp_path
         ),
     )
 
-    assert deed_vintage(config)["doors_in_top_band"] == 1
+    props = by_pin(config)[PIN_MOVER]
+    assert props["mover"]["eligible"] is True
+    assert props["mover"]["days_since_move"] == 7
+    assert props["mover"]["strength"] == 90.0
+    assert props["mover_lift"] > 0
+    assert props["score"] >= 90
     assert mover_notes(result.degradations) == []
-    assert by_pin(config)[PIN_MOVER]["score"] == 100
 
 
 def test_the_register_refusing_degrades_the_run_without_ending_it(tmp_path):
@@ -1159,3 +1154,43 @@ def test_no_identity_byte_from_the_register_reaches_the_cache_or_the_artifacts(t
     assert haystack, "the run should have written something"
     for junk in test_sales.IDENTITY_COLUMNS.values():
         assert junk.upper() not in haystack
+
+
+# --- the V2 cutover, on the published run (ticket 103, R27/R28/R6) -------------
+
+
+def test_every_published_record_names_the_v2_contract(tmp_path):
+    """R27: mixed-version outputs must be rejectable, so every feature — scored
+    or excluded — identifies the contract that produced the run."""
+    config = config_for(tmp_path)
+
+    go(config, RoutingTransport())
+
+    versions = {props["score_contract_version"] for props in by_pin(config).values()}
+    assert versions == {"v2"}
+    assert manifest(config)["score_contract_version"] == "v2"
+
+
+def test_every_scored_door_carries_the_rental_data_missing_gap(tmp_path):
+    """R6/R23: the municipal rental registry is OPRA-only and absent from every
+    live run, so every scored door publishes the typed gap — the -25 modifier is
+    exercised only by fixtures."""
+    config = config_for(tmp_path)
+
+    go(config, RoutingTransport())
+
+    for pin, props in by_pin(config).items():
+        if props["score"] is None:
+            continue
+        assert {"type": "rental_data_missing"} in props["data_gaps"], pin
+        assert props["rental_modifier"] == 0, pin
+
+
+def test_the_pipeline_module_scores_through_the_v2_seam_only(tmp_path):
+    """R27: no side-by-side paths — the orchestrator references the V2 engine
+    and bundle builder, and the deleted V1 engine/weights nowhere."""
+    source = Path(pipeline_module.__file__).read_text(encoding="utf-8")
+
+    assert "scoring.engine" not in source
+    assert "scoring.weights" not in source
+    assert "score_door_v2" in source or "scoring.v2" in source or "scoring.bundle" in source

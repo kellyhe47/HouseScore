@@ -3,7 +3,7 @@
  * reopens the same walk on another device (R10.4).
  *
  * The share token is the server's format, re-implemented rather than requested:
- * `r1` + base64url(zlib deflate) of the comma-joined PINs, padding stripped.
+ * `r2` + base64url(zlib deflate) of the comma-joined PINs, padding stripped.
  * Asking the server to encode would put a network round trip between "Share
  * link" and the clipboard, and the browser already has a deflate — so the two
  * sides each write their own and read each other's.
@@ -17,8 +17,19 @@
  * time so `node --test` can import it.
  */
 
-/** Version marker. A future format bumps it and old links keep decoding as junk. */
-const SHARE_PREFIX = 'r1';
+/**
+ * Version marker — the score contract the link was minted under (R27/R30).
+ * `r2` is the current contract; `r1` links were minted under the dead V1
+ * contract and deliberately decode to nothing, so a stale link prompts a
+ * refresh rather than replaying as a wrong route.
+ */
+const SHARE_PREFIX = 'r2';
+
+/** Token prefixes that identify a score contract, current first. */
+const TOKEN_VERSIONS = [
+  ['r2', 'v2'],
+  ['r1', 'v1'],
+];
 
 /** Everything a PAMS PIN can contain, and nothing a URL would mind. */
 const PIN_PATTERN = /^[A-Za-z0-9._-]+$/;
@@ -98,6 +109,25 @@ function tokenFrom(fragment) {
 /* ── Public surface ──────────────────────────────────────────────────────── */
 
 /**
+ * Which score contract a share token was minted under (R27/R30).
+ *
+ * Mirrors `houseaccount.route.share_token_version`: `'v2'` for a current
+ * token, `'v1'` for one minted under the dead contract, `null` for anything
+ * unrecognizable. Accepts a full fragment or a bare token, like `readShare`.
+ *
+ * @param {string|null} [fragmentOrToken]
+ * @returns {'v2'|'v1'|null}
+ */
+export function shareTokenVersion(fragmentOrToken) {
+  if (fragmentOrToken === null || fragmentOrToken === undefined) return null;
+  const token = tokenFrom(fragmentOrToken);
+  for (const [prefix, version] of TOKEN_VERSIONS) {
+    if (token.startsWith(prefix)) return version;
+  }
+  return null;
+}
+
+/**
  * Pack a route's PINs into a URL fragment.
  *
  * Order is the payload. The planner's order is the walk, so the fragment
@@ -105,7 +135,7 @@ function tokenFrom(fragment) {
  * different route from the one that was shared.
  *
  * @param {Array<{pin?: string, pams_pin?: string}>} stops
- * @returns {Promise<string>} e.g. `#route=r1eJwz…`
+ * @returns {Promise<string>} e.g. `#route=r2eJwz…`
  */
 export async function encodeShare(stops) {
   const payload = (stops ?? []).map(pinOf).join(',');

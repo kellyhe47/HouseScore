@@ -1,10 +1,11 @@
 /**
- * The Data & Ethics page's view model (R11.4, wireframe frame 5).
+ * The Data & Ethics page's view model (R29, wireframe frame 5).
  *
  * This page is two deliverables at once: the ethics and ToS position, and the
- * one-page rationale for the House Score. Both are only worth anything if they
- * describe the system that actually ran — so nothing here is decorative prose
- * about an ideal pipeline. The weights come from the engine's own table, the
+ * one-page rationale for the V2 House Score. Both are only worth anything if
+ * they describe the system that actually ran — so nothing here is decorative
+ * prose about an ideal pipeline. The contract constants are the engine's own
+ * (three capped base categories, the mover blend, the rental demotion), the
  * eval numbers come from `eval/report.json` with the caveat that ships with
  * them, and what a provider refused to answer is reported as a refusal rather
  * than quietly rounded to zero.
@@ -14,95 +15,65 @@
  * manifest with no resolve block, a territory with no doors — is reachable in
  * `node --test`.
  *
- * **Claims are structured, not prose.** Each commitment is `{id, text}`. The id
- * is what a test can assert is present; the text is what a reader gets. That
- * split is what lets the wording improve without a test pinning a sentence, and
- * stops the page losing a commitment during an edit.
- *
  * DOM-free at import time.
  */
 
-/* ── The engine's numbers, mirrored ──────────────────────────────────────────
+/* ── The V2 contract constants, mirrored (R2/R4–R6) ─────────────────────────
  *
- * A hand-maintained copy of `src/houseaccount/scoring/weights.py`. There is no
- * build step in this project, so the mirror is checked by test instead: the
- * suite parses the Python source and deep-equals it against these three
- * constants, and editing either side alone fails.
- *
- * The page publishes these as the model's public weights. A browser constant
- * that quietly disagreed with the engine would make the published rationale a
- * lie about the scores on the map next to it.
+ * A hand-maintained mirror of the engine's scoring contract. The page
+ * publishes these as the model's public shape; a browser constant that
+ * quietly disagreed with the engine would make the published rationale a lie
+ * about the scores on the map next to it, so the test suite pins them.
  */
 
-/** Signed point values, keyed exactly as the engine keys them. */
-export const WEIGHTS = {
-  // Mover (group max 100) — the strongest single signal in the model.
-  mover_30d: 100,
-  mover_60d: 85,
-  mover_90d: 70,
-  // Hires-out (group max 60).
-  permit_each: 20,
-  permit_cap: 40,
-  provider_churn: 20,
-  // Capacity (group max 30). The two value bands are alternatives, not a sum.
-  capacity_median: 15,
-  capacity_1_5x: 25,
-  capacity_acs_prior: 5,
-  // Need (group max 32).
-  need_home_age: 8,
-  need_pool: 8,
-  need_lot: 4,
-  need_condition_decline: 8,
-  need_deferred_maintenance: 4,
-  // Modifier — mild by design: a registered rental is a demotion, never an
-  // exclusion, because tenants and landlords both buy home services.
-  absentee_modifier: -15,
+/** The three base categories and their exact caps. */
+export const CATEGORY_CAPS = { project: 25, capacity: 25, fit: 30 };
+
+/**
+ * The mover blend: a recent valid move blends the score toward the 90–100
+ * priority band instead of adding points. The decay denominator is derived —
+ * 365 − 90 — not tuned; the divisor 8 maps the 0–80 base range onto the
+ * band's 10 points.
+ */
+export const MOVER_BLEND = {
+  flatDays: 90,
+  zeroDays: 365,
+  decayDenominatorDays: 275,
+  baseDivisor: 8,
+  priorityBand: [90, 100],
 };
 
-/** The cut-offs the weights hang on. */
-export const THRESHOLDS = {
-  mover_30d_days: 30,
-  mover_60d_days: 60,
-  mover_90d_days: 90,
-  permit_window_days: 730,
-  provider_churn_min_contractors: 2,
-  nominal_sale_price_usd: 100,
-  capacity_1_5x_multiple: 1.5,
-  need_home_age_years: 30,
-  need_lot_acres: 0.5,
-  score_floor: 0,
-  score_ceiling: 100,
-};
+/** The one demotion in the model: a current verified rental registration. */
+export const RENTAL_MODIFIER = -25;
 
-/** Exterior condition as an ordinal scale, worst first. */
-export const CONDITION_ORDER = ['poor', 'fair', 'good', 'excellent'];
+/** The fixed V2 gap vocabulary a door discloses its missing inputs in. */
+export const GAP_TYPES = [
+  'rental_data_missing',
+  'acs_missing',
+  'imagery_missing',
+  'sdl_page_unavailable',
+  'local_comparables_insufficient',
+  'assessed_value_missing',
+];
 
 /* ── Formatting ──────────────────────────────────────────────────────────── */
 
-/** What an unmeasured number renders as. Never "0" — zero is a measurement. */
-const UNMEASURED = 'not yet measured';
+const MINUS = '−';
 
 const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 
-/** A rate as a percentage, e.g. `97.4%`. */
+/** A rate as a percentage, e.g. `81.8%`. */
 const asPercent = (value, digits = 1) =>
-  isNumber(value) ? `${(value * 100).toFixed(digits)}%` : UNMEASURED;
+  isNumber(value) ? `${(value * 100).toFixed(digits)}%` : 'not yet measured';
 
-/** A ratio kept as a decimal, because precision and recall are read as decimals. */
-const asRatio = (value) => (isNumber(value) ? value.toFixed(2) : UNMEASURED);
-
-/** Money at whatever precision it actually has: $0.006 is not $0.01. */
-const asMoney = (value) =>
-  isNumber(value) ? `$${Number(value.toPrecision(2))}` : UNMEASURED;
-
-/* ── The ICP and the signal → ICP trace (R11.4) ──────────────────────────── */
+/* ── The ICP and the signal → ICP trace (R11.4, retained under R29) ──────── */
 
 /**
  * The four traits that define the best concierge customer.
  *
- * Every group in the trace below points at one of these. A signal that traces
- * to none of them has no business moving a score, which is the whole discipline
- * this table exists to enforce.
+ * Every row in the trace below points at one of these. A signal that traces
+ * to none of them has no business moving a score, which is the whole
+ * discipline this table exists to enforce.
  */
 const ICP_TRAITS = [
   {
@@ -113,11 +84,12 @@ const ICP_TRAITS = [
       + 'strongest predictor available, and the one with a real deadline on it.',
   },
   {
-    key: 'hires_out',
-    label: 'Hires out rather than DIY',
+    key: 'buys_work',
+    label: 'Pays professionals rather than DIY',
     body:
-      'A household that already pays contractors has demonstrated the behaviour '
-      + 'the offer depends on. Nobody has to be converted from a weekend habit.',
+      'A household that already pays for home work has demonstrated the '
+      + 'behaviour the offer depends on. Nobody has to be converted from a '
+      + 'weekend habit.',
   },
   {
     key: 'capacity',
@@ -130,210 +102,304 @@ const ICP_TRAITS = [
     key: 'near_term_need',
     label: 'Near-term service need',
     body:
-      'An older house, a pool, a big lot or a visibly slipping exterior all mean '
-      + 'work is already due. Need is what turns capacity into a call.',
+      'An aging roof, a pool, a big lot or a historically slipping exterior all '
+      + 'mean work is already due. Need is what turns capacity into a call.',
   },
 ];
 
 /**
- * Each scoring group, its ceiling, the ICP trait it serves, and every weight
- * inside it.
- *
- * `points` is read from `WEIGHTS` rather than re-typed, so the published table
- * and the engine cannot disagree even by a transcription slip — and every key in
- * `WEIGHTS` appears here exactly once, so a weight can never be added to the
- * engine and quietly left off the public page.
+ * The signal → ICP trace: each V2 scoring term, the ICP trait it serves, and
+ * its place in the arithmetic. The three base categories carry their exact
+ * caps; the mover blend and the rental modifier are not capped point
+ * categories, and say so.
  */
 export function icpTrace() {
-  const signal = (weightKey, description) => ({
-    weightKey,
-    points: WEIGHTS[weightKey],
-    description,
-  });
-
   return [
     {
-      key: 'mover',
-      label: 'Mover',
-      max: 100,
-      icpTrait: 'Recently moved in',
-      signals: [
-        signal(
-          'mover_30d',
-          `Deed recorded within ${THRESHOLDS.mover_30d_days} days — the window in which `
-            + 'a new owner is still choosing every provider they will keep.'
-        ),
-        signal(
-          'mover_60d',
-          `Deed recorded within ${THRESHOLDS.mover_60d_days} days: still deciding, `
-            + 'but some choices have already been made.'
-        ),
-        signal(
-          'mover_90d',
-          `Deed recorded within ${THRESHOLDS.mover_90d_days} days — the edge of the `
-            + 'move-in window, and the last point at which the deadline still helps.'
-        ),
-      ],
-    },
-    {
-      key: 'hires_out',
-      label: 'Hires-out',
-      max: 60,
-      icpTrait: 'Hires out rather than DIY',
-      signals: [
-        signal(
-          'permit_each',
-          `Each contractor permit in a rolling ${THRESHOLDS.permit_window_days}-day `
-            + 'window: proof that work here gets bought rather than done in-house.'
-        ),
-        signal(
-          'permit_cap',
-          'The ceiling on permit points, so a renovation project cannot outweigh '
-            + 'every other trait in the model on its own.'
-        ),
-        signal(
-          'provider_churn',
-          `At least ${THRESHOLDS.provider_churn_min_contractors} distinct contractors `
-            + 'with no repeat — work is being bought and no incumbent holds the account.'
-        ),
-      ],
+      key: 'project',
+      label: 'Project',
+      cap: CATEGORY_CAPS.project,
+      trait: 'Pays professionals rather than DIY',
+      body:
+        'Permit lifecycle activity: an active qualifying project, or one '
+        + 'completed recently, shows this household already pays professionals '
+        + 'for home work. Read conservatively from the permit record alone.',
     },
     {
       key: 'capacity',
       label: 'Capacity',
-      max: 30,
-      icpTrait: 'Capacity to pay for years of service',
-      signals: [
-        signal(
-          'capacity_median',
-          'Assessed value at or above the territory median — the band where a '
-            + 'recurring service plan is a normal household expense.'
-        ),
-        signal(
-          'capacity_1_5x',
-          `Assessed value at or above ${THRESHOLDS.capacity_1_5x_multiple}× the `
-            + 'territory median. An alternative to the band above, never added to it.'
-        ),
-        signal(
-          'capacity_acs_prior',
-          'A small prior when the ACS reports a high dual-income share for the '
-            + 'surrounding block-group — neighbourhood context, never a reading of '
-            + 'any address.'
-        ),
-      ],
+      cap: CATEGORY_CAPS.capacity,
+      trait: 'Capacity to pay for years of service',
+      body:
+        'Assessed value against the territory and against the nearest local '
+        + 'comparables, plus the small neighborhood dual-income prior read at '
+        + 'the Census block group.',
     },
     {
-      key: 'need',
-      label: 'Need',
-      max: 30,
-      icpTrait: 'Near-term service need',
-      signals: [
-        signal(
-          'need_home_age',
-          `A home at least ${THRESHOLDS.need_home_age_years} years old, where original `
-            + 'systems are at or past replacement age.'
-        ),
-        signal(
-          'need_pool',
-          'A pool visible in public-domain aerial imagery: the longest standing '
-            + 'maintenance list in any town.'
-        ),
-        signal(
-          'need_lot',
-          `A lot of at least ${THRESHOLDS.need_lot_acres} acres — grounds that make `
-            + 'outdoor work a standing job rather than an afternoon.'
-        ),
-        signal(
-          'need_condition_decline',
-          `Exterior condition moving down the ${CONDITION_ORDER.join(' → ')} scale `
-            + 'between two ortho vintages.'
-        ),
-        signal(
-          'need_deferred_maintenance',
-          'The combination that reads as deferred maintenance: an older home, no '
-            + 'permits in the window, and a declining exterior.'
-        ),
-      ],
+      key: 'fit',
+      label: 'Fit',
+      cap: CATEGORY_CAPS.fit,
+      trait: 'Near-term service need',
+      body:
+        'Roof age, a pool, lot size, and historical exterior decline between '
+        + 'the public imagery vintages: the properties where work is already '
+        + 'coming due.',
     },
     {
-      key: 'modifier',
-      label: 'Modifier',
-      max: -15,
-      icpTrait: 'Occupancy context (demotion only)',
-      signals: [
-        signal(
-          'absentee_modifier',
-          'A match against the municipal rental registration. Mild and negative '
-            + 'by design: a rented address still buys home services, so this moves '
-            + 'a door down the list rather than off it.'
-        ),
-      ],
+      key: 'mover',
+      label: 'Mover blend',
+      cap: null,
+      trait: 'Recently moved in',
+      body:
+        'A recent valid arm’s-length move does not add points: it blends '
+        + 'the score toward the priority band, with a strength that decays as '
+        + 'the move ages. The strongest trait gets the strongest mechanism.',
+    },
+    {
+      key: 'rental',
+      label: 'Rental modifier',
+      cap: null,
+      trait: 'Owner-occupier context (demotion only)',
+      body:
+        'A current verified municipal rental registration is the model’s '
+        + `only demotion: ${MINUS}25 points, applied after the blend. A rented `
+        + 'door still buys home services, so it moves down the list, never off it.',
     },
   ];
 }
 
-/* ── Evaluation results (R11.4) ──────────────────────────────────────────── */
+/* ── The model section: caps, blend, decay, rental, unknowns (R29) ───────── */
 
-/** The five numbers the page reports, in the order a reader reads them. */
-const METRIC_ROWS = [
-  { key: 'precision', label: 'Pool-detection precision', format: asRatio },
-  { key: 'recall', label: 'Pool-detection recall', format: asRatio },
-  { key: 'hallucination_rate', label: 'Hallucination rate (verified-negative probe)', format: asPercent },
-  { key: 'cost_per_door', label: 'Cost per door', format: asMoney },
-  { key: 'resolve_match_rate', label: 'Entity-resolution match rate', format: asPercent },
-];
-
-/**
- * Anything that says the numbers did not come from hand labels.
- *
- * Deliberately not "does the source mention hand labels": today's source string
- * is `frozen fixture 09 (hand labels not yet collected)`, which mentions them
- * precisely to say they are absent.
- */
-const PROVISIONAL_SOURCE = /frozen|fixture|not yet|provisional|placeholder|synthetic/i;
-
-/**
- * The evaluation section.
- *
- * A missing report leaves every number null and the section unavailable. It
- * does not fall back to zero: an unmeasured rate rendered as `0` is a claim
- * that the measurement was taken and came out badly, which is a different and
- * worse statement than "we have not measured this yet".
- *
- * @param {object|null} report parsed `eval/report.json`
- */
-export function evalMetrics(report) {
-  const available = Boolean(report);
-  const source = (report && report.metrics_source) || null;
-  const isProvisional = Boolean(source) && PROVISIONAL_SOURCE.test(source);
-
-  const metrics = METRIC_ROWS.map(({ key, label, format }) => {
-    const raw = report ? report[key] : null;
-    const value = isNumber(raw) ? raw : null;
-    return { key, label, value, display: format(value) };
-  });
-
+function modelSection(report) {
   return {
-    available,
-    source,
-    isProvisional,
-    caveat: caveatFor(available, isProvisional),
-    metrics,
+    caps: [
+      {
+        key: 'project',
+        label: 'Project',
+        cap: CATEGORY_CAPS.project,
+        body: 'Permit lifecycle evidence of bought work, capped at 25.',
+      },
+      {
+        key: 'capacity',
+        label: 'Capacity',
+        cap: CATEGORY_CAPS.capacity,
+        body: 'Value and neighborhood-prior evidence of means, capped at 25.',
+      },
+      {
+        key: 'fit',
+        label: 'Fit',
+        cap: CATEGORY_CAPS.fit,
+        body: 'Property evidence of near-term need, capped at 30.',
+      },
+    ],
+    blend: {
+      formula:
+        `blended target = 90 + B/${MOVER_BLEND.baseDivisor}, where B is the `
+        + 'capped base (0–80). A fresh mover moves toward that target with '
+        + 'full strength; the published integer is the blended result.',
+      priorityBand: [...MOVER_BLEND.priorityBand],
+      body:
+        'The blend maps the whole base range onto the priority band, so among '
+        + 'fresh movers the better door still ranks higher — a blend preserves '
+        + 'order where a flat bonus would flatten it.',
+    },
+    decay: {
+      text:
+        `Mover strength is flat for the first ${MOVER_BLEND.flatDays} days `
+        + 'after a valid move, then decays exponentially, reaching zero at day '
+        + `${MOVER_BLEND.zeroDays}. The ${MOVER_BLEND.decayDenominatorDays}-day `
+        + `denominator in the exponent is derived as ${MOVER_BLEND.zeroDays} `
+        + `${MINUS} ${MOVER_BLEND.flatDays}, not a tunable knob — there is no `
+        + 'hard edge on which a door falls off a cliff.',
+    },
+    rental: {
+      text:
+        `A current verified rental registration applies the ${MINUS}25 modifier `
+        + 'after the blend — the only demotion in the model, and it takes '
+        + 'precedence over everything the blend did. The demotion currently '
+        + 'ships dormant: the municipal registry has not been obtained (the '
+        + 'OPRA records request is outstanding), so no live door carries it and '
+        + 'it fires only in fixtures. A stale registration — one older than the '
+        + 'verification window — is neutral, and missing rental data is neutral '
+        + 'with a disclosed rental_data_missing gap.',
+    },
+    unknowns: [
+      'Unknown means neutral: a signal that could not be measured never '
+      + 'subtracts points and never promotes a door. Missing data is not '
+      + 'evidence of anything.',
+      'Every unmeasured input is disclosed on the door itself, in the fixed V2 '
+      + `gap vocabulary: ${GAP_TYPES.join(', ')}.`,
+    ],
+    note: determinismNote(report),
   };
 }
 
-function caveatFor(available, isProvisional) {
-  if (!available) {
-    return 'No evaluation report has been published for this run, so this page '
-      + 'reports no measurements rather than estimates of them.';
+/**
+ * The determinism claim, plus the fixture count when a report published one.
+ *
+ * The count is read from `eval/report.json` because this page once spelled a
+ * stale count into its prose — a measurement stated as a literal is how that
+ * drift happened, and an unmeasured number is stated as absent, never guessed.
+ */
+function determinismNote(report) {
+  const total =
+    report && report.golden && isNumber(report.golden.fixtures_total)
+      ? report.golden.fixtures_total
+      : null;
+  const claim =
+    'Deterministic and integer-valued: the same door and the same inputs '
+    + 'produce the same score on every run';
+
+  return total === null
+    ? `${claim}. The golden-fixture count is read from the published evaluation `
+      + 'report, and this page has none to read, so it states no count rather '
+      + 'than a remembered one.'
+    : `${claim}, and ${total} golden fixtures pin the arithmetic.`;
+}
+
+/* ── Evidence interpretation rules (R19/R24 phrasing) ────────────────────── */
+
+const EVIDENCE_RULES = [
+  'Project evidence is read conservatively from the permit lifecycle alone: a '
+  + 'qualifying record in a live or recently completed state, nothing inferred '
+  + 'beyond what the register says.',
+  'Roof evidence is the latest explicit completed roof installation on record '
+  + '— old enough to need service counts toward Fit, and absence of a record '
+  + 'is treated as unknown, not as an old roof.',
+  'The exterior-condition signal is read as historical decline between the '
+  + '2015 and 2020 orthophoto vintages — never a claim about the present state '
+  + 'of the house, because the imagery cannot see the present.',
+  'A later completed exterior permit supersedes the observation: the condition '
+  + 'term goes neutral, because the owner has already addressed what the older '
+  + 'imagery saw.',
+];
+
+/* ── ACS: a neighborhood-level prior, never a household claim (R15) ──────── */
+
+const ACS_SECTION = {
+  heading: 'Census data stays at the neighborhood',
+  body:
+    'The ACS dual-income prior is neighborhood-level context read at the '
+    + 'Census block group. A block group covers hundreds of addresses, and a '
+    + 'statistic about hundreds of addresses is never treated as a fact about '
+    + 'any one door.',
+  claims: [
+    {
+      id: 'no_household_inference',
+      text:
+        'ACS figures are never a claim about the people behind a door. Every '
+        + 'evidence line built from the dual-income share is phrased as '
+        + 'block-group context and nothing more.',
+    },
+    {
+      id: 'acs_is_a_small_prior',
+      text:
+        'The block-group prior is deliberately too small to move a door '
+        + 'between bands on its own. Neighborhood context nudges; it does not '
+        + 'decide.',
+    },
+  ],
+};
+
+/* ── Source limitations (R29) ────────────────────────────────────────────── */
+
+const LIMITATIONS = [
+  'SDL permit lifecycle pages are point-in-time snapshots: a state read today '
+  + 'can change tomorrow, and each run records when it looked rather than '
+  + 'claiming currency.',
+  'The SR1A sales register lags county recording, so the freshest sale a run '
+  + 'can see is already weeks old — the top of the mover window may be '
+  + 'unreachable on any given extract vintage.',
+  'Permit records carry no contractor identity, so nothing here can say who '
+  + 'did the work — only that permitted work happened at the parcel.',
+  'Imagery vintage is a hard limit: the public orthophotos are the 2015 and '
+  + '2020 flights, so every imagery signal describes those years, not today.',
+];
+
+/* ── The R36 validation plan (R29 / PRD R11.4) ───────────────────────────── */
+
+function validationSection() {
+  return {
+    heading: 'Validation plan (R36)',
+    primary:
+      'Primary outcome: the receptive-conversation rate per answered door — a '
+      + 'qualified conversation, counted against doors that actually opened.',
+    secondary:
+      'Secondary outcomes: follow-up appointments accepted, and jobs booked '
+      + 'within the tracking window.',
+    successTest:
+      'The success test is directional ranking lift: higher score bands must '
+      + 'out-perform lower bands on the primary outcome, quantile against '
+      + 'quantile, in walk-order field tests.',
+    claims: [
+      {
+        id: 'no_absolute_target',
+        text:
+          'No absolute conversion target is promised. One must not be invented '
+          + 'before field outcomes exist — every number on this page today is '
+          + 'an input measurement or a pipeline statistic, and none of it is '
+          + 'evidence that the score predicts revenue.',
+      },
+      {
+        id: 'pre_registered',
+        text:
+          'The contract is pre-registered: published, dated, and argued from '
+          + 'the ICP before any outcome data existed, so it cannot have been '
+          + 'quietly fitted to a result after the fact.',
+      },
+    ],
+  };
+}
+
+/* ── Evaluation claims, sourced from the V2 report (R29) ─────────────────── */
+
+/**
+ * The evaluation section. A missing report leaves the section unavailable and
+ * states no measurements: an unmeasured rate rendered as `0` would claim the
+ * measurement was taken and came out badly, which is a different and worse
+ * statement than "not measured yet".
+ *
+ * @param {object|null} report parsed `eval/report.json`
+ */
+export function evalSection(report) {
+  if (!report) {
+    return {
+      available: false,
+      caveat:
+        'No published evaluation report is available, so this page states no '
+        + 'measurements rather than estimates of them.',
+      lines: [],
+    };
   }
-  if (isProvisional) {
-    return 'These vision figures come from a frozen scoring fixture, not from a '
-      + 'hand-labelled sample — the labels have not been collected yet. Read them '
-      + 'as a check that the arithmetic is stable, not as a measurement of how '
-      + 'well the detector sees.';
+
+  const coverage = report.coverage || {};
+  const vision = report.vision || {};
+  const lines = [];
+
+  if (isNumber(coverage.doors_scored) && isNumber(coverage.doors_total)) {
+    lines.push(
+      `${coverage.doors_scored} of ${coverage.doors_total} doors scored `
+      + `(${asPercent(coverage.coverage)} coverage) on the published run.`
+    );
   }
-  return 'Measured against a hand-labelled sample.';
+  if (isNumber(vision.precision)) {
+    lines.push(
+      `Vision spot-check: pool-detection precision ${asPercent(vision.precision)}, `
+      + `recall ${asPercent(vision.recall)}, hallucination rate `
+      + `${asPercent(vision.hallucination_rate)}.`
+    );
+  }
+
+  return {
+    available: true,
+    contractVersion: report.score_contract_version ?? null,
+    asOf: report.as_of ?? null,
+    lines,
+    // The honest caveat travels with the numbers it qualifies, verbatim.
+    banner: vision.banner ?? null,
+    source: vision.metrics_source ?? null,
+    caveat: null,
+  };
 }
 
 /* ── What actually ran, and what did not ─────────────────────────────────── */
@@ -360,8 +426,6 @@ const PROVIDERS = [
     pattern: /vision|imagery|openai/i,
     reasonField: null,
     availableField: null,
-    // The one provider whose run has three outcomes, so it is the one provider
-    // that reads its own measured block instead of a sentence. See `visionState`.
     measured: visionState,
   },
 ];
@@ -369,29 +433,13 @@ const PROVIDERS = [
 /** The deed-vintage row's identity, kept beside the providers it is listed with. */
 const MOVER_VINTAGE = {
   key: 'mover_deed_vintage',
-  label: 'Deed recency (Mover signal)',
+  label: 'Deed recency (mover blend)',
 };
 
 /**
- * Which signal sources answered on the published run, and why the others did not.
- *
- * A reviewer's first question about a pipeline like this is "which of these
- * numbers is real?" — so the declinations are published beside the model rather
- * than buried in a log. A missing key and an unanswered records request are
- * ordinary states here, not failures to hide.
- *
- * The deed vintage is listed last and in the same shape, because it answers that
- * same question about the heaviest signal in the model: a county extract whose
- * newest deed predates the mover window makes the Mover group unearnable, and a
- * reader looking at a map of zeroes cannot otherwise tell that from a broken
- * rule. It is a limit of the data, reported where the other limits are.
- *
- * Each row carries a `status` of `live`, `partial` or `declined`. Two states
- * were not enough: the vision stage answered 270 requests and left evidence on
- * 119 doors on the published run, and printing DECLINED beside it made this
- * section a lie about the map two clicks away. `live` is kept as exactly "not
- * declined" — a stage that ran with a stated limit is live — so every existing
- * reader of the boolean keeps working.
+ * Which signal sources answered on the published run, and why the others did
+ * not — the declinations published beside the model rather than buried in a
+ * log. Each row carries a `status` of `live`, `partial` or `declined`.
  *
  * @param {object|null} manifest parsed `data/run_manifest.json`
  */
@@ -406,19 +454,15 @@ export function signalAvailability(manifest) {
         key,
         label,
         status: 'declined',
-        reason: 'No published run to report on, so this page cannot say whether '
-          + 'the provider answered.',
+        reason:
+          'No published run to report on, so this page cannot say whether the '
+          + 'provider answered.',
       };
     }
 
-    // A run that measured this stage states its outcome, and the measurement
-    // wins over anything inferred from prose below.
     const state = measured ? measured(manifest, degradations) : null;
     if (state) return { key, label, ...state };
 
-    // The manifest states a declination two ways — a per-provider reason in the
-    // resolve block, and a human sentence in `degradations` — and either alone
-    // is enough to know the signal did not run.
     const stated = reasonField ? resolve[reasonField] : null;
     const logged = degradations.find((note) => pattern.test(note)) || null;
     const reason = stated || logged;
@@ -429,8 +473,6 @@ export function signalAvailability(manifest) {
     return { key, label, status: live ? 'live' : 'declined', reason: reason || null };
   });
 
-  // `live` is derived here and only here, so a row cannot disagree with its own
-  // badge.
   return [...providers, moverVintageRow(manifest, degradations)].map((row) => ({
     ...row,
     live: row.status !== 'declined',
@@ -438,27 +480,21 @@ export function signalAvailability(manifest) {
 }
 
 /**
- * The vision stage's own state, as the run measured it — or null for a run that
- * never measured it.
- *
- * Three outcomes, and the middle one is the whole point: a stage that issued
- * every request and lost some answers is neither a clean run nor a refusal, and
- * the manifest is the only place that distinction exists. Returning null for an
- * older publish is deliberate — it hands the row back to the degradation-string
- * reading it has always had, rather than inventing a state nobody measured.
- *
- * @param {object} manifest parsed `data/run_manifest.json`
- * @param {string[]} degradations the run's recorded degradations
+ * The vision stage's own state, as the run measured it — or null for a run
+ * that never measured it, which hands the row back to the degradation-string
+ * reading it has always had.
  */
 function visionState(manifest, degradations) {
   const vision = manifest.vision;
-  if (!vision) return null;
+  if (!vision || !('available' in vision)) return null;
 
   if (vision.available === false) {
     const recorded = degradations.find((note) => /vision|imagery|openai/i.test(note)) || null;
     return {
       status: 'declined',
-      reason: vision.declination_reason || recorded
+      reason:
+        vision.declination_reason
+        || recorded
         || 'The vision stage did not run on this publish, and the run recorded no reason.',
     };
   }
@@ -469,49 +505,29 @@ function visionState(manifest, degradations) {
   return { status: 'partial', reason: describeVisionLoss(vision, manifest) };
 }
 
-/**
- * What a partial vision run cost, as two fractions of the whole.
- *
- * Both are read from the run rather than written here — the counts drift every
- * publish, and a sentence carrying its own numbers is how "twelve golden
- * fixtures" survived into a thirteen-fixture harness. The second fraction is the
- * one the badge exists for: it says the stage's evidence reached the map, which
- * is what a reviewer can verify by clicking a door.
- *
- * @param {object} vision the manifest's `vision` block
- * @param {object} manifest the run it came from, for `doors_total`
- */
+/** What a partial vision run cost, as fractions read from the run itself. */
 function describeVisionLoss(vision, manifest) {
   const total = isNumber(vision.answers_total) ? vision.answers_total : null;
   const withImagery = isNumber(vision.doors_with_imagery) ? vision.doors_with_imagery : null;
   const doors = isNumber(manifest.doors_total) ? manifest.doors_total : null;
 
-  const lostLine = total === null
-    ? `${vision.answers_lost} vision answers could not be read as detections`
-    : `${vision.answers_lost} of ${total} vision answers could not be read as detections`;
+  const lostLine =
+    total === null
+      ? `${vision.answers_lost} vision answers could not be read as detections`
+      : `${vision.answers_lost} of ${total} vision answers could not be read as detections`;
 
-  const ranLine = withImagery !== null && doors !== null
-    ? ` The stage itself ran: ${withImagery} of ${doors} doors carry an imagery-backed `
-      + 'evidence line, re-openable on the map.'
-    : ' The stage itself ran; the answers it lost are the only part missing.';
+  const ranLine =
+    withImagery !== null && doors !== null
+      ? ` The stage itself ran: ${withImagery} of ${doors} doors carry an `
+        + 'imagery-backed evidence line, re-openable on the map.'
+      : ' The stage itself ran; the answers it lost are the only part missing.';
 
   return `${lostLine}, so the doors they covered scored without their imagery signals.${ranLine}`;
 }
 
 /**
- * The deed-vintage row: whether any door was inside the mover window, and why not.
- *
- * The reason is the run's *own* note whenever it recorded one, quoted rather
- * than paraphrased — the pipeline measured this and wrote a sentence about it,
- * and a second sentence written here could drift from the numbers beside it. The
- * fallback exists only for a run that recorded the block without the note.
- *
- * A manifest with no `deed_vintage` at all — anything published before this was
- * measured — is reported as not live with a reason that claims nothing. Calling
- * it live would assert a measurement nobody took.
- *
- * @param {object|null} manifest
- * @param {string[]} degradations the run's recorded degradations
+ * The deed-vintage row: whether any door was inside the mover window, and why
+ * not — the run's own note quoted rather than paraphrased wherever one exists.
  */
 function moverVintageRow(manifest, degradations) {
   const vintage = (manifest && manifest.deed_vintage) || null;
@@ -521,137 +537,68 @@ function moverVintageRow(manifest, degradations) {
       ...MOVER_VINTAGE,
       status: 'declined',
       reason: manifest
-        ? 'This run did not record how old the deed data behind the Mover signal was, '
-          + 'so this page cannot say whether any door was inside the mover window.'
-        : 'There is no published run to report on, so this page cannot say whether any '
-          + 'door was inside the mover window.',
+        ? 'This run did not record how old the deed data behind the mover blend '
+          + 'was, so this page cannot say whether any door was inside the mover window.'
+        : 'There is no published run to report on, so this page cannot say '
+          + 'whether any door was inside the mover window.',
     };
   }
 
   const recorded = degradations.find((note) => /mover/i.test(note)) || null;
 
   if (isNumber(vintage.doors_in_mover_window) && vintage.doors_in_mover_window > 0) {
-    // The group fired — but "fired" and "fired everywhere it could" are not the
-    // same claim. A deed reaches the sales register only after county recording
-    // and the state's next file release, so the freshest sale a run can see is
-    // already weeks old and the top band may still be unreachable. When the run
-    // measured that and said so, the sentence is carried here rather than being
-    // dropped for a green badge: the signal is live, with a stated limit.
     return { ...MOVER_VINTAGE, status: 'live', reason: recorded };
   }
 
   return { ...MOVER_VINTAGE, status: 'declined', reason: recorded || describeVintage(vintage) };
 }
 
-/**
- * A sentence for a recorded vintage the run left uncommented, built only from
- * what the block actually holds — never from a date written into this page.
- *
- * @param {object} vintage the manifest's `deed_vintage` block
- */
+/** A sentence for a recorded vintage the run left uncommented. */
 function describeVintage(vintage) {
   const days = isNumber(vintage.mover_window_days)
     ? vintage.mover_window_days
-    : THRESHOLDS.mover_90d_days;
+    : MOVER_BLEND.flatDays;
 
   return vintage.latest_deed_date
-    ? `No door in this territory has a deed dated inside the ${days}-day mover window: the `
-      + `newest deed anywhere in the county extract is ${vintage.latest_deed_date}, so the `
-      + 'Mover group could not fire on this run. That is the vintage of the extract, not a '
-      + 'rule that failed.'
-    : `This run found no readable deed date, so no door could be placed inside the ${days}-day `
-      + 'mover window and the Mover group could not fire on this run.';
-}
-
-/* ── Absentee detection (R11.3) ──────────────────────────────────────────── */
-
-/**
- * The absentee position, and whether the data behind it exists.
- *
- * The commitment holds whether or not the registration was obtained: absentee
- * is a rental-registration match and nothing else. What changes with the data
- * is the count — and with no registration in hand the count is null, because a
- * "0 matched" on this page would be a finding nobody made.
- *
- * @param {object|null} manifest
- */
-export function absenteeStatement(manifest) {
-  const resolve = (manifest && manifest.resolve) || {};
-  const degradations = (manifest && manifest.degradations) || [];
-
-  const reason =
-    resolve.rental_declination_reason
-    || degradations.find((note) => /rental/i.test(note))
-    || (manifest ? null : 'no published run');
-
-  const available = Boolean(manifest) && !reason;
-  const matched = available && isNumber(resolve.rental_registration_matched)
-    ? resolve.rental_registration_matched
-    : null;
-
-  // The recorded reason is a full sentence in its own right, so it is quoted
-  // rather than spliced into one — the run's own words, not a paraphrase.
-  const body = available
-    ? `The municipal rental registration was obtained and matched ${matched} addresses in `
-      + `this territory. Each of those doors carries the ${WEIGHTS.absentee_modifier}-point `
-      + 'demotion and an evidence line saying exactly why.'
-    : manifest
-      ? 'No door in this run carries the absentee demotion, because the municipal rental '
-        + `registration was not obtained. The run records the reason as: “${reason}”. The `
-        + 'rule is published regardless — the honest statement is that this signal is a seam '
-        + 'waiting on a records response, not that this territory has no rentals in it.'
-      : 'There is no published run to report against, so no door carries the absentee '
-        + 'demotion here. The rule stands either way: it is a rental-registration match and '
-        + 'nothing else, and that registration was not obtained.';
-
-  return {
-    available,
-    matched,
-    body,
-    claims: [
-      {
-        id: 'rental_registration_only',
-        text:
-          'Absentee likelihood is decided by one thing only: whether the address '
-          + 'appears in the municipality’s own rental-registration list. No '
-          + 'mail-forwarding data, no occupancy inference, nothing derived from who '
-          + 'lives anywhere.',
-      },
-      {
-        id: 'absentee_is_mild',
-        text:
-          `The penalty is ${WEIGHTS.absentee_modifier} points and never an exclusion, `
-          + 'because a landlord who buys gutter cleaning and a tenant who buys it are '
-          + 'both customers.',
-      },
-    ],
-  };
+    ? `No door in this territory has a deed dated inside the ${days}-day mover `
+      + `window: the newest deed anywhere in the county extract is `
+      + `${vintage.latest_deed_date}, so no door carries a mover lift on this `
+      + 'run. That is the vintage of the extract, not a rule that failed.'
+    : `This run found no readable deed date, so no door could be placed inside `
+      + `the ${days}-day mover window and no door carries a mover lift on this run.`;
 }
 
 /* ── The whole page ──────────────────────────────────────────────────────── */
 
 /**
- * Assemble the page from the rationale (which is always true) and the published
- * run (which may be missing, partial, or degraded).
+ * Assemble the page from the rationale (which is always true) and the
+ * published run (which may be missing, partial, or degraded).
  *
- * @param {{report: object|null, manifest: object|null}} data
+ * @param {{report?: object|null, manifest?: object|null}} data
  */
 export function buildEthicsPage({ report = null, manifest = null } = {}) {
   return {
-    icp: icpSection(),
+    icp: {
+      definition:
+        'The best concierge customer has recently moved in, pays professionals '
+        + 'rather than doing the work themselves, can pay for years of service '
+        + 'rather than one job, and has work already coming due. Every term in '
+        + 'the score traces to one of those four traits — nothing scores '
+        + 'because it happened to be available.',
+      traits: ICP_TRAITS,
+    },
     trace: icpTrace(),
-    weights: weightsSection(report),
+    model: modelSection(report),
+    evidenceRules: EVIDENCE_RULES,
+    acs: ACS_SECTION,
+    limitations: LIMITATIONS,
     validation: validationSection(),
-    evaluation: evalMetrics(report),
+    evaluation: evalSection(report),
     sources: sourcesSection(manifest),
     ethics: {
       danielsLaw: danielsLawSection(),
-      census: censusSection(manifest),
       streetView: streetViewSection(),
-      absentee: absenteeStatement(manifest),
     },
-    // The machine keys stay in `signalAvailability`, which is where they are
-    // read; the page carries the sentences a reviewer actually reads.
     availability: signalAvailability(manifest).map(({ label, status, live, reason }) => ({
       label,
       status,
@@ -664,148 +611,10 @@ export function buildEthicsPage({ report = null, manifest = null } = {}) {
       isDemoOnly: true,
       label: 'Simulate a data-fetch error on the map',
       body:
-        'A demo-only trigger for the map’s degraded state, so a reviewer can see '
-        + 'how the page behaves when the doors layer fails rather than taking the '
-        + 'claim on trust.',
+        'A demo-only trigger for the map’s degraded state, so a reviewer '
+        + 'can see how the page behaves when the doors layer fails rather than '
+        + 'taking the claim on trust.',
     },
-  };
-}
-
-function icpSection() {
-  return {
-    definition:
-      'The best concierge customer has recently moved in, hires work out rather '
-      + 'than doing it themselves, can pay for years of service rather than one '
-      + 'job, and has work already coming due. Every signal in the score traces to '
-      + 'one of those four traits — nothing scores because it was available.',
-    traits: ICP_TRAITS,
-  };
-}
-
-const WEIGHT_LABELS = {
-  mover_30d: 'Deed within 30 days',
-  mover_60d: 'Deed within 60 days',
-  mover_90d: 'Deed within 90 days',
-  permit_each: 'Each permit in the 2-year window',
-  permit_cap: 'Permit points ceiling',
-  provider_churn: 'Provider churn, no repeat contractor',
-  capacity_median: 'Assessed at or above territory median',
-  capacity_1_5x: 'Assessed at or above 1.5× the median',
-  capacity_acs_prior: 'ACS block-group dual-income prior',
-  need_home_age: 'Home age at or over 30 years',
-  need_pool: 'Pool detected in aerial imagery',
-  need_lot: 'Lot at or over half an acre',
-  need_condition_decline: 'Exterior condition declined between vintages',
-  need_deferred_maintenance: 'Deferred-maintenance combination',
-  absentee_modifier: 'Registered rental (demotion)',
-};
-
-const THRESHOLD_LABELS = {
-  mover_30d_days: 'Deed age for the top mover band (days)',
-  mover_60d_days: 'Deed age for the middle mover band (days)',
-  mover_90d_days: 'Deed age for the last mover band (days)',
-  permit_window_days: 'Rolling permit window (days)',
-  provider_churn_min_contractors: 'Distinct contractors before churn counts',
-  nominal_sale_price_usd: 'Sale price at or below which a deed reads as non-arm’s-length (USD)',
-  capacity_1_5x_multiple: 'Multiple of the median for the upper capacity band',
-  need_home_age_years: 'Home age that counts as service need (years)',
-  need_lot_acres: 'Lot size that counts as service need (acres)',
-  score_floor: 'Score floor',
-  score_ceiling: 'Score ceiling',
-};
-
-/**
- * The published weights, thresholds, clamp — and how many fixtures pin them.
- *
- * The fixture count is read from `eval/report.json` for the same reason every
- * point value above is read from the engine's own table: this page had spelled
- * "twelve" into its prose while the harness reported thirteen, which is exactly
- * the drift the weights table is built to make impossible. A run that published
- * no report claims no count — an unmeasured number stated as a literal is how
- * the stale one survived in the first place.
- *
- * @param {object|null} report parsed `eval/report.json`
- */
-function weightsSection(report) {
-  return {
-    rows: Object.entries(WEIGHTS).map(([key, points]) => ({
-      key,
-      points,
-      label: WEIGHT_LABELS[key] || key,
-    })),
-    thresholds: Object.entries(THRESHOLDS).map(([key, value]) => ({
-      key,
-      value,
-      label: THRESHOLD_LABELS[key] || key,
-    })),
-    formula:
-      'score = clamp(mover + hires-out + capacity + need + modifier, '
-      + `${THRESHOLDS.score_floor}, ${THRESHOLDS.score_ceiling})`,
-    note: determinismNote(report),
-    conditionScale: CONDITION_ORDER,
-  };
-}
-
-/**
- * The determinism claim, plus the fixture count when a report published one.
- *
- * Determinism is a property of the engine and holds whether or not anything was
- * measured, so that half of the sentence is unconditional. The count is a
- * measurement, so it appears only when there is a published one to quote.
- *
- * @param {object|null} report parsed `eval/report.json`
- */
-function determinismNote(report) {
-  const total = report && isNumber(report.fixtures_total) ? report.fixtures_total : null;
-  const claim =
-    'Deterministic and integer-valued. The same door and the same inputs produce '
-    + 'the same score on every run';
-
-  return total === null
-    ? `${claim}. The golden-fixture count is read from the published evaluation report, `
-      + 'and this page has none to read, so it states no count rather than a remembered one.'
-    : `${claim}, and ${total} golden fixtures pin the arithmetic.`;
-}
-
-function validationSection() {
-  return {
-    heading: 'Validation plan',
-    body:
-      'No knock outcomes exist yet, so there is nothing to fit the weights to — and '
-      + 'weights fitted to nothing are how a model ends up confidently wrong. The '
-      + 'table above is therefore pre-registered rather than tuned: it is published, '
-      + 'dated, and every term is argued from the ICP. When outcomes accrue, the '
-      + 'model gets validated rather than defended.',
-    claims: [
-      {
-        id: 'pre_registered',
-        text:
-          'The weights are pre-registered. They were argued from the ICP and '
-          + 'published before any outcome data existed, so they cannot have been '
-          + 'quietly fitted to a result after the fact.',
-      },
-      {
-        id: 'decile_lift',
-        text:
-          'First test once outcomes exist: a score-decile lift curve. A working '
-          + 'score shows monotonically higher engagement as the deciles climb, and a '
-          + 'flat curve means the model is not finding anything.',
-      },
-      {
-        id: 'calibration',
-        text:
-          'Second test: calibration. A door scored 80 should convert about twice as '
-          + 'often as one scored 40 — ranking correctly is not the same as being '
-          + 'right about the size of the difference.',
-      },
-      {
-        id: 'no_outcome_data_yet',
-        text:
-          'Until both curves can be drawn, every number on this page is an input '
-          + 'measurement or a pipeline statistic. None of them is evidence that the '
-          + 'score predicts revenue.',
-      },
-    ],
   };
 }
 
@@ -813,11 +622,11 @@ function danielsLawSection() {
   return {
     heading: 'Daniel’s Law and personal identity',
     body:
-      'New Jersey’s Daniel’s Law restricts the disclosure of home addresses '
-      + 'and personal identity for covered persons. This pipeline is built so that '
-      + 'compliance is a property of what it never holds, not of a filter at the end: '
-      + 'the identifying columns are dropped at the source adapter, before anything '
-      + 'reaches storage, scoring, or the map.',
+      'New Jersey’s Daniel’s Law restricts the disclosure of home '
+      + 'addresses and personal identity for covered persons. This pipeline is '
+      + 'built so that compliance is a property of what it never holds, not of '
+      + 'a filter at the end: the identifying columns are dropped at the source '
+      + 'adapter, before anything reaches storage, scoring, or the map.',
     claims: [
       {
         id: 'redacted_at_source',
@@ -829,49 +638,16 @@ function danielsLawSection() {
       {
         id: 'never_requested',
         text:
-          'No request this pipeline makes asks for personal identity. The absence '
-          + 'is in the query, not only in the parsing of the answer.',
+          'No request this pipeline makes asks for personal identity. The '
+          + 'absence is in the query, not only in the parsing of the answer.',
       },
       {
         id: 'no_identity_reconstruction',
         text:
           'No attempt is made to reconstruct who lives at a door — no deed-book '
           + 'name mining, no broker or people-search data, no cross-referencing '
-          + 'toward a person. The score describes a property, and the UI shows only '
-          + 'the property.',
-      },
-    ],
-  };
-}
-
-function censusSection(manifest) {
-  const threshold = manifest && isNumber(manifest.acs_dual_income_threshold)
-    ? asPercent(manifest.acs_dual_income_threshold, 0)
-    : null;
-
-  return {
-    heading: 'Census data stays at the neighbourhood',
-    body:
-      'The ACS contribution is a small prior drawn from block-group tables'
-      + (threshold ? ` at a ${threshold} dual-income share` : '')
-      + `, worth ${WEIGHTS.capacity_acs_prior} points of a possible ${THRESHOLDS.score_ceiling}. `
-      + 'A block group covers hundreds of addresses, and a statistic about hundreds of '
-      + 'addresses says nothing about any one of them.',
-    claims: [
-      {
-        id: 'no_household_inference',
-        text:
-          'ACS figures are never treated as a fact about an address. Every '
-          + 'evidence line built from them is phrased as block-group context — '
-          + '"this neighbourhood reports a high dual-income share" — and never as a '
-          + 'claim about the people behind the door.',
-      },
-      {
-        id: 'acs_is_a_small_prior',
-        text:
-          `The block-group prior is worth ${WEIGHTS.capacity_acs_prior} points, `
-          + 'deliberately too small to move a door between bands on its own. '
-          + 'Neighbourhood context nudges; it does not decide.',
+          + 'toward a person. The score describes a property, and the UI shows '
+          + 'only the property.',
       },
     ],
   };
@@ -881,39 +657,39 @@ function streetViewSection() {
   return {
     heading: 'Imagery, and the Street View ToS',
     body:
-      'Google Maps Platform Terms of Service §3.2.3 prohibits creating derived '
-      + 'datasets from Street View content, and a per-parcel signal stored in a '
-      + 'database is exactly that. So the bulk imagery signals do not come from '
-      + 'Street View at all — they come from public-domain state orthophotography, '
-      + 'which carries no such restriction.',
+      'Google Maps Platform Terms of Service §3.2.3 prohibits creating '
+      + 'derived datasets from Street View content, and a per-parcel signal '
+      + 'stored in a database is exactly that. So the bulk imagery signals do '
+      + 'not come from Street View at all — they come from public-domain state '
+      + 'orthophotography, which carries no such restriction.',
     claims: [
       {
         id: 'bulk_from_public_domain_orthos',
         text:
-          'Every imagery signal that reaches a score — pool, exterior condition, '
-          + 'lot context — is derived from public-domain NJ orthophotos and NAIP '
-          + 'coverage, which may lawfully be analysed and stored.',
+          'Every imagery signal that reaches a score — pool, exterior '
+          + 'condition, lot context — is derived from public-domain NJ '
+          + 'orthophotos and NAIP coverage, which may lawfully be analysed and stored.',
       },
       {
         id: 'street_view_demo_scale',
         text:
-          'Street View is used only at demo scale, for a handful of doors, without '
-          + 'building a stored derived dataset — and that position is published '
-          + 'here rather than left implicit.',
+          'Street View is used only at demo scale, for a handful of doors, '
+          + 'without building a stored derived dataset — and that position is '
+          + 'published here rather than left implicit.',
       },
       {
         id: 'zillow_redfin_excluded',
         text:
           'Zillow and Redfin are excluded outright. Their terms forbid scraping '
-          + 'and redistribution, and no listing-portal data of any kind is in this '
-          + 'pipeline.',
+          + 'and redistribution, and no listing-portal data of any kind is in '
+          + 'this pipeline.',
       },
       {
         id: 'tos_over_convenience',
         text:
-          'Where a licence and a better signal conflict, the licence wins and the '
-          + 'gap is disclosed. That is why the imagery terms are absent rather than '
-          + 'approximated when a provider declines.',
+          'Where a licence and a better signal conflict, the licence wins and '
+          + 'the gap is disclosed. That is why the imagery terms are absent '
+          + 'rather than approximated when a provider declines.',
       },
     ],
   };
@@ -935,19 +711,21 @@ function sourcesSection(manifest) {
       detail:
         'Year-to-date statewide sales flat file (nj.gov/treasury/taxation), fixed-width, '
         + 'joined to parcels by block, lot and condominium qualifier. Supplies the deed '
-        + 'recency the Mover signal reads whenever it is fresher than MOD-IV\u2019s. The '
+        + 'recency the mover blend reads whenever it is fresher than MOD-IV’s. The '
         + 'download is statewide and its layout reserves grantor/grantee identity columns; '
         + 'only non-identity columns are ever read, and the raw file is never cached.',
       retrieved: date('sales'),
     },
     {
-      name: 'NJ construction permits',
-      detail: 'Socrata (data.nj.gov), dataset w9se-dmra, matched to parcels by block and lot.',
+      name: 'NJ construction permits (SDL lifecycle)',
+      detail:
+        'Socrata (data.nj.gov), dataset w9se-dmra, matched to parcels by block and lot. '
+        + 'Lifecycle pages are point-in-time reads; no contractor identity is collected.',
       retrieved: date('permits'),
     },
     {
       name: 'Census ACS 5-year block-group tables',
-      detail: 'B23007, B19013 and B08303 at block-group geography — neighbourhood context only.',
+      detail: 'B23007, B19013 and B08303 at block-group geography — neighborhood context only.',
       retrieved: date('acs'),
     },
     {
@@ -957,7 +735,9 @@ function sourcesSection(manifest) {
     },
     {
       name: 'Ramsey municipal rental registration',
-      detail: 'Municipal record requested under OPRA. The only input to the absentee modifier.',
+      detail:
+        'Municipal record requested under OPRA. The only input to the rental modifier, '
+        + 'which ships dormant until it arrives.',
       retrieved: date('rental'),
     },
   ];
@@ -1013,8 +793,6 @@ function coverageSection(manifest) {
 
   const total = isNumber(manifest.doors_total) ? manifest.doors_total : 0;
   const scored = isNumber(manifest.doors_scored) ? manifest.doors_scored : 0;
-  // A territory with no doors is a real state — an empty publish — and dividing
-  // into it must not put NaN in front of a reviewer.
   const ratio = total > 0 ? scored / total : null;
 
   return {

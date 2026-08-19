@@ -7,24 +7,22 @@
  * ramp anywhere would mean a parcel and its panel could disagree about what 62
  * looks like.
  *
- * The stops are the approved prototype's (docs/prototype-decoded.html:922),
- * interpolated linearly in RGB. Unlike the prototype's own `ramp()`, this one
- * clamps: the published scores are already clamped to 0–100, but a colour
- * function that returns `rgb(NaN,NaN,NaN)` for an out-of-range input fails
- * silently as an invisible parcel, and clamping is the cheaper contract.
+ * The stops are derived, not hand-picked (R38): the interior stops are the
+ * documented quantiles of the R34 recalculation report, generated into
+ * `ramp-stops.js` by `web/scripts/gen-ramp-stops.mjs` (run on every
+ * `npm test` via pretest). The colours interpolate linearly in RGB. Unlike
+ * the prototype's own `ramp()`, this one clamps: the published scores are
+ * already clamped to 0–100, but a colour function that returns
+ * `rgb(NaN,NaN,NaN)` for an out-of-range input fails silently as an invisible
+ * parcel, and clamping is the cheaper contract.
  *
  * DOM-free by construction so `node --test` can import it.
  */
 
-/** @type {ReadonlyArray<readonly [number, number, number, number]>} [score, r, g, b] */
-const STOPS = [
-  [0, 237, 239, 242],
-  [25, 191, 208, 226],
-  [45, 127, 163, 201],
-  [65, 65, 114, 159],
-  [85, 30, 76, 126],
-  [100, 18, 47, 85],
-];
+import { STOPS } from './ramp-stops.js';
+
+/** The scores the ramp turns at — the report quantiles plus the endpoints. */
+export const RAMP_STOP_SCORES = STOPS.map(([score]) => score);
 
 /**
  * The fill for a door the pipeline could not score (R9.4).
@@ -35,9 +33,14 @@ const STOPS = [
  */
 export const UNSCORED_COLOR = '#D6D3CB';
 
-/** The ramp as a CSS gradient, for the legend and the filter track. */
+/**
+ * The ramp as a CSS gradient, for the legend and the filter track.
+ *
+ * One colour stop per ramp stop, positioned at its score percentage, so the
+ * legend and the parcel fills cannot disagree about where the ramp turns.
+ */
 export const RAMP_CSS_GRADIENT = `linear-gradient(90deg, ${STOPS.map(
-  ([, r, g, b]) => `rgb(${r},${g},${b})`
+  ([score, r, g, b]) => `rgb(${r},${g},${b}) ${score}%`
 ).join(', ')})`;
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));

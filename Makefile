@@ -18,7 +18,7 @@ UV := uv
 # populated `.env` needs to see the same greens as CI with none.
 DOTENV := set -a; [ -f .env ] && . ./.env; set +a;
 
-.PHONY: setup pipeline eval test test-py test-web serve clean
+.PHONY: setup pipeline eval test test-py test-golden test-web serve clean
 
 setup:
 	$(UV) venv --python 3.12 .venv
@@ -35,6 +35,9 @@ test: test-py test-web
 
 test-py:
 	$(PY) -m pytest
+
+test-golden:
+	$(PY) -m pytest tests/test_v2_golden.py -q
 
 test-web:
 	npm --prefix web test

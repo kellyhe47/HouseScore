@@ -1,54 +1,29 @@
-"""Route planning — one implementation, shared by MCP and the Map UI (T010, R10.1–R10.3).
+"""Route planning on the V2 score contract (ticket 105, plan R30/R27, PRD R7.2.1).
 
 The product question, verbatim: *"I have 2 hours in Ramsey — which 20 doors do I
 knock, and what do I say?"*
 
-**What a "door" is here.** The planner is called from three places that agree on
-nothing: the pipeline holds `DoorFacts`, the published `doors.geojson` holds
-GeoJSON features, the MCP tool holds JSON arguments. So the planner owns a small
-input type of its own — `RouteDoor(pams_pin, address, score, centroid,
-top_evidence)` — and everything else adapts into it. R10.3 says the MCP server
-and the UI share this module; a planner that imported `houseaccount.resolve`
-would drag the whole harvest/ACS/permits stack into a web process that only
-needs to sort points on a map. The adapter for the pipeline is therefore
-duck-typed (`route_door_from_facts`, reading `pams_pin`/`situs`/`centroid` off
-anything that has them — a real `DoorFacts` does), and the server builds a
-`RouteDoor` straight from a GeoJSON feature's properties. That is pinned by
-`test_the_planner_does_not_import_the_pipeline`.
+**What changed under V2.** The planner's geometry — greedy score-per-walking-
+minute, street networks, exclude-as-replan, share links — is untouched. What
+this rewrite pins is everything R30 says about the *words and the version*:
 
-**Where the talk track comes from.** R7.2 makes it presentation-layer only: it
-never feeds the score and is never asserted in a golden fixture. The planner
-receives the top evidence item's **type as a plain string** on
-`RouteDoor.evidence_type` — not the sentence, not an `EvidenceItem`, not a
-callback. The type picks an authored angle out of `route.ANGLES`;
-`talk_track_for(door)` returns the opener that ends on that angle's one open
-question, `talk_track_branches_for(door)` returns what to say after the
-homeowner answers, and the planner stamps both on every `Stop`.
-
-The sentence is deliberately not passed. It is written for the evidence panel
-and recites what the pipeline worked out about a household, which is the one
-thing a rep must never say at a door — so the tests below assert *shape* and
-*safety* (no file words spoken, no evidence sentence spoken, unsayable signals
-falling through to an angle that mentions nothing) rather than prose.
-
-**How a leg is measured.** A rep can only walk along a street, so `plan_route`
-takes a `network` — anything answering `metres_from(origin, destinations)` and
-`path(origin, destination)`, which is what `houseaccount.streets` derives from
-the parcels. It is duck-typed for the same reason the door adapter is: the
-planner sorts points and must not drag the geometry stack in to do it. Without
-one, a leg is the old straight-line estimate (haversine x1.3 at 3 mph), which is
-what every synthetic door in this module gets and what pins the fallback.
-`StubNetwork` below stands in for the real thing by walking two sides of a
-rectangle instead of the diagonal.
-
-**Where `exclude` lives.** On `Route`, as a method: the rep excludes a door from
-a route they are looking at ("that house is vacant"), and `Route.exclude(pins)`
-re-plans — it does not filter. `test_exclude_replans_rather_than_filtering` is
-what makes that distinction real.
-
-**Where garbage share links go.** `decode_share` returns `()` for anything it
-cannot parse rather than raising, so a mangled URL fragment opens an empty
-route instead of a 500. That requires the encoding to be self-identifying.
+* The talk-track template map (`route.ANGLES`) must cover **every** evidence
+  type the V2 engine can emit — enumerated below and kept in sync with
+  `scoring/v2.py` by a source-scan test — so a new engine signal can never ship
+  without a deliberate decision about what a rep says.
+* `capacity_territory_percentile` and `capacity_local_relative_value` are
+  unspeakable at the door (PRD R7.2.1): they map to the angle that says nothing
+  about the house, and they never become a route reason chip.
+* The per-door route reason chip is the highest-point evidence entry, ties
+  broken by descending points then ascending evidence type, unspeakable types
+  excluded (`route.reason_chip`). Every `Stop` carries its door's chip.
+* R15/R19 phrasing rules by template inspection: no template ever claims the
+  household is dual-income, and no template speaks about the house's current
+  condition.
+* The module names the score contract it plans for
+  (`route.SCORE_CONTRACT_VERSION == "v2"`), and share tokens carry it: a token
+  minted under the old contract decodes to no pins, which is what makes a stale
+  shared URL a refresh rather than a wrong route (R27/R30).
 
 No network, no fixtures on disk: every door below is built in-module, including
 the 540-door performance grid.
@@ -85,15 +60,59 @@ START = (-74.1560, 41.0447)
 #: standing nowhere near Ramsey gets an empty route rather than an exception.
 FAR_AWAY = (-122.4194, 37.7749)
 
-#: 2*pi*R/360 with R = 6371008.8 m — metres per degree of latitude. Only used to
-#: place synthetic doors at known distances; the planner's own geodesy is pinned
-#: independently by `test_walk_minutes_are_haversine_times_detour_at_three_mph`.
+#: 2*pi*R/360 with R = 6371008.8 m — metres per degree of latitude.
 METRES_PER_DEGREE_LAT = 111194.9266
 
-#: Metres a rep covers per minute of *walking time* once the detour factor is
-#: applied: 3 mph = 80.4672 m/min, divided by 1.3. Used only to hand-check the
-#: worked example in the comment table below.
-METRES_PER_WALK_MINUTE = (3.0 * 1609.344 / 60.0) / 1.3
+
+# --- the V2 evidence-type registry ---------------------------------------------
+#
+# Every type `scoring/v2.py`'s engine can put on an evidence trail, sorted. The
+# sync test below reads them out of the engine's own source, so this list cannot
+# silently drift from the engine — and the exhaustiveness test then holds the
+# talk-track template map to the full set (R30).
+
+V2_EVIDENCE_TYPES = [
+    "capacity_acs_dual_income_prior",
+    "capacity_cap_adjustment",
+    "capacity_local_relative_value",
+    "capacity_territory_percentile",
+    "fit_cap_adjustment",
+    "fit_condition_decline",
+    "fit_condition_superseded",
+    "fit_home_age",
+    "fit_lot",
+    "fit_pool",
+    "fit_roof_age",
+    "fit_solar",
+    "mover_invalid_sale",
+    "mover_recency",
+    "project_active",
+    "project_cap_adjustment",
+    "project_completed",
+    "project_major",
+    "project_multi_permit",
+    "project_neutralized",
+    "rental_registration",
+    "rental_stale",
+]
+
+#: Unspeakable at the door per PRD R7.2.1 / plan R30: a rep cannot voice a
+#: value percentile or a local price ratio without revealing the file. They
+#: still score and still sort the route; they never pick the words and never
+#: become a chip.
+UNSPEAKABLE_TYPES = [
+    "capacity_territory_percentile",
+    "capacity_local_relative_value",
+]
+
+
+def test_the_registry_matches_every_type_the_v2_engine_can_emit():
+    """Source-scan sync: the engine's own `add("...")` calls, no more, no less."""
+    from houseaccount.scoring import v2 as v2_module
+
+    emitted = set(re.findall(r'add\(\s*"([a-z_]+)"', inspect.getsource(v2_module)))
+    assert emitted == set(V2_EVIDENCE_TYPES)
+    assert V2_EVIDENCE_TYPES == sorted(V2_EVIDENCE_TYPES)
 
 
 # --- builders -----------------------------------------------------------------
@@ -107,15 +126,21 @@ def offset(origin, *, north_m=0.0, east_m=0.0):
     return (lon + dlon, lat + dlat)
 
 
-def door(pin, *, north_m=0.0, east_m=0.0, score=50, centroid=..., evidence_type=None, street="FAWN HILL RD"):
+def door(pin, *, north_m=0.0, east_m=0.0, score=50, centroid=..., evidence_type=None,
+         reason_chip=None, street="FAWN HILL RD"):
     """One candidate door, placed at a known offset from `START`."""
     number = int(pin.rsplit("_", 1)[-1])
+    # `reason_chip` is a V2 field `RouteDoor` must grow (R30); passed only when
+    # a test pins it, so the V2-neutral planner tests still collect and run red
+    # or green on their own merits rather than dying at import time.
+    extra = {} if reason_chip is None else {"reason_chip": reason_chip}
     return RouteDoor(
         pams_pin=pin,
         address=situs_display(f"{number} {street}", "07446"),
         score=score,
         centroid=offset(START, north_m=north_m, east_m=east_m) if centroid is ... else centroid,
         evidence_type=evidence_type,
+        **extra,
     )
 
 
@@ -127,22 +152,7 @@ def pins_of(route):
     return [stop.pams_pin for stop in route.stops]
 
 
-# --- the worked example -------------------------------------------------------
-#
-# Four doors on one north-south line out of START. Walk-minutes = metres / 61.898
-# (3 mph, detour 1.3). Greedy picks the best score-per-walk-minute from wherever
-# the rep is now, so the answer is none of "nearest first", "highest score
-# first", or input order:
-#
-#   door  offset  score | step 1 (from 0m)   step 2 (from 300m)  step 3 (150m)  step 4 (100m)
-#   NEAR   100 m     10 | 10/1.616 =  6.19   10/3.231 =  3.10    10/0.808=12.38  —
-#   MIDDLE 150 m     30 | 30/2.423 = 12.38   30/2.423 = 12.38 *  —               —
-#   BEST   300 m     90 | 90/4.847 = 18.57 * —                   —               —
-#   FAR    600 m     40 | 40/9.693 =  4.13   40/4.847 =  8.25    40/7.270= 5.50  40/8.078=4.95 *
-#
-# Visit order: BEST, MIDDLE, NEAR, FAR — cumulative 4.847, 7.270, 8.078, 16.156.
-# PINs run 1..4 in *distance* order, so a planner that merely sorted by PIN, by
-# distance, or by score would fail this test.
+# --- the worked example (unchanged geometry) ------------------------------------
 
 PIN_NEAR, PIN_MIDDLE, PIN_BEST, PIN_FAR = pin(1), pin(2), pin(3), pin(4)
 
@@ -165,12 +175,7 @@ def worked_route(**kwargs):
     return plan_route(WORKED_DOORS, **settings)
 
 
-# --- the 540-door territory ---------------------------------------------------
-
-
 def grid_doors(count=540, *, spacing_m=40.0, columns=24):
-    """`count` doors on a ~40 m lattice around START — the shape of the real
-    territory (540 parcels in about a kilometre) without shipping a fixture."""
     doors = []
     for index in range(count):
         row, column = divmod(index, columns)
@@ -178,7 +183,6 @@ def grid_doors(count=540, *, spacing_m=40.0, columns=24):
             RouteDoor(
                 pams_pin=pin(index),
                 address=situs_display(f"{index} GRID ST", "07446"),
-                # 20..100, spread deterministically so no two neighbours match.
                 score=20 + (index * 37) % 81,
                 centroid=offset(
                     START,
@@ -214,7 +218,6 @@ def test_a_stop_carries_the_door_it_came_from(attribute, expected):
 
 
 def test_the_route_discloses_that_walking_times_are_estimates():
-    """R10.2: the UI renders this string; it must come from the module, not the UI."""
     disclosure = worked_route().estimate_disclosure.lower()
 
     assert "straight-line" in disclosure
@@ -241,7 +244,39 @@ def test_plan_route_keeps_the_signature_the_mcp_tool_binds_to():
     assert inspect.signature(plan_route).parameters["max_doors"].default is None
 
 
-# --- greedy selection ---------------------------------------------------------
+# --- the score contract version (R27/R30) --------------------------------------
+
+
+def test_the_module_names_the_score_contract_it_plans_for():
+    """One authority for what version a shared route was planned under."""
+    assert route_module.SCORE_CONTRACT_VERSION == "v2"
+
+
+def test_a_share_token_carries_the_score_contract_version():
+    """R30: a shared route URL carries the version. The token self-identifies —
+    a fragment minted today must be distinguishable from a V1-era one."""
+    encoded = encode_share(worked_route().stops)
+
+    assert route_module.share_token_version(encoded) == "v2"
+
+
+def test_a_v1_era_share_token_decodes_to_no_pins():
+    """R27's mismatch-refresh, at the decode seam: the browser's old `r1` token
+    (this exact string once round-tripped) now names a route scored under a
+    dead contract, so it opens empty and the UI asks for a fresh route."""
+    v1_token = "r1eJwzMDKxiDcwNDQwjDcwMDA00jFAETAygAgYmxoYxVvoGRgCAPz0Clk"
+
+    assert route_module.share_token_version(v1_token) != "v2"
+    assert decode_share(v1_token) == ()
+
+
+def test_a_current_share_token_round_trips_the_exact_ordered_pins():
+    planned = worked_route()
+
+    assert list(decode_share(encode_share(planned.stops))) == WORKED_ORDER
+
+
+# --- greedy selection (V2-neutral, unchanged) -----------------------------------
 
 
 def test_greedy_visits_the_worked_example_in_score_per_minute_order():
@@ -257,21 +292,16 @@ def test_the_worked_example_arrives_at_the_hand_checked_offsets():
 
 
 def test_the_first_leg_is_measured_from_the_start_point_not_from_a_door():
-    """4.847 min is START -> BEST (300 m). A planner that started at door one
-    would report 0.0 here."""
     assert worked_route().stops[0].walk_minutes == pytest.approx(4.8467, rel=1e-3)
 
 
 def test_walk_minutes_are_haversine_times_detour_at_three_mph():
-    """1000 m due north: 1000 * 1.3 / (3 mph in m/min) = 16.156 minutes."""
     (stop,) = plan_route([door(pin(1), north_m=1000)], hours=2.0, start_point=START).stops
 
     assert stop.walk_minutes == pytest.approx(1000 * 1.3 / (3.0 * 1609.344 / 60.0), rel=1e-3)
 
 
 def test_the_walking_model_is_exposed_as_named_constants():
-    """Read off the module rather than imported, so a missing constant fails
-    this test alone instead of the whole module."""
     assert route_module.DETOUR_FACTOR == pytest.approx(1.3)
     assert route_module.WALKING_SPEED_MPH == pytest.approx(3.0)
 
@@ -282,23 +312,11 @@ def test_a_door_at_the_rep_feet_costs_no_walking_time():
     assert planned.stops[0].walk_minutes == pytest.approx(0.0, abs=1e-9)
 
 
-# --- walking along streets ----------------------------------------------------
-#
-# A rep can only walk along a street, so a leg is measured on a street network
-# when the caller has one. The planner is duck-typed against it — two questions,
-# `metres_from` and `path` — which is what lets `houseaccount.streets` build one
-# out of shapely and geometry while this module stays stdlib. `StubNetwork` is
-# that contract with the geometry taken out: legs go round a corner rather than
-# across the diagonal, which is exactly how a street grid differs from a
-# straight line, and it can be told to refuse a door outright.
+# --- walking along streets (V2-neutral, unchanged) ------------------------------
 
 
 class StubNetwork:
-    """A network that walks two sides of the rectangle instead of the diagonal.
-
-    Its `disclosure` is deliberately not the real one: the route has to carry
-    the network's own words rather than a string this module knows.
-    """
+    """A network that walks two sides of the rectangle instead of the diagonal."""
 
     disclosure = "walking times follow the stub network"
 
@@ -308,7 +326,6 @@ class StubNetwork:
         self.paths = []
 
     def corner(self, origin, destination):
-        """Where the two legs of the dogleg meet: east first, then north."""
         return (destination[0], origin[1])
 
     def metres(self, origin, destination):
@@ -334,7 +351,6 @@ class StubNetwork:
 
 
 def test_a_leg_is_measured_on_the_network_when_there_is_one():
-    """400 m east then 300 m north is a 700 m walk, not the 500 m diagonal."""
     east_north = door(pin(1), east_m=400, north_m=300)
 
     (stop,) = plan_route(
@@ -345,7 +361,6 @@ def test_a_leg_is_measured_on_the_network_when_there_is_one():
 
 
 def test_a_network_leg_carries_no_detour_factor():
-    """The 1.3 stands in for streets nobody measured. Measured, it goes."""
     straight = door(pin(1), north_m=1000)
 
     (stop,) = plan_route(
@@ -356,7 +371,6 @@ def test_a_network_leg_carries_no_detour_factor():
 
 
 def test_a_stop_carries_the_line_the_planner_measured():
-    """R10.3: the map draws the planner's walk, so the planner ships it."""
     network = StubNetwork()
     target = door(pin(1), east_m=400, north_m=300)
 
@@ -374,7 +388,6 @@ def test_without_a_network_the_line_is_the_straight_line_the_estimate_assumed():
 
 
 def test_every_leg_starts_where_the_previous_one_ended():
-    """The legs join up into one walk — the map draws them end to end."""
     planned = plan_route(
         WORKED_DOORS, hours=2.0, start_point=START, network=StubNetwork()
     )
@@ -386,7 +399,6 @@ def test_every_leg_starts_where_the_previous_one_ended():
 
 
 def test_a_door_the_network_cannot_reach_falls_back_to_the_straight_line():
-    """A gap in the derived streets is not a house that stopped existing."""
     stranded = door(pin(1), north_m=1000)
     network = StubNetwork(unreachable={stranded.centroid})
 
@@ -397,13 +409,6 @@ def test_a_door_the_network_cannot_reach_falls_back_to_the_straight_line():
 
 
 def test_the_network_decides_the_order_it_measured():
-    """The walk changes when the walking does.
-
-    `DIAGONAL` is the closer of the two on the map — 424 m against 500 — and the
-    further of the two on foot, because reaching it means 300 m along one street
-    and 300 m along another. Same scores, so score-per-minute is distance alone:
-    straight lines knock the diagonal first, streets knock it second.
-    """
     up_the_road = door(pin(1), north_m=500, score=50)
     diagonal = door(pin(2), north_m=300, east_m=300, score=50)
     doors = [up_the_road, diagonal]
@@ -426,15 +431,11 @@ def test_a_route_planned_without_a_network_still_discloses_the_straight_line():
 
 
 def test_the_network_is_asked_once_per_stop_not_once_per_candidate():
-    """Every candidate is measured from where the rep stands in one sweep — the
-    shape that keeps a 540-door territory inside the two-second budget."""
     network = StubNetwork()
 
     planned = plan_route(grid_doors(), hours=2.0, start_point=START, max_doors=20, network=network)
 
     assert len(planned.stops) == 20
-    # One sweep per chosen stop, plus the sweep that found nothing affordable
-    # if the budget ran out first.
     assert len(network.sweeps) <= len(planned.stops) + 1
     assert network.sweeps[0][0] == START
 
@@ -456,11 +457,10 @@ def test_excluding_a_door_replans_on_the_same_network():
     )
 
 
-# --- the hour budget ----------------------------------------------------------
+# --- the hour budget (unchanged) ------------------------------------------------
 
 
 def test_the_budget_cuts_the_route_short():
-    """9 minutes buys BEST, MIDDLE and NEAR (8.078 cumulative); FAR needs 16.156."""
     assert pins_of(worked_route(hours=9 / 60)) == [PIN_BEST, PIN_MIDDLE, PIN_NEAR]
 
 
@@ -472,7 +472,6 @@ def test_no_stop_ever_exceeds_the_budget():
 
 
 def test_a_budget_too_small_for_any_door_returns_an_empty_route_rather_than_raising():
-    """0.6 minutes; the nearest door is 1.616 minutes away."""
     planned = worked_route(hours=0.01)
 
     assert planned.stops == ()
@@ -498,7 +497,7 @@ def test_degenerate_inputs_yield_an_empty_route(label, doors, hours, start_point
     assert planned.estimate_disclosure, label
 
 
-# --- max_doors ----------------------------------------------------------------
+# --- max_doors ------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("max_doors, expected", [(0, 0), (1, 1), (3, 3), (4, 4), (99, 4), (None, 4)])
@@ -510,7 +509,7 @@ def test_a_capped_route_is_the_uncapped_route_truncated():
     assert pins_of(worked_route(max_doors=2)) == WORKED_ORDER[:2]
 
 
-# --- doors that cannot be routed ----------------------------------------------
+# --- doors that cannot be routed --------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -521,8 +520,6 @@ def test_a_capped_route_is_the_uncapped_route_truncated():
     ],
 )
 def test_an_unroutable_door_is_never_a_stop(reason, unroutable):
-    # Nearest door in the set and top-scoring, so it would lead the route if it
-    # were routable at all. `unroutable` overrides that baseline, one field at a time.
     doors = WORKED_DOORS + [door(pin(9), north_m=50, **{"score": 100, **unroutable})]
 
     planned = plan_route(doors, hours=2.0, start_point=START)
@@ -532,13 +529,12 @@ def test_an_unroutable_door_is_never_a_stop(reason, unroutable):
 
 
 def test_a_zero_scored_door_is_still_routed():
-    """Zero is a real score (a cold door), unlike None which is no score at all."""
     planned = plan_route([door(pin(1), north_m=100, score=0)], hours=2.0, start_point=START)
 
     assert pins_of(planned) == [pin(1)]
 
 
-# --- determinism --------------------------------------------------------------
+# --- determinism ------------------------------------------------------------------
 
 
 def test_shuffling_the_candidates_does_not_move_a_single_stop():
@@ -560,7 +556,6 @@ def test_replanning_the_same_inputs_reproduces_the_same_route():
 
 
 def test_an_exact_score_per_minute_tie_is_broken_by_pams_pin():
-    """Two doors 200 m either side of the rep, same score: identical ratio."""
     doors = [
         door(pin(7), north_m=200, score=50),
         door(pin(3), north_m=-200, score=50),
@@ -570,7 +565,6 @@ def test_an_exact_score_per_minute_tie_is_broken_by_pams_pin():
 
 
 def test_the_tie_break_follows_the_pin_not_the_geometry():
-    """Same two positions, PINs swapped — the winner must swap with them."""
     doors = [
         door(pin(3), north_m=200, score=50),
         door(pin(7), north_m=-200, score=50),
@@ -583,18 +577,15 @@ def test_the_tie_break_follows_the_pin_not_the_geometry():
 
 
 def test_coincident_doors_are_ordered_deterministically():
-    """Both at the rep's feet: zero walk time, so score-per-minute cannot
-    separate them and the PIN must."""
     doors = [door(pin(6), north_m=0, score=10), door(pin(2), north_m=0, score=90)]
 
     assert pins_of(plan_route(doors, hours=2.0, start_point=START)) == [pin(2), pin(6)]
 
 
-# --- performance --------------------------------------------------------------
+# --- performance -------------------------------------------------------------------
 
 
 def test_540_candidate_doors_plan_in_under_two_seconds():
-    """R10.2. The doors are built outside the timed region; only `plan_route` is timed."""
     doors = grid_doors(540)
 
     started = time.perf_counter()
@@ -605,7 +596,7 @@ def test_540_candidate_doors_plan_in_under_two_seconds():
     assert elapsed < 2.0, f"planning 540 doors took {elapsed:.3f}s"
 
 
-# --- exclude ------------------------------------------------------------------
+# --- exclude ------------------------------------------------------------------------
 
 
 def test_exclude_drops_the_named_doors():
@@ -616,9 +607,6 @@ def test_exclude_drops_the_named_doors():
 
 
 def test_exclude_replans_rather_than_filtering():
-    """Without MIDDLE the rep walks BEST -> FAR -> NEAR: from 300 m, FAR scores
-    8.25 per minute against NEAR's 3.10. Filtering the old order would have
-    left NEAR ahead of FAR."""
     assert pins_of(worked_route().exclude({PIN_MIDDLE})) == [PIN_BEST, PIN_FAR, PIN_NEAR]
 
 
@@ -675,58 +663,126 @@ def test_exclude_still_respects_max_doors():
     assert len(planned.exclude({PIN_BEST}).stops) == 2
 
 
-# --- talk track (presentation only — shape and safety, never prose) -----------
+# --- the route reason chip (R30) ---------------------------------------------------
 #
-# The opener used to be the door's top evidence *sentence* folded into a
-# template, which meant the first thing a rep said at a stranger's house was a
-# recitation of what we had worked out about them ("4 permits filed here in the
-# last 24 months (Alteration)"). It is now authored per evidence *type*: the
-# type picks an angle out of `route.ANGLES`, and the sentence never leaves the
-# evidence panel.
-#
-# Two whole classes of bug go with it. Nothing is quoted, so nothing can be cut
-# mid-clause (ticket 021 — the boundary-cutting tests below became assertions
-# that every authored line is whole). And a type the rep could not say without
-# revealing the file falls through to an angle that does not mention the house
-# at all, which is what the "unsayable" tests pin.
+# The chip is the one word the route list shows beside a door — *why this door*.
+# Selection is pure and deterministic: the highest-point evidence entry wins,
+# ties break by descending points then ascending evidence type, and the two
+# unspeakable capacity types are never eligible however many points they carry
+# (PRD R7.2.1). `route.reason_chip(evidence)` is that rule, in one place.
 
-#: The engine's own prose, verbatim — a short line and the long permit line that
-#: ticket 021 was filed about. Neither may ever reach a doorstep.
-EVIDENCE_SENTENCES = [
-    "A SKYLIGHT permit was filed 3 weeks after the deed recorded.",
-    "1 permit filed here in the last 24 months (Alteration) — work at this address "
-    "gets contracted out rather than done in-house.",
-    "Assessed at $1,240,000, more than 1.5x the $610,000 territory median — top of "
-    "the range you cover.",
-    "Census block group: 63% dual-income, at or above the 55% threshold.",
-    "Exterior condition read as fair on the 2015 orthoimagery and poor on the 2020 "
-    "pass — the trend is downward, not just low.",
+
+def entry(etype, points):
+    return {"type": etype, "points": points, "reason": f"reason for {etype}"}
+
+
+def test_the_chip_is_the_highest_point_evidence_entry():
+    evidence = [entry("fit_lot", 5), entry("project_active", 15), entry("fit_pool", 5)]
+
+    assert route_module.reason_chip(evidence) == "project_active"
+
+
+def test_a_points_tie_breaks_by_ascending_evidence_type():
+    """Descending points, then ascending type: `fit_pool` < `fit_solar`."""
+    evidence = [entry("fit_solar", 5), entry("fit_pool", 5)]
+
+    assert route_module.reason_chip(evidence) == "fit_pool"
+    assert route_module.reason_chip(list(reversed(evidence))) == "fit_pool"
+
+
+def test_the_chip_ignores_input_order_entirely():
+    evidence = [entry("project_completed", 8), entry("fit_roof_age", 12), entry("fit_home_age", 8)]
+
+    forward = route_module.reason_chip(evidence)
+    backward = route_module.reason_chip(list(reversed(evidence)))
+
+    assert forward == backward == "fit_roof_age"
+
+
+@pytest.mark.parametrize("unspeakable", UNSPEAKABLE_TYPES)
+def test_an_unspeakable_type_never_becomes_the_chip_even_when_it_leads(unspeakable):
+    """PRD R7.2.1: the percentile and the local ratio scored the door and sorted
+    the route; the chip falls to the next-best speakable entry."""
+    evidence = [entry(unspeakable, 10), entry("fit_lot", 5)]
+
+    assert route_module.reason_chip(evidence) == "fit_lot"
+
+
+def test_evidence_that_is_entirely_unspeakable_yields_no_chip():
+    evidence = [entry(t, 10) for t in UNSPEAKABLE_TYPES]
+
+    assert route_module.reason_chip(evidence) is None
+
+
+def test_no_evidence_yields_no_chip():
+    assert route_module.reason_chip([]) is None
+
+
+def test_a_negative_entry_never_outranks_a_positive_one():
+    """`rental_registration` carries -25 points; magnitude is not points."""
+    evidence = [entry("rental_registration", -25), entry("fit_lot", 5)]
+
+    assert route_module.reason_chip(evidence) == "fit_lot"
+
+
+def test_every_stop_carries_its_door_reason_chip():
+    """The planner stamps the chip on the stop, exactly as handed in — the same
+    field both surfaces serialize, so the map and the tool show one chip."""
+    doors = [replace(candidate, reason_chip="project_active") for candidate in WORKED_DOORS]
+
+    planned = plan_route(doors, hours=2.0, start_point=START)
+
+    assert planned.stops
+    for stop in planned.stops:
+        assert stop.reason_chip == "project_active"
+
+
+def test_a_door_without_a_chip_plans_with_a_none_chip():
+    (stop,) = plan_route([door(pin(1), north_m=100)], hours=2.0, start_point=START).stops
+
+    assert stop.reason_chip is None
+
+
+# --- talk track: the V2 template map (R30, R15, R19, PRD R7.2.1) --------------------
+#
+# Deterministic templates keyed by V2 evidence type. The map must cover every
+# type the engine can emit; the templates are inspected — not generated — so
+# the phrasing rules are testable as strings.
+
+#: The engine's own V2 reason prose, verbatim from `scoring/v2.py`. Written for
+#: the evidence panel; never spoken at a door.
+V2_REASON_SENTENCES = [
+    "active qualifying project with recent lifecycle activity",
+    "assessed value above the median of the nearest comparables",
+    "assessed value ranks high among territory single-family properties",
+    "neighborhood-level ACS dual-income prior at or above 35% (block-group prior, not a household claim)",
+    "verified historical exterior-condition decline between the 2015 and 2020 imagery vintages",
+    "current verified rental registration demotes the door",
+    "recent valid arm's-length move blends the score toward the mover priority band",
 ]
 
-#: Evidence types the rep cannot speak without telling the homeowner we hold a
-#: file on them, or without insulting them. Every one must land on the angle
-#: that says nothing about the house.
-UNSAYABLE_TYPES = [
-    "assessed_value",
-    "acs_dual_income_prior",
-    "absentee_likely",
-    "data_gap",
-]
-
-#: Words that only appear in prose derived from the parcel record. None of them
-#: belongs in something said out loud on a doorstep.
+#: Words that only appear in prose derived from the file. None may be spoken.
 FILE_WORDS = [
     "permit",
     "assessed",
     "median",
+    "percentile",
+    "comparable",
     "census",
     "block group",
+    "block-group",
     "dual-income",
-    "orthoimagery",
+    "dual income",
+    "acs",
+    "imagery",
+    "vintage",
     "deed",
     "parcel",
     "registration",
+    "rental",
     "score",
+    "evidence",
+    "category",
 ]
 
 ALL_ANGLES = sorted(
@@ -734,13 +790,131 @@ ALL_ANGLES = sorted(
     key=lambda angle: angle.hook,
 )
 
+#: Words no sentence a rep reads aloud may end on.
+DANGLING_ENDINGS = {"and", "or", "but", "than", "rather", "the", "a", "an", "of", "which"}
+
 
 def sentences_of(track):
     return [part.strip() for part in re.split(r"[.?!]", track) if part.strip()]
 
 
+def test_the_template_map_covers_every_v2_evidence_type():
+    """R30 exhaustiveness: an engine signal without a template cannot ship.
+    Coverage is explicit keys — falling through to the default is a decision
+    the map records, not an accident of a missing key."""
+    assert set(V2_EVIDENCE_TYPES) <= set(route_module.ANGLES), sorted(
+        set(V2_EVIDENCE_TYPES) - set(route_module.ANGLES)
+    )
+
+
+def test_the_template_map_holds_no_v1_evidence_types():
+    """No key of the map names a V1 signal: the old vocabulary is gone (R27)."""
+    v1_types = {
+        "deed_recency",
+        "tenure",
+        "non_arms_length_transfer",
+        "condition_trajectory",
+        "deferred_maintenance",
+        "permit_history",
+        "provider_churn",
+        "pool",
+        "home_age",
+        "lot_size",
+        "assessed_value",
+        "acs_dual_income_prior",
+        "absentee_likely",
+    }
+
+    assert set(route_module.ANGLES) & v1_types == set()
+
+
+@pytest.mark.parametrize("unspeakable", UNSPEAKABLE_TYPES)
+def test_percentile_and_local_ratio_map_to_the_angle_that_says_nothing(unspeakable):
+    """PRD R7.2.1: unspeakable at the door — the template map sends them to the
+    default angle, which never mentions the house."""
+    candidate = door(pin(1), north_m=100, evidence_type=unspeakable)
+
+    assert route_module.angle_for(candidate) is route_module.DEFAULT_ANGLE
+
+
+def test_the_acs_prior_never_reaches_the_doorstep_as_a_household_claim():
+    """R15: the prior is neighborhood-level. The safest true phrasing at a door
+    is none at all — no census, income or prior vocabulary is ever spoken."""
+    track = talk_track_for(
+        door(pin(1), north_m=100, evidence_type="capacity_acs_dual_income_prior")
+    ).lower()
+
+    for word in ["dual-income", "dual income", "census", "block group", "income", "prior"]:
+        assert word not in track, f"{word!r} reached the doorstep"
+
+
+def test_condition_decline_is_never_spoken_as_current_condition():
+    """R19: the signal is historical decline between imagery vintages, and no
+    template speaks about the state of the house at all."""
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type="fit_condition_decline")).lower()
+
+    for word in ["condition", "declin", "poor", "run down", "run-down", "slipping", "deferred"]:
+        assert word not in track
+
+
+def test_no_template_anywhere_claims_the_household_is_dual_income():
+    """R15 by template inspection, over every authored hook and branch line."""
+    for angle in ALL_ANGLES:
+        spoken = " ".join([angle.hook, *[b.line for b in angle.branches]]).lower()
+        assert "dual-income" not in spoken
+        assert "dual income" not in spoken
+        assert "two incomes" not in spoken
+
+
+def test_no_template_anywhere_speaks_about_current_condition():
+    """R19 by template inspection: nothing a rep says describes the house's
+    present state."""
+    for angle in ALL_ANGLES:
+        spoken = " ".join([angle.hook, *[b.line for b in angle.branches]]).lower()
+        for phrase in ["poor condition", "falling apart", "run down", "run-down", "declining"]:
+            assert phrase not in spoken
+
+
+@pytest.mark.parametrize("evidence_type", V2_EVIDENCE_TYPES + [None, "brand_new_signal"])
+def test_no_opener_ever_recites_the_file(evidence_type):
+    """R7.2: the words a homeowner hears never reveal a parcel record — checked
+    across the full V2 registry, the empty case, and an unmapped future type."""
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type=evidence_type)).lower()
+
+    for word in FILE_WORDS:
+        assert word not in track, f"{word!r} reached the doorstep for {evidence_type!r}"
+
+
+@pytest.mark.parametrize("sentence", V2_REASON_SENTENCES, ids=range(len(V2_REASON_SENTENCES)))
+def test_an_evidence_reason_is_never_spoken_whole_or_in_part(sentence):
+    """The panel shows the V2 reason; the rep does not say it."""
+    run = sentence.strip().lower()[:40]
+
+    for evidence_type in [*V2_EVIDENCE_TYPES, None]:
+        spoken = talk_track_for(door(pin(1), north_m=100, evidence_type=evidence_type)).lower()
+        assert run not in spoken
+
+
+def test_the_template_map_is_deterministic():
+    """Same type, same words — twice, and across two doors on one street."""
+    first = talk_track_for(door(pin(1), north_m=100, evidence_type="project_active"))
+    second = talk_track_for(door(pin(2), north_m=200, evidence_type="project_active"))
+
+    assert first == talk_track_for(door(pin(1), north_m=100, evidence_type="project_active"))
+    assert first == second
+
+
+@pytest.mark.parametrize("evidence_type", V2_EVIDENCE_TYPES)
+def test_every_v2_type_opens_on_its_mapped_angle_hook(evidence_type):
+    """Template inspection is only meaningful if the opener really ends on the
+    mapped template — nothing appended after the question."""
+    candidate = door(pin(1), north_m=100, evidence_type=evidence_type)
+
+    assert talk_track_for(candidate).endswith(route_module.angle_for(candidate).hook)
+
+
 def test_a_talk_track_is_a_one_line_opener():
-    track = talk_track_for(door(pin(1), north_m=100, evidence_type="deed_recency"))
+    track = talk_track_for(door(pin(1), north_m=100, evidence_type="mover_recency"))
 
     assert isinstance(track, str)
     assert track.strip()
@@ -749,67 +923,15 @@ def test_a_talk_track_is_a_one_line_opener():
     assert track.strip().endswith("?"), "the opener stops on a question and waits"
 
 
-def test_the_opener_ends_on_its_angle_hook():
-    """The last thing the rep says before the homeowner speaks is the hook,
-    verbatim — nothing is appended after the question."""
-    candidate = door(pin(1), north_m=100, evidence_type="provider_churn")
-
-    assert talk_track_for(candidate).endswith(route_module.ANGLES["provider_churn"].hook)
-
-
-@pytest.mark.parametrize("evidence_type", sorted(route_module.ANGLES) + [None, "brand_new_signal"])
-def test_no_opener_ever_recites_the_file(evidence_type):
-    """R7.2, and the whole point of the rewrite: the words a homeowner hears
-    never reveal that the door was chosen from a parcel record."""
-    track = talk_track_for(door(pin(1), north_m=100, evidence_type=evidence_type)).lower()
-
-    for word in FILE_WORDS:
-        assert word not in track, f"{word!r} reached the doorstep for {evidence_type!r}"
-
-
-@pytest.mark.parametrize("sentence", EVIDENCE_SENTENCES, ids=range(len(EVIDENCE_SENTENCES)))
-def test_an_evidence_sentence_is_never_spoken_whole_or_in_part(sentence):
-    """The panel shows the sentence; the rep does not say it. Checked against
-    every angle, on the sentence's longest distinctive run."""
-    body = sentence.strip().rstrip(".!?").lower()
-    run = body[:40]
-
-    for evidence_type in [*route_module.ANGLES, None]:
-        spoken = talk_track_for(door(pin(1), north_m=100, evidence_type=evidence_type)).lower()
-        assert run not in spoken
-
-
-@pytest.mark.parametrize("evidence_type", UNSAYABLE_TYPES)
-def test_an_unsayable_signal_falls_through_to_the_default_angle(evidence_type):
-    """Assessed value, the census prior, the rental flag and a data gap still
-    score and still sort the route — they just never pick the words."""
-    candidate = door(pin(1), north_m=100, evidence_type=evidence_type)
-
-    assert route_module.angle_for(candidate) is route_module.DEFAULT_ANGLE
-
-
 def test_an_unknown_evidence_type_degrades_to_a_safe_opener():
-    """A type added to the engine and not yet to `ANGLES` gets the angle that
-    says nothing about the door, not a crash and not silence."""
     candidate = door(pin(1), north_m=100, evidence_type="signal_invented_next_quarter")
 
     assert route_module.angle_for(candidate) is route_module.DEFAULT_ANGLE
     assert talk_track_for(candidate).strip().endswith("?")
 
 
-def test_a_declining_exterior_never_reaches_the_homeowner():
-    """`condition_trajectory` is a true thing nobody says to someone's face. It
-    opens on tenure instead."""
-    track = talk_track_for(door(pin(1), north_m=100, evidence_type="condition_trajectory")).lower()
-
-    for word in ["condition", "declin", "slipping", "deferred", "put off"]:
-        assert word not in track
-
-
 @pytest.mark.parametrize("angle", ALL_ANGLES, ids=lambda angle: angle.hook[:24])
 def test_no_hook_is_a_tag_question(angle):
-    """"…right?" asks for confirmation, which tells the homeowner the rep
-    already knew. Every hook is genuinely open."""
     hook = angle.hook.lower().rstrip()
 
     assert hook.endswith("?")
@@ -827,8 +949,6 @@ def test_every_angle_offers_branches_with_distinct_triggers(angle):
 
 @pytest.mark.parametrize("angle", ALL_ANGLES, ids=lambda angle: angle.hook[:24])
 def test_every_branch_line_is_whole_sentences(angle):
-    """Ticket 021, now by construction rather than by cutting: authored lines
-    have no width limit to collide with, so none of them can dangle."""
     for branch in angle.branches:
         assert branch.line.strip().endswith((".", "?", "!"))
         assert "\n" not in branch.line
@@ -838,8 +958,6 @@ def test_every_branch_line_is_whole_sentences(angle):
 
 @pytest.mark.parametrize("angle", ALL_ANGLES, ids=lambda angle: angle.hook[:24])
 def test_no_branch_opens_on_a_scripted_acknowledgement(angle):
-    """"Figured." in the slot after the hook admits the answer was never in
-    doubt. Every branch reacts to what was actually said instead."""
     for branch in angle.branches:
         first = branch.line.split()[0].strip(",.").lower()
         assert first not in {"figured", "exactly", "thought", "knew"}
@@ -852,7 +970,6 @@ def test_a_door_with_no_evidence_still_gets_a_door_specific_opener():
 
 
 def test_the_opener_says_the_street_the_way_a_rep_would():
-    """"FAWN HILL RD" is a thing to read off a form; the rep is speaking."""
     track = talk_track_for(door(pin(1), north_m=100, evidence_type=None))
 
     assert "Fawn Hill Rd" in track
@@ -865,24 +982,8 @@ def test_a_door_with_no_readable_street_still_opens_somewhere_sayable():
     assert "this block" in talk_track_for(nameless)
 
 
-def test_two_doors_with_different_evidence_get_different_talk_tracks():
-    first = talk_track_for(door(pin(1), north_m=100, evidence_type="deed_recency"))
-    second = talk_track_for(door(pin(2), north_m=100, evidence_type="pool"))
-
-    assert first != second
-
-
-def test_two_doors_on_one_angle_get_the_same_words():
-    """The opener is drawn from a small authored set, not generated per door —
-    two permit-led doors on one street are opened the same way on purpose."""
-    first = talk_track_for(door(pin(1), north_m=100, evidence_type="permit_history"))
-    second = talk_track_for(door(pin(2), north_m=200, evidence_type="provider_churn"))
-
-    assert first == second
-
-
 def test_every_stop_carries_the_talk_track_and_branches_the_module_generates():
-    doors = [replace(candidate, evidence_type="deed_recency") for candidate in WORKED_DOORS]
+    doors = [replace(candidate, evidence_type="mover_recency") for candidate in WORKED_DOORS]
     by_pin = {candidate.pams_pin: candidate for candidate in doors}
 
     planned = plan_route(doors, hours=2.0, start_point=START)
@@ -895,8 +996,7 @@ def test_every_stop_carries_the_talk_track_and_branches_the_module_generates():
 
 
 def test_the_talk_track_never_moves_the_score_or_the_order():
-    """R7.2: presentation only. Same doors, wildly different evidence types."""
-    loud = [replace(candidate, evidence_type="pool") for candidate in WORKED_DOORS]
+    loud = [replace(candidate, evidence_type="fit_pool") for candidate in WORKED_DOORS]
 
     planned = plan_route(loud, hours=2.0, start_point=START)
     reference = worked_route()
@@ -905,36 +1005,10 @@ def test_the_talk_track_never_moves_the_score_or_the_order():
     assert [stop.score for stop in planned.stops] == [stop.score for stop in reference.stops]
 
 
-#: Words no sentence a rep reads aloud may end on (ticket 021's original
-#: symptom: "…gets contracted out rather than."). Deliberately only conjunctions,
-#: articles and relatives — English sentences end on a preposition all the time
-#: ("…meaning to get to."), so a list that catches those catches good prose.
-DANGLING_ENDINGS = {
-    "and",
-    "or",
-    "but",
-    "than",
-    "rather",
-    "the",
-    "a",
-    "an",
-    "of",
-    "which",
-}
-
-
-# --- share links --------------------------------------------------------------
-
-
-def test_a_share_link_round_trips_the_exact_ordered_pins():
-    planned = worked_route()
-
-    assert list(decode_share(encode_share(planned.stops))) == WORKED_ORDER
+# --- share links (mechanics unchanged; versioning pinned above) ----------------------
 
 
 def test_a_share_link_preserves_order_not_just_membership():
-    """WORKED_ORDER is neither sorted nor reverse-sorted, so a set-shaped
-    encoding cannot fake this."""
     decoded = decode_share(encode_share(worked_route().stops))
 
     assert list(decoded) != sorted(decoded)
@@ -947,7 +1021,6 @@ def test_a_share_link_round_trips_a_long_route():
 
 
 def test_a_share_link_needs_no_url_escaping():
-    """It rides in a URL fragment, so it must be unreserved characters only."""
     encoded = encode_share(worked_route().stops)
 
     assert encoded
@@ -994,7 +1067,7 @@ def test_decode_share_of_garbage_yields_no_pins(garbage):
     assert decode_share(garbage) == ()
 
 
-# --- adapting the pipeline's doors --------------------------------------------
+# --- adapting the pipeline's doors ---------------------------------------------------
 
 
 def facts(**overrides):
@@ -1028,18 +1101,16 @@ def facts(**overrides):
         ("address", situs_display("12 FAWN HILL RD", "07446")),
         ("score", 81),
         ("centroid", START),
-        ("evidence_type", "deed_recency"),
+        ("evidence_type", "mover_recency"),
     ],
 )
 def test_a_door_facts_adapts_into_a_route_door(attribute, expected):
-    adapted = route_door_from_facts(facts(), score=81, evidence_type="deed_recency")
+    adapted = route_door_from_facts(facts(), score=81, evidence_type="mover_recency")
 
     assert getattr(adapted, attribute) == expected
 
 
 def test_the_adapter_is_duck_typed_not_bound_to_door_facts():
-    """The MCP server adapts GeoJSON features through the same door."""
-
     @dataclass(frozen=True)
     class Feature:
         pams_pin: str
@@ -1071,9 +1142,15 @@ def test_adapted_doors_plan_like_any_other():
 
 
 def test_the_planner_does_not_import_the_pipeline():
-    """R10.3: the MCP server and the UI share this module, and neither should
-    have to drag the harvest/ACS/permits stack into a web process."""
     source = inspect.getsource(route_module)
 
     for forbidden in ("houseaccount.resolve", "houseaccount.sources", "houseaccount.territory"):
         assert forbidden not in source, f"route.py must not import {forbidden}"
+
+
+def test_the_planner_does_not_import_the_dead_v1_engine():
+    """R27: engine.py/weights.py are deleted; nothing in route.py may name them."""
+    source = inspect.getsource(route_module)
+
+    for forbidden in ("scoring.engine", "scoring.weights", "import engine"):
+        assert forbidden not in source, f"route.py must not reference {forbidden}"

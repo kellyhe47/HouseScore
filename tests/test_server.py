@@ -1,72 +1,51 @@
-"""The FastAPI app: the REST surface the Map UI eats, plus the MCP mount (T011, R8/R9/R10.3/R12).
+"""The FastAPI app on the V2 score contract (ticket 105, plan R27/R30, R8/R9/R10.3/R12).
 
 One app, two surfaces. The MCP tools are `tests/test_mcp_tools.py`; this module
-is the HTTP side — the four endpoints the Map UI calls, the CORS that lets a
-browser on the UI's origin call them, and the boot behaviour a reviewer sees when
-the artifacts are not there.
+is the HTTP side — the endpoints the Map UI calls, the CORS that lets a browser
+on the UI's origin call them, and the boot behaviour a reviewer sees when the
+artifacts are not there.
 
-**The seam.** `create_app(data_dir=...)` builds the app from published artifacts
-and returns a plain FastAPI instance, so uvicorn can serve it and `TestClient`
-can drive it without a live process. `data_dir` defaults to the one
-`Config.from_env()` points at, which is what makes `uvicorn ...:create_app
---factory` work in deployment; every test here passes its own `tmp_path`
-territory instead, so the suite never depends on whether `make pipeline` has run.
+**What changed under V2 (R27/R30).**
 
-**The four endpoints.**
+* `GET /api/door/{pin}` serves the published V2 record — `score_contract_version`,
+  `categories{project,capacity,fit}`, `base`, `mover`, `mover_lift`,
+  `rental_modifier`, `adjustment`, `data_gaps` — plus exactly three detail
+  fields: `talk_track`, `talk_track_branches`, `reason_chip`. The V1 detail
+  (`groups`, `raw_total`) is gone from every payload; a V1 key anywhere is a
+  failure, not a leftover.
+* Every served evidence list reconciles to the displayed score (R7 at the API
+  boundary): sum(points) == base + mover_lift + rental_modifier, and adding
+  `adjustment` lands on the integer the map colours — including through the
+  rental demotion and the 0-clamp.
+* `POST /api/route` responses carry `score_contract_version` and per-stop
+  `reason_chip`s; a request that declares a stale version gets a refresh signal
+  instead of a mixed-version route (R27/R30). Route aggregates are computed
+  from the displayed V2 scores.
+* A published run carrying a record from another contract version does not
+  boot: mixed-version outputs are rejected, with the version in the message.
 
-* `GET /health` — the Fly.io/uvicorn liveness probe, and the one thing that must
-  answer before anything else works (R12).
-* `GET /api/doors.geojson` — the published collection, served verbatim. The map
-  renders exactly the artifact the pipeline wrote; anything reshaped here is a
-  place the map and the artifact can disagree.
-* `GET /api/door/{pin}` — one door's published properties, for the evidence
-  panel. An unknown PIN is a 404 carrying a structured body, not a stack trace.
-* `POST /api/route` — the UI's route request, delegated to
-  `houseaccount.route` exactly as the MCP tool is (R10.3). A malformed body is a
-  422 from the request model, never a 500 from inside the planner.
-
-**Errors are shapes, not prose.** Every failure body carries `error` and
-`message`, so the UI's error banner (R9.3) renders one thing whatever failed.
-The tests assert those keys and the status code and never the wording.
-
-**A missing `data/` is a startup failure with an address on it.** A reviewer who
-clones and runs the server before running the pipeline should be told which
-directory was empty — `DataUnavailable`, naming the path — rather than reading a
-`FileNotFoundError` out of a JSON parser.
-
-No network, no live uvicorn process, no fixtures on disk: every door is built
-in-module and every artifact is written under `tmp_path`.
+**Fixtures are synthetic published records.** Ticket 103 owns `publish()`; this
+module writes hand-consistent V2 artifacts under `tmp_path` (see
+`tests/test_mcp_tools.py` for the arithmetic), so the HTTP surface is tested
+against the published contract rather than against a particular writer.
 """
 
 import contextlib
 import json
 import re
-from dataclasses import fields
-from datetime import date, datetime, timezone
+import sqlite3
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from houseaccount.normalize import situs_display
-from houseaccount.publish import DOORS_GEOJSON_NAME, RunManifest, publish
-from houseaccount.resolve import DoorFacts, ResolveReport
-from houseaccount.route import Stop, decode_share
-from houseaccount.scoring.engine import score_door
 from houseaccount.server.app import MCP_PATH, UI_ORIGINS, DataUnavailable, create_app
 from houseaccount.server.mcp_tools import create_mcp_server
-from houseaccount.server.published import Door, door_payload
-
-AS_OF = date(2026, 8, 14)
-RUN_AT = datetime(2026, 8, 14, 6, 30, 0, tzinfo=timezone.utc)
-
-TERRITORY_MEDIAN_VALUE = 700000.0
-ACS_DUAL_INCOME_THRESHOLD = 0.35
 
 START = (-74.1560, 41.0447)
 
-#: The R11.1 allowlist `publish` writes; the door endpoint serves it, unwidened.
+#: The published per-door property allowlist, V2-shaped (R11.1/R27/R30).
 PUBLISHED_PROPERTIES = {
     "PAMS_PIN",
     "score",
@@ -74,19 +53,33 @@ PUBLISHED_PROPERTIES = {
     "evidence",
     "situs",
     "exclusion_reason",
+    "score_contract_version",
+    "categories",
+    "base",
+    "mover",
+    "mover_lift",
+    "rental_modifier",
+    "adjustment",
+    "data_gaps",
 }
 
-STOP_FIELDS = {field.name for field in fields(Stop)}
+#: What the door endpoint carries beyond the published allowlist under V2:
+#: presentation, and only presentation.
+DOOR_DETAIL_FIELDS = {"talk_track", "talk_track_branches", "reason_chip"}
 
-#: The five groups R6 scores; T013 puts them on the door endpoint so the
-#: evidence panel can draw the prototype's "Score breakdown" section (R8.1).
-GROUP_NAMES = {"mover", "hires_out", "capacity", "need", "modifier"}
+#: V1 vocabulary that may appear as a key in no served payload (R27/R28).
+FORBIDDEN_KEYS = {"groups", "raw_total"}
 
-#: What the door endpoint carries beyond the published allowlist after T013.
-DOOR_DETAIL_FIELDS = {"groups", "raw_total", "talk_track", "talk_track_branches"}
+#: The V2 category names — the only subtotal vocabulary any surface may use.
+CATEGORY_NAMES = {"project", "capacity", "fit"}
+
+#: Unspeakable at the door (PRD R7.2.1): never a chip, never in a talk track.
+UNSPEAKABLE_TYPES = {"capacity_territory_percentile", "capacity_local_relative_value"}
+
+EXCLUSION_REASON = "parcel record incomplete in county data"
 
 
-# --- builders -----------------------------------------------------------------
+# --- synthetic V2 published records (arithmetic mirrors tests/test_mcp_tools.py) ---
 
 
 def polygon(lon, lat):
@@ -104,85 +97,230 @@ def north_of(origin, metres):
     return (lon, lat + metres / 111194.9266)
 
 
-def facts(pin, prop_loc, *, deed, yr_constr, net_value, point):
-    lot = pin.rsplit("_", 1)[-1].lstrip("0") or "0"
-    return DoorFacts(
-        pams_pin=pin,
-        prop_class="2",
-        prop_loc=prop_loc,
-        zip5="07446",
-        pclblock="1101",
-        pcllot=lot,
-        parcel_key=f"0248/1101/{lot}",
-        address_key=prop_loc,
-        situs=situs_display(prop_loc, "07446"),
-        centroid=point,
-        geometry=polygon(*point) if point else None,
-        deed_date=deed,
-        sale_price=1150000.0 if deed else 0.0,
-        sales_code="",
-        yr_constr=yr_constr,
-        net_value=net_value,
-        calc_acre=0.61,
+def evidence(etype, points, reason):
+    return {"type": etype, "points": points, "reason": reason}
+
+
+OAK_PIN = "0248_01101_00012"
+MAPLE_PIN = "0248_01101_00020"
+CEDAR_PIN = "0248_01101_00031"
+BIRCH_PIN = "0248_01101_00099"
+
+
+def scored_properties(pin, situs, *, score, categories, base, mover, mover_lift,
+                      rental_modifier, adjustment, confidence, data_gaps, trail):
+    return {
+        "PAMS_PIN": pin,
+        "situs": situs,
+        "score": score,
+        "confidence": confidence,
+        "evidence": trail,
+        "exclusion_reason": None,
+        "score_contract_version": "v2",
+        "categories": categories,
+        "base": base,
+        "mover": mover,
+        "mover_lift": mover_lift,
+        "rental_modifier": rental_modifier,
+        "adjustment": adjustment,
+        "data_gaps": data_gaps,
+    }
+
+
+#: Fresh mover: base 39, full blend 55.875 -> 94.875 -> 95 (adjustment 0.125).
+OAK_PROPERTIES = scored_properties(
+    OAK_PIN,
+    "12 OAK ST, Ramsey NJ 07446",
+    score=95,
+    categories={"project": 15, "capacity": 12, "fit": 12},
+    base=39,
+    mover={"eligible": True, "days_since_move": 30, "strength": 90.0},
+    mover_lift=55.875,
+    rental_modifier=0,
+    adjustment=0.125,
+    confidence="normal",
+    data_gaps=[],
+    trail=[
+        evidence("project_active", 15, "active qualifying project with recent lifecycle activity"),
+        evidence(
+            "capacity_acs_dual_income_prior",
+            5,
+            "neighborhood-level ACS dual-income prior at or above 35% (block-group prior, not a household claim)",
+        ),
+        evidence(
+            "capacity_local_relative_value",
+            7,
+            "assessed value above the median of the nearest comparables",
+        ),
+        evidence(
+            "fit_roof_age",
+            12,
+            "latest explicit completed roof installation is old enough to need service",
+        ),
+        evidence(
+            "mover_recency",
+            55.875,
+            "recent valid arm's-length move blends the score toward the mover priority band",
+        ),
+    ],
+)
+
+#: Unspeakable-led: percentile (10) and local ratio (7) top the trail, so the
+#: chip must be `fit_lot` and the talk track the angle that says nothing.
+MAPLE_PROPERTIES = scored_properties(
+    MAPLE_PIN,
+    "20 MAPLE AVE, Ramsey NJ 07446",
+    score=22,
+    categories={"project": 0, "capacity": 17, "fit": 5},
+    base=22,
+    mover={"eligible": False, "days_since_move": None, "strength": 0.0},
+    mover_lift=0.0,
+    rental_modifier=0,
+    adjustment=0.0,
+    confidence="normal",
+    data_gaps=[{"type": "acs_missing"}],
+    trail=[
+        evidence(
+            "capacity_territory_percentile",
+            10,
+            "assessed value ranks high among territory single-family properties",
+        ),
+        evidence(
+            "capacity_local_relative_value",
+            7,
+            "assessed value above the median of the nearest comparables",
+        ),
+        evidence("fit_lot", 5, "lot of at least half an acre"),
+    ],
+)
+
+#: Demoted rental with the 0-clamp: 13 - 25 = -12 -> 0 (adjustment 12.0).
+CEDAR_PROPERTIES = scored_properties(
+    CEDAR_PIN,
+    "31 CEDAR CT, Ramsey NJ 07446",
+    score=0,
+    categories={"project": 8, "capacity": 0, "fit": 5},
+    base=13,
+    mover={"eligible": False, "days_since_move": None, "strength": 0.0},
+    mover_lift=0.0,
+    rental_modifier=-25,
+    adjustment=12.0,
+    confidence="low",
+    data_gaps=[{"type": "acs_missing"}, {"type": "assessed_value_missing"}],
+    trail=[
+        evidence("project_completed", 8, "qualifying project completed within 24 months"),
+        evidence("fit_lot", 5, "lot of at least half an acre"),
+        evidence(
+            "rental_registration", -25, "current verified rental registration demotes the door"
+        ),
+        evidence(
+            "mover_invalid_sale",
+            0,
+            "a transfer was disqualified from mover influence (nominal price, disqualifying code, or invalid/future date)",
+        ),
+    ],
+)
+
+BIRCH_PROPERTIES = {
+    "PAMS_PIN": BIRCH_PIN,
+    "situs": "99 BIRCH LN, Ramsey NJ 07446",
+    "score": None,
+    "confidence": None,
+    "evidence": [],
+    "exclusion_reason": EXCLUSION_REASON,
+    "score_contract_version": "v2",
+    "categories": None,
+    "base": None,
+    "mover": None,
+    "mover_lift": None,
+    "rental_modifier": None,
+    "adjustment": None,
+    "data_gaps": None,
+}
+
+FEATURES = [
+    {"type": "Feature", "geometry": polygon(*START), "properties": OAK_PROPERTIES},
+    {"type": "Feature", "geometry": polygon(*north_of(START, 300.0)), "properties": MAPLE_PROPERTIES},
+    {"type": "Feature", "geometry": None, "properties": CEDAR_PROPERTIES},
+    {"type": "Feature", "geometry": None, "properties": BIRCH_PROPERTIES},
+]
+
+ALL_PINS = {OAK_PIN, MAPLE_PIN, CEDAR_PIN, BIRCH_PIN}
+SCORED_PINS = [OAK_PIN, MAPLE_PIN, CEDAR_PIN]
+
+MANIFEST = {
+    "run_at": "2026-08-14T06:30:00+00:00",
+    "as_of": "2026-08-14",
+    "code_version": "a1b2c3d",
+    "score_contract_version": "v2",
+    "acs_dual_income_threshold": 0.35,
+    "retrieved": {"parcel": "2026-08-13"},
+    "cost_usd": 0.0,
+    "doors_total": 4,
+    "doors_with_signal": 3,
+    "coverage": 0.75,
+}
+
+
+def write_data_dir(target, features=FEATURES):
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "doors.geojson").write_text(
+        json.dumps({"type": "FeatureCollection", "features": features}), encoding="utf-8"
     )
+    (target / "run_manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
 
-
-OAK = facts(
-    "0248_01101_00012",
-    "12 OAK ST",
-    deed=date(2026, 7, 20),
-    yr_constr=1962,
-    net_value=980000.0,
-    point=START,
-)
-MAPLE = facts(
-    "0248_01101_00020",
-    "20 MAPLE AVE",
-    deed=date(2001, 3, 4),
-    yr_constr=1998,
-    net_value=520000.0,
-    point=north_of(START, 300.0),
-)
-BIRCH = facts(
-    "0248_01101_00099",
-    "99 BIRCH LN",
-    deed=None,
-    yr_constr=0,
-    net_value=0.0,
-    point=None,
-)
-
-DOORS = (OAK, MAPLE, BIRCH)
-
-
-def engine_result(door):
-    return score_door(
-        door.to_score_input(
-            as_of=AS_OF,
-            territory_median_value=TERRITORY_MEDIAN_VALUE,
-            acs_dual_income_threshold=ACS_DUAL_INCOME_THRESHOLD,
+    connection = sqlite3.connect(target / "houseaccount.sqlite")
+    try:
+        connection.execute(
+            "CREATE TABLE doors ("
+            "pams_pin TEXT PRIMARY KEY, situs TEXT, score INTEGER, confidence TEXT,"
+            "score_contract_version TEXT, project INTEGER, capacity INTEGER, fit INTEGER,"
+            "base INTEGER, mover_eligible INTEGER, days_since_move INTEGER,"
+            "mover_strength REAL, mover_lift REAL, rental_modifier INTEGER,"
+            "adjustment REAL, exclusion_reason TEXT)"
         )
-    )
+        connection.execute(
+            "CREATE TABLE evidence (pams_pin TEXT, type TEXT, points REAL, reason TEXT)"
+        )
+        for feature in features:
+            p = feature["properties"]
+            categories = p["categories"] or {}
+            mover = p["mover"] or {}
+            connection.execute(
+                "INSERT INTO doors VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    p["PAMS_PIN"], p["situs"], p["score"], p["confidence"],
+                    p["score_contract_version"], categories.get("project"),
+                    categories.get("capacity"), categories.get("fit"), p["base"],
+                    mover.get("eligible"), mover.get("days_since_move"),
+                    mover.get("strength"), p["mover_lift"], p["rental_modifier"],
+                    p["adjustment"], p["exclusion_reason"],
+                ),
+            )
+            for item in p["evidence"]:
+                connection.execute(
+                    "INSERT INTO evidence VALUES (?,?,?,?)",
+                    (p["PAMS_PIN"], item["type"], item["points"], item["reason"]),
+                )
+        connection.commit()
+    finally:
+        connection.close()
+    return target
+
+
+def every_key(payload):
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            yield key
+            yield from every_key(value)
+    elif isinstance(payload, list):
+        for item in payload:
+            yield from every_key(item)
 
 
 @pytest.fixture
 def data_dir(tmp_path):
-    target = tmp_path / "data"
-    publish(
-        [(door, engine_result(door) if door is not BIRCH else None) for door in DOORS],
-        report=ResolveReport(as_of=AS_OF, doors_total=len(DOORS), doors_with_signal=2),
-        manifest=RunManifest(
-            run_at=RUN_AT,
-            as_of=AS_OF,
-            code_version="a1b2c3d",
-            territory_median_value=TERRITORY_MEDIAN_VALUE,
-            acs_dual_income_threshold=ACS_DUAL_INCOME_THRESHOLD,
-            retrieved={"parcel": date(2026, 8, 13)},
-            cost_usd=0.0,
-        ),
-        data_dir=target,
-    )
-    return target
+    return write_data_dir(tmp_path / "data")
 
 
 @pytest.fixture
@@ -194,7 +332,6 @@ def client(data_dir):
 
 
 def test_create_app_returns_an_asgi_app_whose_health_answers_200(data_dir):
-    """R12's liveness probe: uvicorn serves this object and Fly.io calls this path."""
     app = create_app(data_dir=data_dir)
     assert isinstance(app, FastAPI)
 
@@ -205,7 +342,6 @@ def test_create_app_returns_an_asgi_app_whose_health_answers_200(data_dir):
 
 @pytest.mark.parametrize("factory", [create_app, create_mcp_server], ids=["app", "mcp"])
 def test_a_missing_data_directory_fails_with_the_path_it_looked_in(tmp_path, factory):
-    """A reviewer who has not run the pipeline gets told what is missing (R13)."""
     missing = tmp_path / "no-such-data"
 
     with pytest.raises(DataUnavailable) as raised:
@@ -215,195 +351,184 @@ def test_a_missing_data_directory_fails_with_the_path_it_looked_in(tmp_path, fac
     assert str(missing) in str(raised.value)
 
 
+def test_a_run_from_another_score_contract_version_is_rejected_at_boot(tmp_path):
+    """R27: mixed-version outputs must be rejected. A published record still
+    claiming `v1` is a stale run, not a servable territory — the boot failure
+    names the offending version so the operator knows to re-run the pipeline."""
+    stale = {**OAK_PROPERTIES, "score_contract_version": "v1"}
+    features = [
+        {"type": "Feature", "geometry": polygon(*START), "properties": stale},
+        FEATURES[1],
+    ]
+    target = write_data_dir(tmp_path / "stale", features=features)
+
+    with pytest.raises(DataUnavailable) as raised:
+        create_app(data_dir=target)
+
+    assert "v1" in str(raised.value)
+
+
 def test_the_app_mounts_the_mcp_surface(data_dir):
-    """One deployment serves both surfaces (R8 + R9)."""
     paths = {getattr(route, "path", "") for route in create_app(data_dir=data_dir).routes}
     assert any(path.startswith("/mcp") for path in paths), sorted(paths)
 
 
-# --- GET /api/doors.geojson ---------------------------------------------------
+# --- GET /api/doors.geojson -----------------------------------------------------
 
 
 def test_doors_geojson_is_served_verbatim(client, data_dir):
-    """What the map draws is the artifact the pipeline published, unreshaped."""
     response = client.get("/api/doors.geojson")
 
     assert response.status_code == 200
     assert "json" in response.headers["content-type"]
     assert response.json() == json.loads(
-        (Path(data_dir) / DOORS_GEOJSON_NAME).read_text(encoding="utf-8")
+        (Path(data_dir) / "doors.geojson").read_text(encoding="utf-8")
     )
 
 
 def test_doors_geojson_still_carries_the_unscored_door(client):
-    """R9.4: the gap in the coverage readout is clickable, so it has to be there."""
     features = client.get("/api/doors.geojson").json()["features"]
 
     by_pin = {feature["properties"]["PAMS_PIN"]: feature for feature in features}
-    assert set(by_pin) == {door.pams_pin for door in DOORS}
-    assert by_pin[BIRCH.pams_pin]["properties"]["score"] is None
-    assert by_pin[BIRCH.pams_pin]["geometry"] is None
+    assert set(by_pin) == ALL_PINS
+    assert by_pin[BIRCH_PIN]["properties"]["score"] is None
+    assert by_pin[BIRCH_PIN]["geometry"] is None
 
 
-# --- GET /api/door/{pin} ------------------------------------------------------
+def test_every_served_feature_keeps_the_v2_allowlist_exactly(client):
+    """R11.1/R27: the exact V2 property set — nothing widened, nothing V1."""
+    for feature in client.get("/api/doors.geojson").json()["features"]:
+        assert set(feature["properties"]) == PUBLISHED_PROPERTIES
 
 
-def test_door_endpoint_returns_the_published_properties(client):
-    result = engine_result(OAK)
+# --- GET /api/door/{pin} ---------------------------------------------------------
 
-    response = client.get(f"/api/door/{OAK.pams_pin}")
 
-    assert response.status_code == 200
-    body = response.json()
-    assert PUBLISHED_PROPERTIES <= set(body)
-    assert body["PAMS_PIN"] == OAK.pams_pin
-    assert body["score"] == result.score
-    assert body["confidence"] == result.confidence
-    assert body["situs"] == OAK.situs
-    assert [item["sentence"] for item in body["evidence"]] == [
-        item.sentence for item in result.evidence
-    ]
+def test_door_endpoint_serves_the_published_v2_record_plus_presentation(client):
+    body = client.get(f"/api/door/{OAK_PIN}").json()
+
+    assert set(body) == PUBLISHED_PROPERTIES | DOOR_DETAIL_FIELDS
+    assert body["PAMS_PIN"] == OAK_PIN
+    assert body["score"] == 95
+    assert body["confidence"] == "normal"
+    assert body["score_contract_version"] == "v2"
+    assert body["categories"] == {"project": 15, "capacity": 12, "fit": 12}
+    assert set(body["categories"]) == CATEGORY_NAMES
+    assert body["base"] == 39
+    assert body["mover"] == {"eligible": True, "days_since_move": 30, "strength": 90.0}
+    assert body["mover_lift"] == pytest.approx(55.875)
+    assert body["rental_modifier"] == 0
+    assert body["adjustment"] == pytest.approx(0.125)
+    assert body["data_gaps"] == []
+
+
+def test_no_v1_vocabulary_survives_in_any_door_payload(client):
+    """R27/R28: `groups` and `raw_total` are keys of nothing this app serves."""
+    for pin in [*SCORED_PINS, BIRCH_PIN]:
+        body = client.get(f"/api/door/{pin}").json()
+        assert set(every_key(body)) & FORBIDDEN_KEYS == set(), pin
+
+
+def test_door_evidence_items_are_type_points_reason(client):
+    body = client.get(f"/api/door/{OAK_PIN}").json()
+
+    assert body["evidence"]
+    for item in body["evidence"]:
+        assert {"type", "points", "reason"} <= set(item) <= {"type", "points", "reason", "imagery"}
+        assert "sentence" not in item and "source" not in item
+
+
+@pytest.mark.parametrize("pin", SCORED_PINS, ids=["mover", "flat", "rental-clamped"])
+def test_every_served_evidence_list_reconciles_to_the_displayed_score(client, pin):
+    """R7 at the API boundary, for all three arithmetic shapes: plain base,
+    mover blend, and the rental demotion through the 0-clamp."""
+    body = client.get(f"/api/door/{pin}").json()
+
+    assert sum(body["categories"].values()) == body["base"]
+    trail_sum = sum(item["points"] for item in body["evidence"])
+    assert trail_sum == pytest.approx(
+        body["base"] + body["mover_lift"] + body["rental_modifier"]
+    )
+    assert body["score"] == pytest.approx(trail_sum + body["adjustment"])
 
 
 def test_door_endpoint_serves_the_unscored_door_with_its_exclusion(client):
-    body = client.get(f"/api/door/{BIRCH.pams_pin}").json()
+    body = client.get(f"/api/door/{BIRCH_PIN}").json()
 
     assert body["score"] is None
     assert body["evidence"] == []
-    assert isinstance(body["exclusion_reason"], str) and body["exclusion_reason"]
+    assert body["exclusion_reason"] == EXCLUSION_REASON
+    assert body["score_contract_version"] == "v2"
 
 
-def test_the_door_endpoint_carries_the_group_math_the_breakdown_draws(client):
-    """T013: the panel's "Score breakdown" needs `groups` and `raw_total` (R8.1).
-
-    The published GeoJSON deliberately does not carry them — they are server-side
-    (`doors.groups`, `doors.raw_total` in SQLite) — so the panel gets them from
-    the door endpoint, which is the only place a browser can ask for one door.
-    """
-    result = engine_result(OAK)
-
-    body = client.get(f"/api/door/{OAK.pams_pin}").json()
+def test_an_unscored_door_has_no_breakdown_and_no_presentation(client):
+    body = client.get(f"/api/door/{BIRCH_PIN}").json()
 
     assert DOOR_DETAIL_FIELDS <= set(body)
-    assert set(body["groups"]) == GROUP_NAMES
-    assert body["groups"] == dict(result.groups)
-    assert body["raw_total"] == result.raw_total
+    assert body["categories"] is None
+    assert body["talk_track"] is None
+    assert body["talk_track_branches"] is None
+    assert body["reason_chip"] is None
 
 
-def test_the_door_endpoints_group_math_reconciles_with_its_evidence(client):
-    """The breakdown and the evidence list are two views of one sum (R8.1/R7.1)."""
-    body = client.get(f"/api/door/{OAK.pams_pin}").json()
+def test_the_door_reason_chip_follows_the_selection_rule(client):
+    """Highest points wins (OAK: `mover_recency` at 55.875); unspeakable
+    leaders are skipped (MAPLE: percentile 10 and ratio 7 -> `fit_lot`)."""
+    oak = client.get(f"/api/door/{OAK_PIN}").json()
+    maple = client.get(f"/api/door/{MAPLE_PIN}").json()
 
-    assert sum(body["groups"].values()) == body["raw_total"]
-    assert sum(item["points"] for item in body["evidence"]) == body["raw_total"]
+    assert oak["reason_chip"] == "mover_recency"
+    assert maple["reason_chip"] == "fit_lot"
+
+
+def test_no_served_chip_is_ever_an_unspeakable_type(client):
+    for pin in SCORED_PINS:
+        chip = client.get(f"/api/door/{pin}").json()["reason_chip"]
+        assert chip not in UNSPEAKABLE_TYPES, pin
 
 
 def test_the_door_endpoint_carries_the_same_talk_track_the_route_does(client):
-    """R7.2: one opener per door, whichever surface the rep reached it through.
-
-    Asserted against `POST /api/route` rather than against a re-derivation, so the
-    panel and the route list cannot drift into two different sentences.
-    """
-    body = client.get(f"/api/door/{OAK.pams_pin}").json()
+    body = client.get(f"/api/door/{OAK_PIN}").json()
     stops = client.post(
         "/api/route", json={"hours": 2, "start_point": list(START)}
     ).json()["stops"]
 
-    planned = next(stop for stop in stops if stop["pams_pin"] == OAK.pams_pin)
+    planned = next(stop for stop in stops if stop["pams_pin"] == OAK_PIN)
     assert isinstance(body["talk_track"], str) and body["talk_track"].strip()
     assert body["talk_track"] == planned["talk_track"]
 
 
-#: The engine's own permit sentence (`scoring.engine._score_hires_out`), verbatim
-#: — 124 characters, and the sentence QA saw the panel cut at "…gets contracted
-#: out rather than. Is now a bad time?" (ticket 021). The route side of the same
-#: defect is pinned in `tests/test_route.py`; this is the panel's own path.
-PERMIT_EVIDENCE = (
-    "1 permit filed here in the last 24 months (Alteration) — work at this address "
-    "gets contracted out rather than done in-house."
-)
+def test_the_panel_shows_the_reason_and_the_opener_speaks_none_of_it(client):
+    """R7.2/PRD R7.2.1: the evidence reasons stay on the panel; the opener under
+    them never recites the file — checked on the unspeakable-led door."""
+    body = client.get(f"/api/door/{MAPLE_PIN}").json()
 
-#: Endings that leave the homeowner waiting for the rest of the sentence.
-DANGLING_ENDINGS = {"and", "gets", "out", "rather", "than", "the", "to"}
+    reasons = [item["reason"] for item in body["evidence"]]
+    assert "assessed value ranks high among territory single-family properties" in reasons
 
-
-def permit_led_door():
-    """One scored door whose top evidence is the long permit sentence."""
-    return Door(
-        pams_pin=OAK.pams_pin,
-        properties={
-            "PAMS_PIN": OAK.pams_pin,
-            "situs": OAK.situs,
-            "score": 56,
-            "confidence": "medium",
-            "evidence": [
-                {"type": "permit_history", "points": 20, "sentence": PERMIT_EVIDENCE},
-                {"type": "age", "points": 8, "sentence": "Built in 1962."},
-            ],
-            "exclusion_reason": None,
-        },
-        centroid=START,
-        groups={"hires_out": 20, "need": 8},
-        raw_total=28,
-    )
-
-
-def test_the_panel_opener_for_a_permit_led_door_never_reads_out_the_permit():
-    """R7.2: the panel shows the evidence sentence in full, and the opener under
-    it says none of it.
-
-    The panel is the rep's screen; the opener is the homeowner's ears. Reciting
-    "1 permit filed here in the last 24 months" at a stranger's door tells them
-    we hold a file on the house, so the permit picks the *angle* — who do you
-    call when something needs doing — and never the words. Ticket 021's cut
-    sentence cannot recur because nothing is quoted to cut.
-
-    Driven through `door_payload` — the function `GET /api/door/{pin}` serves —
-    because the published territory this module builds has no permits in it.
-    """
-    payload = door_payload(permit_led_door())
-    track = payload["talk_track"]
-    sentences = [part.strip() for part in re.split(r"[.?!]", track) if part.strip()]
-
-    assert PERMIT_EVIDENCE in [item["sentence"] for item in payload["evidence"]], (
-        "the panel still shows the evidence in full"
-    )
-    for word in ["permit", "Alteration", "24 months", "contracted out"]:
+    track = body["talk_track"].lower()
+    for word in ["assessed", "percentile", "median", "comparable", "territory", "score"]:
         assert word not in track, f"{word!r} was read out at the door"
-    for sentence in sentences:
-        assert sentence.split()[-1].lower() not in DANGLING_ENDINGS, sentence
-
-
-def test_the_panel_carries_the_branches_that_follow_the_opener():
-    """The opener stops on one open question; what the rep says next depends on
-    the answer, so the panel gets the alternatives rather than a paragraph."""
-    payload = door_payload(permit_led_door())
-
-    assert payload["talk_track"].strip().endswith("?")
-    assert payload["talk_track_branches"]
-    for branch in payload["talk_track_branches"]:
+    assert body["talk_track"].strip().endswith("?")
+    for branch in body["talk_track_branches"]:
         assert branch["trigger"].strip() and branch["line"].strip()
 
 
-def test_an_unscored_door_has_no_group_math_and_no_talk_track(client):
-    """No score, no breakdown, no opener — the panel shows its exclusion instead (R9.4)."""
-    body = client.get(f"/api/door/{BIRCH.pams_pin}").json()
+def test_the_acs_prior_is_served_as_a_neighborhood_prior_never_a_household_claim(client):
+    """R15 at the API boundary: the served reason names the block-group prior;
+    nothing served claims the household itself is dual-income."""
+    body = client.get(f"/api/door/{OAK_PIN}").json()
 
-    assert DOOR_DETAIL_FIELDS <= set(body)
-    assert body["groups"] is None
-    assert body["raw_total"] is None
-    assert body["talk_track"] is None
-    assert body["talk_track_branches"] is None
-
-
-def test_the_published_geojson_is_not_widened_by_the_door_detail(client):
-    """R11.1: the browser-facing artifact keeps its allowlist exactly.
-
-    Widening the door endpoint is a server-side lookup, not a change to what the
-    pipeline publishes — the map still downloads only the allowlist for 540 doors.
-    """
-    for feature in client.get("/api/doors.geojson").json()["features"]:
-        assert set(feature["properties"]) == PUBLISHED_PROPERTIES
+    (acs_reason,) = [
+        item["reason"]
+        for item in body["evidence"]
+        if item["type"] == "capacity_acs_dual_income_prior"
+    ]
+    lowered = acs_reason.lower()
+    assert "neighborhood-level" in lowered or "block-group" in lowered
+    assert "household is dual-income" not in lowered
+    assert "this household" not in lowered
+    assert "dual" not in body["talk_track"].lower()
 
 
 def test_unknown_pin_is_a_structured_404(client):
@@ -415,32 +540,73 @@ def test_unknown_pin_is_a_structured_404(client):
     assert isinstance(body.get("message"), str) and body["message"]
 
 
-# --- POST /api/route ----------------------------------------------------------
+# --- POST /api/route ---------------------------------------------------------------
 
 
-def test_route_endpoint_returns_ordered_stops_with_talk_tracks(client):
+def test_route_endpoint_returns_ordered_stops_with_talk_tracks_and_chips(client):
     response = client.post(
         "/api/route", json={"hours": 2, "start_point": list(START), "max_doors": 20}
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert [stop["pams_pin"] for stop in body["stops"]] == [OAK.pams_pin, MAPLE.pams_pin]
+    assert [stop["pams_pin"] for stop in body["stops"]] == [OAK_PIN, MAPLE_PIN]
     assert body["total_minutes"] == body["stops"][-1]["cumulative_minutes"]
     assert isinstance(body["estimate_disclosure"], str) and body["estimate_disclosure"]
     for stop in body["stops"]:
-        assert set(stop) == STOP_FIELDS
         assert isinstance(stop["talk_track"], str) and stop["talk_track"].strip()
+        assert "reason_chip" in stop
+        assert stop["reason_chip"] not in UNSPEAKABLE_TYPES
+
+
+def test_the_route_response_carries_the_score_contract_version(client):
+    """R30: the shared route payload names the contract its scores came from."""
+    body = client.post("/api/route", json={"hours": 2, "start_point": list(START)}).json()
+
+    assert body["score_contract_version"] == "v2"
+
+
+def test_a_route_request_declaring_a_stale_version_gets_a_refresh_signal(client):
+    """R27/R30: a share link minted under V1 must not replay as a V2 route —
+    the response says refresh, and plans nothing."""
+    response = client.post(
+        "/api/route",
+        json={"hours": 2, "start_point": list(START), "score_contract_version": "v1"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["refresh_required"] is True
+    assert body["score_contract_version"] == "v2"
+    assert body.get("stops", []) == []
+
+
+def test_a_route_request_declaring_the_current_version_plans_normally(client):
+    body = client.post(
+        "/api/route",
+        json={"hours": 2, "start_point": list(START), "score_contract_version": "v2"},
+    ).json()
+
+    assert body.get("refresh_required") is not True
+    assert [stop["pams_pin"] for stop in body["stops"]] == [OAK_PIN, MAPLE_PIN]
+
+
+def test_route_aggregates_come_from_the_displayed_v2_scores(client):
+    """R30: the average the UI shows is arithmetic over the published scores."""
+    body = client.post("/api/route", json={"hours": 2, "start_point": list(START)}).json()
+
+    assert [stop["score"] for stop in body["stops"]] == [95, 22]
+    assert body["average_score"] == pytest.approx((95 + 22) / 2)
+
+
+def test_an_empty_route_has_no_average(client):
+    body = client.post("/api/route", json={"hours": 0, "start_point": list(START)}).json()
+
+    assert body["stops"] == []
+    assert body["average_score"] is None
 
 
 def test_every_stop_carries_the_line_the_rep_walks(client):
-    """The map draws the planner's walk rather than joining centroids itself.
-
-    Whether these legs are streets or straight lines depends on whether the
-    published parcels describe a street grid — this fixture's handful of squares
-    do not, and that is the fallback working. What the endpoint always owes the
-    map is a line per leg, starting where the last one ended.
-    """
     response = client.post(
         "/api/route", json={"hours": 2, "start_point": list(START), "max_doors": 20}
     )
@@ -455,48 +621,33 @@ def test_every_stop_carries_the_line_the_rep_walks(client):
         position = path[-1]
 
 
-def test_route_endpoint_with_no_time_returns_an_empty_route(client):
-    response = client.post("/api/route", json={"hours": 0, "start_point": list(START)})
-
-    assert response.status_code == 200
-    assert response.json()["stops"] == []
-
-
 def test_the_route_endpoint_replans_without_an_excluded_door(client):
-    """T013 / frame 4c: "that house is vacant" — ✕ on a row re-plans without it.
-
-    Exclusion has to reach the planner: dropping the stop in the browser would
-    leave the rest of the walk detouring around a house nobody is visiting, and
-    would put route ordering in JavaScript, which R10.3 forbids.
-    """
     response = client.post(
         "/api/route",
-        json={"hours": 2, "start_point": list(START), "exclude": [OAK.pams_pin]},
+        json={"hours": 2, "start_point": list(START), "exclude": [OAK_PIN]},
     )
 
     assert response.status_code == 200
     pins = [stop["pams_pin"] for stop in response.json()["stops"]]
-    assert OAK.pams_pin not in pins
-    assert MAPLE.pams_pin in pins
+    assert OAK_PIN not in pins
+    assert MAPLE_PIN in pins
 
 
 def test_excluding_re_plans_the_walk_rather_than_filtering_it(client):
-    """The legs are re-measured from the new predecessor, not left as they were."""
     full = client.post("/api/route", json={"hours": 2, "start_point": list(START)}).json()
     without = client.post(
         "/api/route",
-        json={"hours": 2, "start_point": list(START), "exclude": [OAK.pams_pin]},
+        json={"hours": 2, "start_point": list(START), "exclude": [OAK_PIN]},
     ).json()
 
-    kept = next(stop for stop in full["stops"] if stop["pams_pin"] == MAPLE.pams_pin)
-    replanned = next(stop for stop in without["stops"] if stop["pams_pin"] == MAPLE.pams_pin)
+    kept = next(stop for stop in full["stops"] if stop["pams_pin"] == MAPLE_PIN)
+    replanned = next(stop for stop in without["stops"] if stop["pams_pin"] == MAPLE_PIN)
     assert replanned["cumulative_minutes"] != kept["cumulative_minutes"]
     assert without["total_minutes"] == without["stops"][-1]["cumulative_minutes"]
 
 
 def test_the_same_exclusions_plan_the_same_walk_every_time(client):
-    """Deterministic: the rep who excludes the same door twice sees one answer."""
-    body = {"hours": 2, "start_point": list(START), "exclude": [OAK.pams_pin]}
+    body = {"hours": 2, "start_point": list(START), "exclude": [OAK_PIN]}
 
     first = client.post("/api/route", json=body).json()
     second = client.post("/api/route", json=body).json()
@@ -505,7 +656,6 @@ def test_the_same_exclusions_plan_the_same_walk_every_time(client):
 
 
 def test_an_exclusion_that_names_no_door_changes_nothing(client):
-    """A stale share link or a re-excluded door must not empty the route."""
     plain = client.post("/api/route", json={"hours": 2, "start_point": list(START)}).json()
     ignored = client.post(
         "/api/route",
@@ -518,33 +668,11 @@ def test_an_exclusion_that_names_no_door_changes_nothing(client):
 def test_excluding_every_door_returns_an_empty_route(client):
     response = client.post(
         "/api/route",
-        json={
-            "hours": 2,
-            "start_point": list(START),
-            "exclude": [door.pams_pin for door in DOORS],
-        },
+        json={"hours": 2, "start_point": list(START), "exclude": sorted(ALL_PINS)},
     )
 
     assert response.status_code == 200
     assert response.json()["stops"] == []
-
-
-def test_a_share_token_from_the_browser_decodes_on_the_server(client):
-    """R10.4's share link: the map encodes the fragment, the server has to read it.
-
-    `zlib.compress(payload, 9)` and the browser's `CompressionStream('deflate')`
-    write the same zlib format at different compression levels, so the bytes
-    differ while the stream stays readable. This is the browser's spelling of the
-    OAK/MAPLE route, produced by `CompressionStream`, and `decode_share` must
-    take it — otherwise a link shared from a phone opens an empty route.
-    """
-    from_browser = "r1eJwzMDKxiDcwNDQwjDcwMDA00jFAETAygAgYmxoYxVvoGRgCAPz0Clk"
-
-    assert decode_share(from_browser) == (
-        "0248_01101_00012",
-        "0248_01101_00020",
-        "0248_3502_8.01",
-    )
 
 
 @pytest.mark.parametrize(
@@ -562,31 +690,15 @@ def test_a_malformed_route_request_is_rejected_before_the_planner_sees_it(client
 
 
 def test_a_malformed_exclusion_list_is_rejected_too(client):
-    """`exclude` is a list of PINs; a bare string is a 422, not a per-character filter."""
     response = client.post(
         "/api/route",
-        json={"hours": 2, "start_point": list(START), "exclude": OAK.pams_pin},
+        json={"hours": 2, "start_point": list(START), "exclude": OAK_PIN},
     )
 
     assert response.status_code == 422
 
 
-# --- the published artifacts the Data & Ethics page reads (T016, R12) ---------
-#
-# `web/ethics.html` fetches `${HOUSEACCOUNT_ARTIFACT_BASE}/eval/report.json` and
-# `${...}/data/run_manifest.json`. A static host serving `web/` as the site root
-# resolves neither, so the deployed page would show its honest-but-empty "no
-# published run" fallback instead of the real numbers. The API serves both, at
-# exactly the paths the page already asks for, so the deploy sets one base URL
-# and nothing in `web/` changes.
-#
-# `eval/report.json` lives outside `data/`, so it is a second argument to
-# `create_app` — defaulting to the repository's own `eval/report.json`, which is
-# what `uvicorn ... --factory` gets. It is deliberately *not* part of the boot
-# contract: `make pipeline` can have run without `make eval`, and a missing eval
-# report is an ordinary state the ethics page already degrades through. Only a
-# missing `data/` fails the boot.
-
+# --- the published artifacts the Data & Ethics page reads (T016, R12) ----------------
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPO_EVAL_REPORT = REPO_ROOT / "eval" / "report.json"
@@ -616,7 +728,6 @@ def test_the_report_endpoint_serves_the_eval_report(data_dir, eval_report):
 
 
 def test_the_report_endpoint_defaults_to_the_repositorys_eval_report(client):
-    """What `uvicorn ... --factory` serves: no second path to configure."""
     assert REPO_EVAL_REPORT.is_file(), "the repo ships a published eval report"
 
     response = client.get(REPORT_ROUTE)
@@ -635,12 +746,12 @@ def test_the_manifest_endpoint_serves_the_published_run_manifest(client, data_di
     )
 
 
-def test_the_artifact_routes_are_the_paths_the_ethics_page_fetches(data_dir):
-    """Anti-drift: the page's fetches and the server's routes are one decision.
+def test_the_served_manifest_names_the_score_contract_version(client):
+    """R27/R28: the run manifest identifies the contract that produced the run."""
+    assert client.get(MANIFEST_ROUTE).json()["score_contract_version"] == "v2"
 
-    The deploy points `HOUSEACCOUNT_ARTIFACT_BASE` at the API's `/api`, so
-    `artifact('eval/report.json')` has to land on a route that exists.
-    """
+
+def test_the_artifact_routes_are_the_paths_the_ethics_page_fetches(data_dir):
     fetched = set(
         re.findall(
             r"artifact\(\s*['\"]([^'\"]+)['\"]",
@@ -654,7 +765,6 @@ def test_the_artifact_routes_are_the_paths_the_ethics_page_fetches(data_dir):
 
 
 def test_the_artifact_endpoints_are_readable_from_the_ui_origin(client):
-    """The ethics page is on Vercel and these bytes are on Fly (R12)."""
     origin = UI_ORIGINS[0]
 
     for route in (REPORT_ROUTE, MANIFEST_ROUTE):
@@ -663,7 +773,6 @@ def test_the_artifact_endpoints_are_readable_from_the_ui_origin(client):
 
 
 def test_a_missing_eval_report_does_not_fail_the_boot(data_dir, tmp_path):
-    """`make pipeline` without `make eval` is an ordinary state, not a crash."""
     app = create_app(data_dir=data_dir, eval_report=tmp_path / "never-ran" / "report.json")
 
     client = TestClient(app)
@@ -672,7 +781,6 @@ def test_a_missing_eval_report_does_not_fail_the_boot(data_dir, tmp_path):
 
 
 def test_a_missing_eval_report_is_a_structured_404(data_dir, tmp_path):
-    """The page's `fetch` treats a non-ok response as "no run" and says so."""
     client = TestClient(create_app(data_dir=data_dir, eval_report=tmp_path / "gone.json"))
 
     response = client.get(REPORT_ROUTE)
@@ -684,7 +792,6 @@ def test_a_missing_eval_report_is_a_structured_404(data_dir, tmp_path):
 
 
 def test_a_malformed_eval_report_degrades_rather_than_500ing(data_dir, tmp_path):
-    """Half a JSON file is the shape an interrupted `make eval` leaves behind."""
     broken = tmp_path / "report.json"
     broken.write_text('{"fixtures_total": 12, ', encoding="utf-8")
 
@@ -698,7 +805,6 @@ def test_a_malformed_eval_report_degrades_rather_than_500ing(data_dir, tmp_path)
 
 
 def test_a_missing_run_manifest_is_a_structured_404(data_dir):
-    """`doors.geojson` and the database boot the server; the manifest does not."""
     (Path(data_dir) / "run_manifest.json").unlink()
 
     client = TestClient(create_app(data_dir=data_dir))
@@ -713,7 +819,6 @@ def test_a_missing_run_manifest_is_a_structured_404(data_dir):
 
 
 def test_cors_allows_the_ui_origin(client):
-    """The Map UI is deployed on its own origin and calls this app from a browser."""
     assert UI_ORIGINS, "the UI has to be allowed from somewhere"
     origin = UI_ORIGINS[0]
 
@@ -728,18 +833,7 @@ def test_cors_allows_the_ui_origin(client):
     assert simple.headers["access-control-allow-origin"] in {origin, "*"}
 
 
-# --- the MCP transport answers to the host the platform hands out -------------
-#
-# The regression these guard is a deployment that looks entirely healthy and is
-# half dark. `streamable_http_app`'s `host` argument defaults to `127.0.0.1`, and
-# the SDK reads a loopback bind as "this is a local server" and switches DNS
-# rebinding protection on with a localhost-only allowlist. Deployed, `/health` is
-# green, the map draws, every REST endpoint answers — and `initialize` is a 421
-# for every MCP client, because the platform's hostname is not on that list.
-#
-# It survived a full suite because nothing here had ever POSTed to `/mcp`; the
-# mount was asserted by route introspection alone. So these drive the transport
-# over HTTP with the `Host` header a real client sends.
+# --- the MCP transport answers to the host the platform hands out ----------------
 
 MCP_HEADERS = {
     "Content-Type": "application/json",
@@ -757,30 +851,20 @@ INITIALIZE = {
     },
 }
 
-#: The status the transport returns for a `Host` it will not answer to.
 MISDIRECTED = 421
 
 
 def mcp_initialize(client, host):
-    """Open an MCP session as a real client does, from `host`."""
     return client.post(MCP_PATH, headers={**MCP_HEADERS, "Host": host}, json=INITIALIZE)
 
 
 @contextlib.contextmanager
 def mcp_client(data_dir):
-    """A client whose lifespan has run.
-
-    `TestClient` only fires startup when it is used as a context manager, and the
-    streamable-HTTP transport refuses every request until its session manager is
-    running — so a bare `TestClient(app)` fails these with a task-group error
-    that has nothing to do with the header being tested.
-    """
     with TestClient(create_app(data_dir=data_dir)) as client:
         yield client
 
 
 def test_the_mcp_transport_answers_on_the_railway_domain(data_dir, monkeypatch):
-    """Railway injects `RAILWAY_PUBLIC_DOMAIN`; the allowlist is built from it."""
     domain = "houseaccount-production.up.railway.app"
     monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", domain)
 
@@ -793,7 +877,6 @@ def test_the_mcp_transport_answers_on_the_railway_domain(data_dir, monkeypatch):
 
 
 def test_the_mcp_transport_answers_on_the_fly_domain(data_dir, monkeypatch):
-    """Fly injects `FLY_APP_NAME`, and the hostname is that plus `.fly.dev`."""
     monkeypatch.setenv("FLY_APP_NAME", "houseaccount")
 
     with mcp_client(data_dir) as client:
@@ -803,7 +886,6 @@ def test_the_mcp_transport_answers_on_the_fly_domain(data_dir, monkeypatch):
 
 
 def test_the_mcp_transport_answers_on_an_explicitly_configured_host(data_dir, monkeypatch):
-    """The escape hatch, for a custom domain or a platform with no variable."""
     monkeypatch.setenv("HOUSEACCOUNT_PUBLIC_HOST", "score.example.com, alt.example.com")
 
     with mcp_client(data_dir) as client:
@@ -812,7 +894,6 @@ def test_the_mcp_transport_answers_on_an_explicitly_configured_host(data_dir, mo
 
 
 def test_the_mcp_transport_still_answers_on_loopback(data_dir, monkeypatch):
-    """`make serve` is the case the protection is actually for; it keeps working."""
     monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
     monkeypatch.delenv("FLY_APP_NAME", raising=False)
     monkeypatch.delenv("HOUSEACCOUNT_PUBLIC_HOST", raising=False)
@@ -823,7 +904,6 @@ def test_the_mcp_transport_still_answers_on_loopback(data_dir, monkeypatch):
 
 
 def test_the_mcp_transport_rejects_a_host_it_was_never_given(data_dir, monkeypatch):
-    """The protection is kept, not traded away: an unlisted host is still 421."""
     monkeypatch.setenv("RAILWAY_PUBLIC_DOMAIN", "houseaccount-production.up.railway.app")
 
     with mcp_client(data_dir) as client:
